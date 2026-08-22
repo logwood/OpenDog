@@ -1,0 +1,24 @@
+_BASE_: modern_s101_224.yaml
+
+# Persistent C2 -> C5 latent workspace experiment.  Keep all optimizer,
+# augmentation, loss, split, and schedule settings identical to the baseline.
+MODEL:
+  META_ARCHITECTURE: LatentWorkspaceBaseline
+  LATENT_WORKSPACE:
+    # 192 is the measured 8 GB resource fallback; the original 256-wide
+    # prototype exceeded the 15% step-time budget on the target RTX 4060.
+    DIM: 192
+    NUM_SLOTS: 8
+    NUM_HEADS: 8
+    MLP_RATIO: 4.0
+    GATE_MIN: 0.05
+    GATE_INIT: 0.10
+    ATTN_DROPOUT: 0.0
+    HEALTH_PERIOD: 200
+
+# Validation is metric-equivalent at a smaller batch size and avoids the
+# large FP32 inference peak observed on the 8 GB target GPU.
+TEST:
+  IMS_PER_BATCH: 16
+
+OUTPUT_DIR: logs/modern_latent_workspace_s101_224_d192

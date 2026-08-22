@@ -1,0 +1,6 @@
+[wsl2]
+nestedVirtualization=true
+memory=8GB
+guiApplications=true
+networkingMode=nat
+autoProxy=true

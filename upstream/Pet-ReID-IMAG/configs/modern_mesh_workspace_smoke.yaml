@@ -1,0 +1,15 @@
+_BASE_: modern_latent_workspace_smoke.yaml
+
+SEED: 20260811
+
+MODEL:
+  LATENT_WORKSPACE:
+    READ_MODE: mesh
+    MESH_ITERS: 4
+    SINKHORN_ITERS: 5
+    MESH_LR: 1.0
+    MESH_NOISE_STD: 0.001
+    MESH_TEMPERATURE: 1.0
+    MIX_GATE_INIT: 0.05
+
+OUTPUT_DIR: logs/modern_mesh_workspace_smoke_d192_balanced

@@ -1,0 +1,23 @@
+# Verified on native Windows 11, RTX 4060 Laptop GPU, NVIDIA driver exposing
+# CUDA 12.7.  PyTorch wheels carry their own CUDA 12.6 runtime; nvcc is not
+# required. Install with the extra index declared in environment.repro.yml.
+torch==2.11.0+cu126
+torchvision==0.26.0+cu126
+torchaudio==2.11.0+cu126
+numpy==2.4.4
+scipy==1.18.0
+pandas==3.0.5
+scikit-learn==1.9.0
+matplotlib==3.11.1
+pillow==12.2.0
+opencv-python-headless==5.0.0.93
+tensorboard==2.21.0
+timm==1.0.28
+easydict==1.13
+gdown==6.1.0
+prettytable==3.18.0
+pyyaml==6.0.3
+tabulate==0.10.0
+termcolor==3.3.0
+tqdm==4.70.0
+yacs==0.1.8

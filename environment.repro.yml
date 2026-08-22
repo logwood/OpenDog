@@ -1,0 +1,9 @@
+name: pet-reid-imag-modern
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12.13
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu126
+      - -r requirements-modern.txt

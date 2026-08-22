@@ -1,0 +1,9 @@
+_BASE_: modern_s101_224.yaml
+
+INPUT:
+  SIZE_TRAIN: [288, 288]
+  SIZE_TEST: [288, 288]
+  CROP:
+    SIZE: [288, 288]
+
+OUTPUT_DIR: logs/modern_s101_288

@@ -1,0 +1,6 @@
+--- a/pet_id/evaluator.py
++++ b/pet_id/evaluator.py
+@@
+-        gallery_features = torch.cat((s101_dist_224_q, s101_dist_256_q, s101_dist_288_q, s200_dist_224_q), axis=1)
++        # Reproduction fix: upstream used query tensors here by copy/paste.
++        gallery_features = torch.cat((s101_dist_224_g, s101_dist_256_g, s101_dist_288_g, s200_dist_224_g), axis=1)

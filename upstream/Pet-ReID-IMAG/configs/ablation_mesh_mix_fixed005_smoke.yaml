@@ -1,0 +1,8 @@
+_BASE_: modern_mesh_workspace_smoke.yaml
+
+MODEL:
+  LATENT_WORKSPACE:
+    MIX_GATE_INIT: 0.05
+    MIX_GATE_TRAINABLE: False
+
+OUTPUT_DIR: logs/ablation_mesh_mix_fixed005_smoke_d192

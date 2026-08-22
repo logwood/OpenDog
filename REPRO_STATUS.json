@@ -1,0 +1,46 @@
+{
+  "project": "muzishen/Pet-ReID-IMAG",
+  "date": "2026-08-09",
+  "status": "MODERN_WINDOWS_REPRO_AND_LATENT_WORKSPACE_READY",
+  "environment": {
+    "os": "Windows 11",
+    "python": "3.12.13",
+    "pytorch": "2.11.0+cu126",
+    "torchvision": "0.26.0+cu126",
+    "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU 8GB",
+    "cuda_available": true
+  },
+  "completed": [
+    "native Windows portable extraction and original filename mapping",
+    "deterministic identity-disjoint 5400/600 split",
+    "balanced 1000-positive/1000-negative verification pairs",
+    "modern PyTorch and torchvision compatibility migration",
+    "ImageNet ResNeSt-101 and ResNeSt-200 pretrained weights downloaded and hash-prefix verified",
+    "real CUDA AMP forward/backward/optimizer step with all three losses",
+    "end-to-end smoke training, ROC-AUC validation, best/final checkpoint",
+    "checkpoint resume including optimizer, schedulers, and AMP GradScaler",
+    "full author-checkpoint validation inference",
+    "four complete Phase B feature extraction passes",
+    "four-branch fusion self-test and real 2000-pair submission generation",
+    "qualitative high/low-score Phase B pair contact sheet",
+    "modern environment lock and PowerShell workflow",
+    "persistent C2-C5 latent workspace implementation with non-zero gated writes",
+    "latent workspace unit, freeze-boundary, checkpoint, AMP train/eval smoke validation",
+    "batch-28 baseline versus latent workspace resource benchmark"
+  ],
+  "verified_outputs": {
+    "phase_b_submission": "upstream/Pet-ReID-IMAG/logs/fusion_submit/submit_modern.csv",
+    "rows": 2000,
+    "feature_shape_per_side_per_model": [4000, 2048],
+    "latent_smoke_checkpoint": "upstream/Pet-ReID-IMAG/logs/modern_latent_workspace_smoke_d192/model_final.pth",
+    "latent_batch28_peak_mib": 4215,
+    "latent_step_time_overhead_percent": 11.5
+  },
+  "not_executed": [
+    "four full 35-epoch retraining jobs because they are long-running GPU experiments",
+    "35-epoch baseline versus latent workspace AUC comparison"
+  ],
+  "external_blocker": [
+    "official Phase B AUC cannot be calculated locally because the released pair CSV has no hidden labels"
+  ]
+}

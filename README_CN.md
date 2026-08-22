@@ -1,0 +1,91 @@
+# Pet-ReID-IMAG 完整复现工作区
+
+## 结论
+
+当前工作区已经达到“可训练、可验证、可恢复、可推理”的目标，并在原生 Windows 11 + RTX 4060 Laptop 8GB 上完成真实 GPU 验证，不需要 WSL、Linux 编译器或本机 `nvcc`。
+
+已经实际跑通：
+
+- Python 3.12.13、PyTorch 2.11.0+cu126、torchvision 0.26.0+cu126；
+- 38,636 张训练图、6,000 个身份及 4,000 张 Phase B 测试图；
+- BF16/FP16 自动混合精度前向、三项训练损失、反向和 Adam 更新；
+- 训练、验证、best/final checkpoint、从 checkpoint 恢复下一 epoch；
+- 四个作者 checkpoint 的完整特征重提取；
+- 四分支融合和 2,000 对 Phase B 提交文件生成。
+
+最终已验证的 Phase B 输出是 `upstream/Pet-ReID-IMAG/logs/fusion_submit/submit_modern.csv`。
+
+## 本地验证协议
+
+发布代码没有给出论文 validation AUC 对应的划分和标签。本工作区补了一套可重复、身份不相交的协议：
+
+- 固定 seed 2022，以身份为单位划分 5,400 个训练 ID 和 600 个验证 ID；
+- 验证集包含 1,000 个正对和 1,000 个负对；
+- 以归一化描述符的 cosine similarity 计算 ROC-AUC、最佳阈值和该阈值下 accuracy；
+- 划分清单位于 `upstream/Pet-ReID-IMAG/data/splits/`。
+
+作者 checkpoint 在这套验证对上得到 AUC 1.00，只能证明验证代码链路正确：作者 checkpoint 训练时见过全部 6,000 个身份，存在数据泄漏。使用 `PetID` 从头训练时，600 个验证身份没有进入训练，才是有效的本地泛化评估。该协议也不是论文未发布验证协议的逐项复原。
+
+Phase B 的 `test_data.csv` 仍然没有隐藏标签，所以本地只能生成 2,000 个 prediction，不能声称复现论文/比赛的官方 Phase B AUC。
+
+## 快速入口
+
+在本目录打开 PowerShell：
+
+```powershell
+# 快速验证 AMP 训练、AUC、checkpoint（约 1 分钟）
+.\scripts\run_modern_pipeline.ps1 -Mode Smoke
+
+# 训练一个留出验证分支；可选 s101_224/s101_256/s101_288/s200_224
+.\scripts\run_modern_pipeline.ps1 -Mode Train -Branch s101_224
+
+# 从该分支最后一个 checkpoint 恢复
+.\scripts\run_modern_pipeline.ps1 -Mode Resume -Branch s101_224
+
+# 持久 latent workspace：真实 smoke、留出验证训练、恢复
+.\scripts\run_modern_pipeline.ps1 -Mode LatentSmoke
+.\scripts\run_modern_pipeline.ps1 -Mode LatentTrain
+.\scripts\run_modern_pipeline.ps1 -Mode LatentResume
+
+# 合并 stdout/stderr 到外层日志，同时保留实时终端输出
+.\scripts\run_modern_pipeline.ps1 -Mode LatentTrain -LogFile .\logs\latent_train.log
+
+# 只写文件，不在终端打印大量模型结构
+.\scripts\run_modern_pipeline.ps1 -Mode LatentTrain `
+  -LogFile .\logs\latent_train.log -LogOnly
+
+# 模型选择后，用全部 6,000 个 ID 做最终训练
+.\scripts\run_modern_pipeline.ps1 -Mode Final -Branch s101_224
+
+# 恢复中断的全量最终训练
+.\scripts\run_modern_pipeline.ps1 -Mode ResumeFinal -Branch s101_224
+
+# 用作者四个 checkpoint 重建 Phase B CSV
+.\scripts\run_modern_pipeline.ps1 -Mode AuthorPhaseB
+```
+
+全量训练每 5 个 epoch 在 `model_recent_0.pth`、`model_recent_1.pth` 两个恢复槽间交替覆盖，完成时另存 `model_final.pth`；每个分支最多保留三份 checkpoint。
+
+FastReID 仍会在各自 `OUTPUT_DIR/log.txt` 保存框架日志；`-LogFile` 是更完整的外层日志，还会捕获资产检查、环境信息、标准输出和标准错误。相对日志路径统一从本工作区根目录解析，恢复模式会追加到已有文件。
+
+完整环境创建、配置矩阵和输出说明见 `REPRO_GUIDE_CN.md`。作者代码疑点、当前复现偏离和复现完成后的消融顺序统一记录在 `IMPROVEMENT_LEDGER_CN.md`，避免方法改进污染复现基线。
+
+## 关键内容
+
+- `environment.repro.yml` / `requirements-modern.txt`：已验证的现代 CUDA 环境锁；
+- `scripts/prepare_upstream_assets.py`：Windows 安全解压、文件名映射和固定验证划分；
+- `scripts/run_modern_pipeline.ps1`：训练/恢复/最终训练/Phase B 一键入口；
+- `scripts/benchmark_latent_workspace.py`：baseline/latent 同机 batch-28 资源 A/B；
+- `scripts/fuse_and_score.py`：带自测的四分支融合与 pair 打分；
+- `scripts/make_pair_contact_sheet.py`：从无标签 Phase B 分数生成高/低相似 pair 定性对比图；
+- `IMPROVEMENT_LEDGER_CN.md`：作者代码疑点、必要复现偏离和后续实验账本；
+- `upstream/Pet-ReID-IMAG/configs/modern_*.yaml`：8GB GPU 配置；
+- `upstream/Pet-ReID-IMAG/pet_id/`：完整数据集、验证器、特征导出和训练入口；
+- `LATENT_WORKSPACE_DESIGN_CN.md`：第一版结构创新的冻结设计、实现边界和验收结果；
+- `pretrain/resnest101-22405ba7.pth`、`pretrain/resnest200-75117900.pth`：已下载并通过官方 SHA-256 前缀校验。
+
+已生成的定性样例位于 `results/phase_b_pair_examples.png`：最高分三对在视觉上高度一致，最低分三对明显不同；它是很好的 sanity check，但没有隐藏真值，不能换算为 accuracy/AUC。
+
+作者四分支的原始 batch 80/64 无法原样放入 8GB 显存；现代配置使用 BF16 AMP 和 batch 28，每批由 7 个身份、每身份 4 张图组成，使 Triplet/Circle Loss 拥有 24 个跨身份负样本。最重两个分支实测峰值保留显存约 6.42GB/6.54GB。因此目标是功能与方法复现，不是旧软件栈、旧 batch 和逐 bit 数值复现。完整 35-epoch 四模型重训耗时较长，本次没有替用户启动这项长期计算，但它所依赖的预训练、数据、训练、验证、保存和恢复路径均已实测闭环。
+
+第一版结构创新 `LatentWorkspaceBaseline` 也已实现并通过真实 GPU 闭环。它在 ResNeSt C2 只读、在 C3/C4/C5 双向读写一个跨阶段持久的 8-slot workspace；最终仍输出原有 2048 维 GeM/BN 描述符，损失与 baseline 完全相同。RTX 4060 Laptop、batch 28 的同机短测为 4.22GB 峰值、约 11.5% 中位 step 时间增量。当前只证明实现与资源可行，尚未用 35 epoch 未见身份 AUC 证明方法增益。

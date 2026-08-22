@@ -1,0 +1,20 @@
+_BASE_: modern_latent_workspace_s101_224.yaml
+
+# Competitive SA-MESH read experiment. Everything outside the latent read/update
+# path is inherited unchanged from the completed MHA workspace baseline.
+SEED: 20260811
+
+MODEL:
+  LATENT_WORKSPACE:
+    READ_MODE: mesh
+    MESH_ITERS: 4
+    SINKHORN_ITERS: 5
+    MESH_LR: 1.0
+    MESH_NOISE_STD: 0.001
+    MESH_TEMPERATURE: 1.0
+    MIX_GATE_INIT: 0.05
+
+SOLVER:
+  CHECKPOINT_PERIOD: 2
+
+OUTPUT_DIR: logs/modern_mesh_workspace_s101_224_d192_balanced
