@@ -1,0 +1,190 @@
+{
+  "schema_version": 2,
+  "created_at": "2026-08-28T14:31:08.633941+00:00",
+  "model_type": "semantic_v3_bifor_lowrank_v1",
+  "model": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/pet_embedding.onnx",
+  "onnx_sha256": "63f53f32e4c9ad0c26d8ab3d91cdbfb462e920b66424656a22ff62d02b209c22",
+  "onnx_bytes": 500020674,
+  "source_checkpoint": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+  "source_checkpoint_sha256": "abe38784b93655936156c86eabf4d89dd09e9d05fa6fa20d321110e3ecd878d6",
+  "config_file": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/config.yaml",
+  "config_sha256": "056adeca9bd94298a7d16e57fdfd499b1226a0d69486e9e4be0c8b20ffc6be63",
+  "torch_version": "2.11.0+cu126",
+  "onnx_version": "1.22.0",
+  "onnxruntime_version": "1.26.0",
+  "opset": 20,
+  "fusion_mode": "semantic_residual_v3+bifor_lowrank_v1",
+  "precision_provenance": {
+    "deployment": "float32 ONNX",
+    "projector_selection_features": "bfloat16 autocast converted to float32",
+    "note": "The locked projector is unchanged. Production FP32 inference may differ slightly from historical BF16 protocol metrics."
+  },
+  "gallery_compatibility": {
+    "compatible_with_semantic_v3_v1": false,
+    "reencoding_required": true,
+    "reason": "the locked SVD projection defines a new 512-D coordinate space"
+  },
+  "body_fusion": {
+    "body_weight": 0.08,
+    "semantic_weight": 0.92,
+    "projection_rank": 500,
+    "output_dim": 512,
+    "horizontal_flip_tta": true,
+    "bifor_checkpoint": "models/pretrained/BIFOR/f2/bifor.pth",
+    "bifor_checkpoint_sha256": "cceb7c464ab6fe7346a8627fabf3452fce1d3815a7d95f17fcb279036452b08c",
+    "fusion_checkpoint": "artifacts/runs/bifor/lowrank_joint100_v1/model_final.pth",
+    "fusion_checkpoint_sha256": "1e64ec79834121ae16f0d87eaa3325596b7ce37df4e94fc23e457429c0e2b38e",
+    "classification_head": null
+  },
+  "body_preprocessing": {
+    "detector": {
+      "name": "torchvision/fasterrcnn_resnet50_fpn_v2",
+      "checkpoint": "models/pretrained/body_detection/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth",
+      "checkpoint_sha256": "dd69338a24b8d7381807e247652bdc356325bcbaf1cd3e092e00e0a1a58706bf",
+      "score_threshold": 0.5,
+      "crop_expansion": 0.04,
+      "inside_onnx": false
+    },
+    "target_size": [
+      224,
+      224
+    ],
+    "normalization": "ImageNet mean/std"
+  },
+  "dynamic_batch": {
+    "minimum": 1,
+    "declared_maximum": 8,
+    "validated_batch_sizes": [
+      1,
+      2
+    ]
+  },
+  "inputs": {
+    "nose_crop": {
+      "shape": [
+        "N",
+        3,
+        244,
+        244
+      ],
+      "dtype": "float32",
+      "range": [
+        0,
+        255
+      ]
+    },
+    "face_crop": {
+      "shape": [
+        "N",
+        3,
+        224,
+        224
+      ],
+      "dtype": "float32",
+      "range": [
+        0,
+        255
+      ]
+    },
+    "body_crop": {
+      "shape": [
+        "N",
+        3,
+        224,
+        224
+      ],
+      "dtype": "float32",
+      "range": [
+        0,
+        255
+      ]
+    },
+    "nose_mask": {
+      "shape": [
+        "N",
+        1,
+        244,
+        244
+      ],
+      "dtype": "float32",
+      "range": [
+        0,
+        1
+      ]
+    },
+    "quality_signals": {
+      "shape": [
+        "N",
+        6
+      ],
+      "dtype": "float32"
+    },
+    "viewpoint_signals": {
+      "shape": [
+        "N",
+        4
+      ],
+      "dtype": "float32"
+    },
+    "branch_available": {
+      "shape": [
+        "N",
+        2
+      ],
+      "dtype": "bool",
+      "order": [
+        "nose",
+        "face"
+      ]
+    }
+  },
+  "outputs": {
+    "embedding": {
+      "shape": [
+        "N",
+        512
+      ],
+      "l2_normalized": true
+    },
+    "nose_embedding": {
+      "shape": [
+        "N",
+        2048
+      ],
+      "l2_normalized": true
+    },
+    "face_embedding": {
+      "shape": [
+        "N",
+        512
+      ],
+      "l2_normalized": true
+    },
+    "fusion_weights": {
+      "shape": [
+        "N",
+        2
+      ]
+    },
+    "joint_weights": {
+      "shape": [
+        "N",
+        2
+      ]
+    },
+    "viewpoint_frontality": {
+      "shape": [
+        "N"
+      ]
+    }
+  },
+  "excluded": [
+    "AnyFace detection",
+    "SAM2 segmentation",
+    "dog body detection",
+    "EXIF handling",
+    "rotated ROI extraction",
+    "all training-only classifiers"
+  ],
+  "model_sha256": "63f53f32e4c9ad0c26d8ab3d91cdbfb462e920b66424656a22ff62d02b209c22"
+}

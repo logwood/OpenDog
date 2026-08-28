@@ -53,7 +53,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=SELECTED_MODELS_ROOT / "dogfacenet_semantic_v3_v1" / "config.yaml",
     )
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--backend", choices=("pytorch", "onnx"), default="onnx")
+    parser.add_argument(
+        "--backend",
+        choices=("pytorch", "onnx", "onnx-bifor"),
+        default="onnx",
+    )
     parser.add_argument(
         "--identity-weights",
         type=Path,
@@ -72,6 +76,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--onnx-provider", choices=("auto", "cuda", "cpu"), default="cuda"
+    )
+    parser.add_argument(
+        "--body-detector",
+        type=Path,
+        default=(
+            SELECTED_MODELS_ROOT.parent
+            / "pretrained"
+            / "body_detection"
+            / "fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth"
+        ),
+        help="frozen target-dog detector used only by --backend onnx-bifor",
     )
     parser.add_argument("--onnx-warmup-batches", default="1,4,8")
     parser.add_argument("--maximum-upload-mb", type=float, default=15.0)
@@ -133,10 +148,11 @@ def main() -> None:
         identity_weights,
         args.device,
         backend=args.backend,
-        onnx_model=onnx_model if args.backend == "onnx" else None,
+        onnx_model=(onnx_model if args.backend in {"onnx", "onnx-bifor"} else None),
         onnx_provider=args.onnx_provider,
         onnx_warmup_batches=parse_warmup_batches(args.onnx_warmup_batches),
-        verify_onnx_source_checkpoint=args.backend == "onnx",
+        verify_onnx_source_checkpoint=args.backend in {"onnx", "onnx-bifor"},
+        body_detector=args.body_detector if args.backend == "onnx-bifor" else None,
     )
     encoder = MultimodalPipelineEncoder(pipeline)
     backend_info = encoder.backend_info()

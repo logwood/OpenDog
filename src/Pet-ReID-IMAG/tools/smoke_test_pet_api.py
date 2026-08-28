@@ -76,6 +76,7 @@ def main() -> None:
         default=SELECTED_MODELS_ROOT / "dogfacenet_semantic_v3_v1" / "config.yaml",
     )
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--backend", choices=("onnx", "onnx-bifor"), default="onnx")
     parser.add_argument(
         "--identity-weights",
         type=Path,
@@ -85,10 +86,23 @@ def main() -> None:
     parser.add_argument(
         "--onnx-model",
         type=Path,
-        default=SELECTED_MODELS_ROOT / "dogfacenet_semantic_v3_v1" / "onnx" / "pet_embedding.onnx",
+        default=SELECTED_MODELS_ROOT
+        / "dogfacenet_semantic_v3_v1"
+        / "onnx"
+        / "pet_embedding.onnx",
     )
     parser.add_argument(
         "--onnx-provider", choices=("auto", "cuda", "cpu"), default="cuda"
+    )
+    parser.add_argument(
+        "--body-detector",
+        type=Path,
+        default=(
+            SELECTED_MODELS_ROOT.parent
+            / "pretrained"
+            / "body_detection"
+            / "fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth"
+        ),
     )
     parser.add_argument("--onnx-warmup-batches", default="1,4,8")
     args = parser.parse_args()
@@ -109,11 +123,16 @@ def main() -> None:
                 args.config_file.expanduser().resolve(),
                 args.identity_weights.expanduser().resolve(),
                 args.device,
-                backend="onnx",
+                backend=args.backend,
                 onnx_model=args.onnx_model.expanduser().resolve(),
                 onnx_provider=args.onnx_provider,
                 onnx_warmup_batches=parse_warmup_batches(args.onnx_warmup_batches),
                 verify_onnx_source_checkpoint=True,
+                body_detector=(
+                    args.body_detector.expanduser().resolve()
+                    if args.backend == "onnx-bifor"
+                    else None
+                ),
             )
             service = PetIdentificationService(
                 PetGalleryStore(storage), MultimodalPipelineEncoder(pipeline)

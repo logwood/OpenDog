@@ -1,0 +1,172 @@
+{
+  "provider": "CPUExecutionProvider",
+  "onnxruntime_version": "1.26.0",
+  "max_abs_tolerance": 0.0005,
+  "minimum_embedding_cosine": 0.99999,
+  "runs": [
+    {
+      "batch_size": 1,
+      "outputs": [
+        {
+          "name": "embedding",
+          "shape": [
+            1,
+            512
+          ],
+          "max_abs_error": 2.0116567611694336e-07,
+          "mean_abs_error": 2.773123952692913e-08,
+          "minimum_cosine": 1.0
+        },
+        {
+          "name": "nose_embedding",
+          "shape": [
+            1,
+            2048
+          ],
+          "max_abs_error": 5.21540641784668e-08,
+          "mean_abs_error": 8.864926570595344e-09,
+          "minimum_cosine": 0.9999998807907104
+        },
+        {
+          "name": "face_embedding",
+          "shape": [
+            1,
+            512
+          ],
+          "max_abs_error": 1.1734664440155029e-07,
+          "mean_abs_error": 2.9442219329212094e-08,
+          "minimum_cosine": 1.0
+        },
+        {
+          "name": "fusion_weights",
+          "shape": [
+            1,
+            2
+          ],
+          "max_abs_error": 5.960464477539063e-08,
+          "mean_abs_error": 4.470348358154297e-08
+        },
+        {
+          "name": "joint_weights",
+          "shape": [
+            1,
+            2
+          ],
+          "max_abs_error": 5.960464477539063e-08,
+          "mean_abs_error": 4.470348358154297e-08
+        },
+        {
+          "name": "viewpoint_frontality",
+          "shape": [
+            1
+          ],
+          "max_abs_error": 0.0,
+          "mean_abs_error": 0.0
+        }
+      ],
+      "onnx_embedding_norm_range": [
+        1.000000238418579,
+        1.000000238418579
+      ],
+      "nearest_neighbor_top1_consistent": null
+    },
+    {
+      "batch_size": 2,
+      "outputs": [
+        {
+          "name": "embedding",
+          "shape": [
+            2,
+            512
+          ],
+          "max_abs_error": 1.862645149230957e-07,
+          "mean_abs_error": 2.5324922603431332e-08,
+          "minimum_cosine": 1.0000001192092896
+        },
+        {
+          "name": "nose_embedding",
+          "shape": [
+            2,
+            2048
+          ],
+          "max_abs_error": 7.89295881986618e-08,
+          "mean_abs_error": 1.0272810158085122e-08,
+          "minimum_cosine": 0.9999998807907104
+        },
+        {
+          "name": "face_embedding",
+          "shape": [
+            2,
+            512
+          ],
+          "max_abs_error": 1.2479722499847412e-07,
+          "mean_abs_error": 2.4152832622803544e-08,
+          "minimum_cosine": 0.9999998807907104
+        },
+        {
+          "name": "fusion_weights",
+          "shape": [
+            2,
+            2
+          ],
+          "max_abs_error": 2.384185791015625e-07,
+          "mean_abs_error": 1.4156103134155273e-07
+        },
+        {
+          "name": "joint_weights",
+          "shape": [
+            2,
+            2
+          ],
+          "max_abs_error": 2.384185791015625e-07,
+          "mean_abs_error": 1.4156103134155273e-07
+        },
+        {
+          "name": "viewpoint_frontality",
+          "shape": [
+            2
+          ],
+          "max_abs_error": 0.0,
+          "mean_abs_error": 0.0
+        }
+      ],
+      "onnx_embedding_norm_range": [
+        0.9999998807907104,
+        1.000000238418579
+      ],
+      "nearest_neighbor_top1_consistent": true
+    }
+  ],
+  "schema_version": 2,
+  "validated_at": "2026-08-28T14:31:08.633941+00:00",
+  "onnx_checker": "passed",
+  "onnx_sha256": "63f53f32e4c9ad0c26d8ab3d91cdbfb462e920b66424656a22ff62d02b209c22",
+  "semantic_wrapper_vs_full_pytorch_max_abs": 0.0,
+  "sample_manifest": "artifacts/runs/legacy/dogfacenet_joint100_protocol_v1/validation_manifest.json",
+  "sample_indices": [
+    0,
+    5
+  ],
+  "sample_identities": [
+    "359936",
+    "368706"
+  ],
+  "sample_body_boxes_xyxy": [
+    [
+      90,
+      13,
+      402,
+      375
+    ],
+    [
+      41,
+      0,
+      477,
+      375
+    ]
+  ],
+  "pytorch_embedding_norm_range": [
+    1.0,
+    1.0
+  ]
+}

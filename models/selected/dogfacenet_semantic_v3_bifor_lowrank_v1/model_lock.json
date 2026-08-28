@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "model_type": "semantic_v3_bifor_lowrank_v1",
+  "selection_basis": "locked 100-train/20-validation identity protocol",
+  "deployment_precision": "float32 ONNX",
+  "historical_selection_precision": "bfloat16 autocast converted to float32",
+  "gallery_reencoding_required": true,
+  "sources": {
+    "semantic_v3": {
+      "path": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+      "sha256": "abe38784b93655936156c86eabf4d89dd09e9d05fa6fa20d321110e3ecd878d6"
+    },
+    "bifor_f2": {
+      "path": "models/pretrained/BIFOR/f2/bifor.pth",
+      "sha256": "cceb7c464ab6fe7346a8627fabf3452fce1d3815a7d95f17fcb279036452b08c",
+      "classifier_head": null
+    },
+    "lowrank_projection": {
+      "path": "artifacts/runs/bifor/lowrank_joint100_v1/model_final.pth",
+      "sha256": "1e64ec79834121ae16f0d87eaa3325596b7ce37df4e94fc23e457429c0e2b38e",
+      "body_weight": 0.08,
+      "semantic_weight": 0.92,
+      "projection_rank": 500,
+      "output_dim": 512
+    },
+    "body_detector": {
+      "path": "models/pretrained/body_detection/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth",
+      "sha256": "dd69338a24b8d7381807e247652bdc356325bcbaf1cd3e092e00e0a1a58706bf",
+      "inside_onnx": false
+    },
+    "config": {
+      "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/config.yaml",
+      "sha256": "056adeca9bd94298a7d16e57fdfd499b1226a0d69486e9e4be0c8b20ffc6be63"
+    }
+  },
+  "onnx": {
+    "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/pet_embedding.onnx",
+    "bytes": 500020674,
+    "sha256": "63f53f32e4c9ad0c26d8ab3d91cdbfb462e920b66424656a22ff62d02b209c22",
+    "checker": "passed",
+    "dynamic_batches_validated": [1, 2]
+  },
+  "validation": {
+    "pytorch_onnx_max_abs_error": 2.0116567611694336e-07,
+    "minimum_embedding_cosine": 1.0,
+    "nearest_neighbor_top1_consistent": true,
+    "protocol_20_identity_fp32": {
+      "gallery_rank1": 0.9666666666666667,
+      "leave_one_out_rank1": 0.98,
+      "auc": 0.9986549707602339,
+      "report": "artifacts/runs/bifor/onnx_protocol_validation_v1/evaluation.json",
+      "report_sha256": "48f8a46f5c3aaffe365773715ddcf21977d1399d8b7f37f7eed001887437be71"
+    },
+    "raw_image_runtime_20_identity": {
+      "gallery_rank1": 0.9666666666666667,
+      "leave_one_out_rank1": 0.97,
+      "auc": 0.9986111111111111,
+      "report": "artifacts/runs/bifor/onnx_raw_runtime_validation_v1/evaluation.json",
+      "report_sha256": "a275f277d208f297b98db0173ff5e9034ac3c0f593d5297b637647424d92b076"
+    },
+    "api_smoke": {
+      "passed": true,
+      "predicted_pet_id": "359936",
+      "expected_pet_id": "359936",
+      "report": "artifacts/runs/bifor/onnx_api_smoke_v1/report.json",
+      "report_sha256": "a199fbbd0e739948ba337e0adebd6132fda89bf54ae35d09e7c42c94e0bbb24a"
+    }
+  }
+}

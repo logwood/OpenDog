@@ -51,7 +51,9 @@ def collect_images(values: Iterable[str | Path]) -> list[Path]:
         elif path.is_file() and path.suffix.casefold() in IMAGE_SUFFIXES:
             images.append(path)
         else:
-            raise FileNotFoundError(f"image input does not exist or is unsupported: {path}")
+            raise FileNotFoundError(
+                f"image input does not exist or is unsupported: {path}"
+            )
     if not images:
         raise RuntimeError("no input images found")
     return images
@@ -67,10 +69,12 @@ def build_pipeline(
     onnx_provider: str = "cuda",
     onnx_warmup_batches: tuple[int, ...] = (),
     verify_onnx_source_checkpoint: bool = False,
+    body_detector: Path | None = None,
 ):
     config_file = resolve_legacy_path(config_file)
     checkpoint = resolve_legacy_path(checkpoint) if checkpoint else None
     onnx_model = resolve_legacy_path(onnx_model) if onnx_model else None
+    body_detector = resolve_legacy_path(body_detector) if body_detector else None
     cfg = get_cfg()
     add_retri_config(cfg)
     cfg.merge_from_file(str(config_file))
@@ -83,19 +87,31 @@ def build_pipeline(
     cfg.freeze()
     if backend == "pytorch":
         return build_multimodal_pipeline(cfg, device=device)
-    if backend != "onnx":
-        raise ValueError("identity backend must be either 'pytorch' or 'onnx'")
+    if backend not in {"onnx", "onnx-bifor"}:
+        raise ValueError("identity backend must be 'pytorch', 'onnx', or 'onnx-bifor'")
     if onnx_model is None:
         raise ValueError("onnx_model is required for the ONNX identity backend")
+    if backend == "onnx-bifor":
+        if body_detector is None:
+            raise ValueError("body_detector is required for the BIFOR ONNX backend")
+        from .bifor_onnx_runtime import build_bifor_onnx_multimodal_pipeline
+
+        return build_bifor_onnx_multimodal_pipeline(
+            cfg,
+            model_path=onnx_model,
+            body_detector_checkpoint=body_detector,
+            provider=onnx_provider,
+            source_checkpoint=(checkpoint if verify_onnx_source_checkpoint else None),
+            device=device,
+            warmup_batches=onnx_warmup_batches,
+        )
     from .onnx_runtime import build_onnx_multimodal_pipeline
 
     return build_onnx_multimodal_pipeline(
         cfg,
         model_path=onnx_model,
         provider=onnx_provider,
-        source_checkpoint=(
-            checkpoint if verify_onnx_source_checkpoint else None
-        ),
+        source_checkpoint=(checkpoint if verify_onnx_source_checkpoint else None),
         device=device,
         warmup_batches=onnx_warmup_batches,
     )
@@ -113,7 +129,10 @@ def encode_primary(pipeline, path: Path) -> tuple[PetDescriptor, dict]:
     descriptors = pipeline.encode_image(load_exif_oriented_bgr(path))
     if not descriptors:
         raise RuntimeError(f"no dog descriptor produced for {path}")
-    selected_index = max(range(len(descriptors)), key=lambda index: descriptor_priority(descriptors[index]))
+    selected_index = max(
+        range(len(descriptors)),
+        key=lambda index: descriptor_priority(descriptors[index]),
+    )
     descriptor = descriptors[selected_index]
     return descriptor, {
         "detections": len(descriptors),

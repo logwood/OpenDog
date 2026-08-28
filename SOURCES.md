@@ -24,6 +24,9 @@ The workspace was consolidated under the outer `logwood/OpenDog` repository on
   `2b90b9f5ceec907a1c18123530e92e794ad901a4`.
 - BIFOR: `https://github.com/eugeniodias5/BIFOR.git`, commit
   `47b27892e0062a31e7ba0c894fa9cae7928172c`.
+- Torchvision Faster R-CNN ResNet-50 FPN v2 COCO weights:
+  `https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth`,
+  SHA-256 `dd69338a24b8d7381807e247652bdc356325bcbaf1cd3e092e00e0a1a58706bf`.
 
 Complete verified bundles, working-tree patches, staged patches and untracked
 file lists are stored under `archive/git/2026-08-28/`. The original nested Git
