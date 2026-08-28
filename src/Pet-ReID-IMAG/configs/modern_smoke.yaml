@@ -1,0 +1,28 @@
+_BASE_: modern_s101_224.yaml
+
+# A real GPU train/eval/checkpoint path over a tiny deterministic subset.  This
+# is intentionally a systems check, not a quality benchmark.
+MODEL:
+  BACKBONE:
+    PRETRAIN: False
+
+SOLVER:
+  MAX_EPOCH: 1
+  WARMUP_ITERS: 1
+  FREEZE_ITERS: 0
+  DELAY_EPOCHS: 0
+  IMS_PER_BATCH: 8
+  CHECKPOINT_PERIOD: 1
+
+DATALOADER:
+  NUM_WORKERS: 0
+
+TEST:
+  EVAL_PERIOD: 1
+  IMS_PER_BATCH: 16
+
+DATASETS:
+  NAMES: ("PetIDSmoke",)
+  TESTS: ("PetIDValidationSmoke",)
+
+OUTPUT_DIR: artifacts/runs/legacy/modern_smoke

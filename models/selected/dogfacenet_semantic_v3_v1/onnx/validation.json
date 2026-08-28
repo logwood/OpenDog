@@ -1,0 +1,174 @@
+{
+  "provider": "CPUExecutionProvider",
+  "onnxruntime_version": "1.26.0",
+  "max_abs_tolerance": 0.0005,
+  "minimum_embedding_cosine": 0.99999,
+  "runs": [
+    {
+      "batch_size": 1,
+      "outputs": [
+        {
+          "name": "embedding",
+          "shape": [
+            1,
+            512
+          ],
+          "max_abs_error": 6.728805601596832e-08,
+          "mean_abs_error": 1.6940418845479144e-08,
+          "minimum_cosine": 1.0
+        },
+        {
+          "name": "nose_embedding",
+          "shape": [
+            1,
+            2048
+          ],
+          "max_abs_error": 4.470348358154297e-08,
+          "mean_abs_error": 8.350846236737652e-09,
+          "minimum_cosine": 1.0000001192092896
+        },
+        {
+          "name": "face_embedding",
+          "shape": [
+            1,
+            512
+          ],
+          "max_abs_error": 6.565824151039124e-08,
+          "mean_abs_error": 1.7423168685581913e-08,
+          "minimum_cosine": 1.0000001192092896
+        },
+        {
+          "name": "fusion_weights",
+          "shape": [
+            1,
+            2
+          ],
+          "max_abs_error": 0.0,
+          "mean_abs_error": 0.0
+        },
+        {
+          "name": "joint_weights",
+          "shape": [
+            1,
+            2
+          ],
+          "max_abs_error": 0.0,
+          "mean_abs_error": 0.0
+        },
+        {
+          "name": "viewpoint_frontality",
+          "shape": [
+            1
+          ],
+          "max_abs_error": 0.0,
+          "mean_abs_error": 0.0
+        }
+      ],
+      "torch_embedding_norm_range": [
+        0.9999998807907104,
+        0.9999998807907104
+      ],
+      "onnx_embedding_norm_range": [
+        1.0,
+        1.0
+      ],
+      "nearest_neighbor_top1_consistent": null
+    },
+    {
+      "batch_size": 8,
+      "outputs": [
+        {
+          "name": "embedding",
+          "shape": [
+            8,
+            512
+          ],
+          "max_abs_error": 1.601874828338623e-07,
+          "mean_abs_error": 2.578365965177909e-08,
+          "minimum_cosine": 1.0
+        },
+        {
+          "name": "nose_embedding",
+          "shape": [
+            8,
+            2048
+          ],
+          "max_abs_error": 1.0803341865539551e-07,
+          "mean_abs_error": 1.1986735160007811e-08,
+          "minimum_cosine": 1.0
+        },
+        {
+          "name": "face_embedding",
+          "shape": [
+            8,
+            512
+          ],
+          "max_abs_error": 1.7508864402770996e-07,
+          "mean_abs_error": 2.5699767647324734e-08,
+          "minimum_cosine": 1.0
+        },
+        {
+          "name": "fusion_weights",
+          "shape": [
+            8,
+            2
+          ],
+          "max_abs_error": 2.980232238769531e-07,
+          "mean_abs_error": 8.847564458847046e-08
+        },
+        {
+          "name": "joint_weights",
+          "shape": [
+            8,
+            2
+          ],
+          "max_abs_error": 2.980232238769531e-07,
+          "mean_abs_error": 8.847564458847046e-08
+        },
+        {
+          "name": "viewpoint_frontality",
+          "shape": [
+            8
+          ],
+          "max_abs_error": 0.0,
+          "mean_abs_error": 0.0
+        }
+      ],
+      "torch_embedding_norm_range": [
+        0.9999998807907104,
+        1.0
+      ],
+      "onnx_embedding_norm_range": [
+        0.9999999403953552,
+        1.0000001192092896
+      ],
+      "nearest_neighbor_top1_consistent": true
+    }
+  ],
+  "schema_version": 1,
+  "validated_at": "2026-08-27T03:47:46.065888+00:00",
+  "onnx_checker": "passed",
+  "wrapper_vs_full_pytorch_max_abs": 0.0,
+  "sample_manifest": "artifacts/runs/legacy/dogfacenet_shared_v3_protocol_v1/dev_validation_manifest.json",
+  "sample_indices": [
+    0,
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    28
+  ],
+  "sample_identities": [
+    "180&tit=Wolf",
+    "231&tit=Dorl",
+    "289166",
+    "345377",
+    "359936",
+    "360864",
+    "363352",
+    "372059"
+  ],
+  "onnx_sha256": "21a2e2543b34ebd09426cba6bb1ff2c9dc0651b15d5186453e91ecbcf55d532a"
+}

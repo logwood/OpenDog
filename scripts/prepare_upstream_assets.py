@@ -22,8 +22,10 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 
-BUNDLE_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_REPO = BUNDLE_ROOT / "upstream" / "Pet-ReID-IMAG"
+WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_SOURCE_ROOT = WORKSPACE_ROOT / "src" / "Pet-ReID-IMAG"
+DEFAULT_DATA_ROOT = WORKSPACE_ROOT / "data" / "processed" / "pet-reid-imag"
+DEFAULT_RUNS_ROOT = WORKSPACE_ROOT / "artifacts" / "runs" / "legacy"
 EXPECTED = {
     "train_images": 38636,
     "test_images": 4000,
@@ -91,7 +93,7 @@ def write_generated(path: Path, content: str, force: bool) -> bool:
     return True
 
 
-def extract_train(bundle: Path, repo: Path, force: bool) -> int:
+def extract_train(bundle: Path, data_root: Path, force: bool) -> int:
     written = 0
     seen: dict[str, PurePosixPath] = {}
     with zipfile.ZipFile(bundle / "dir_train.zip") as zf:
@@ -102,12 +104,12 @@ def extract_train(bundle: Path, repo: Path, force: bool) -> int:
             original = PurePosixPath(*source.parts[1:])
             portable = portable_relative(original)
             ensure_no_collision(seen, original, portable)
-            target = safe_target(repo / "data" / "dir_train_fusai", portable)
+            target = safe_target(data_root / "dir_train_fusai", portable)
             written += copy_member(zf, info, target, force)
     return written
 
 
-def extract_test(bundle: Path, repo: Path, force: bool) -> tuple[int, int]:
+def extract_test(bundle: Path, data_root: Path, force: bool) -> tuple[int, int]:
     written = 0
     seen: dict[str, PurePosixPath] = {}
     mappings: list[tuple[str, str]] = []
@@ -121,7 +123,7 @@ def extract_test(bundle: Path, repo: Path, force: bool) -> tuple[int, int]:
             original = PurePosixPath(*source.parts[1:])
             portable = portable_relative(original)
             ensure_no_collision(seen, original, portable)
-            target = safe_target(repo / "data" / "test", portable)
+            target = safe_target(data_root / "test", portable)
             written += copy_member(zf, info, target, force)
             if original.suffix.lower() == ".jpg":
                 mappings.append((portable.name, original.name))
@@ -131,12 +133,12 @@ def extract_test(bundle: Path, repo: Path, force: bool) -> tuple[int, int]:
     writer.writerow(["local_name", "original_name"])
     writer.writerows(sorted(mappings))
     mapping_written = write_generated(
-        repo / "data" / "test" / "filename_map.csv", output.getvalue(), force
+        data_root / "test" / "filename_map.csv", output.getvalue(), force
     )
     return written, int(mapping_written)
 
 
-def extract_logs(bundle: Path, repo: Path, force: bool) -> int:
+def extract_logs(bundle: Path, runs_root: Path, force: bool) -> int:
     written = 0
     with zipfile.ZipFile(bundle / "logs.zip") as zf:
         for info in zf.infolist():
@@ -146,7 +148,7 @@ def extract_logs(bundle: Path, repo: Path, force: bool) -> int:
             parts = list(source.parts[1:])
             if parts[0] == "S200_224":
                 parts[0] = "s200_224"
-            target = safe_target(repo / "logs", portable_relative(PurePosixPath(*parts)))
+            target = safe_target(runs_root, portable_relative(PurePosixPath(*parts)))
             written += copy_member(zf, info, target, force)
     return written
 
@@ -157,14 +159,14 @@ def stable_key(seed: int, *parts: str) -> bytes:
 
 
 def generate_validation_split(
-    repo: Path, ratio: float, seed: int, pairs_per_class: int, force: bool
+    data_root: Path, ratio: float, seed: int, pairs_per_class: int, force: bool
 ) -> dict:
     if not 0 < ratio < 1:
         raise ValueError("--validation-ratio must be between 0 and 1")
     if pairs_per_class < 1:
         raise ValueError("--validation-pairs-per-class must be positive")
 
-    train_root = repo / "data" / "dir_train_fusai"
+    train_root = data_root / "dir_train_fusai"
     identities = sorted(
         (p.name for p in train_root.iterdir() if p.is_dir()), key=lambda x: int(x)
     )
@@ -218,7 +220,7 @@ def generate_validation_split(
     pairs = positives + negatives
     rng.shuffle(pairs)
 
-    split_root = repo / "data" / "splits"
+    split_root = data_root / "splits"
     train_text = "\n".join(train_ids) + "\n"
     validation_text = "\n".join(validation_ids) + "\n"
     pairs_output = io.StringIO(newline="")
@@ -259,20 +261,20 @@ def generate_validation_split(
     return manifest
 
 
-def verify(repo: Path) -> dict:
-    train_root = repo / "data" / "dir_train_fusai"
-    test_root = repo / "data" / "test" / "test"
+def verify(data_root: Path, runs_root: Path) -> dict:
+    train_root = data_root / "dir_train_fusai"
+    test_root = data_root / "test" / "test"
     train_images = sum(1 for p in train_root.glob("*/*.jpg") if p.is_file())
     test_images = sum(1 for p in test_root.glob("*.jpg") if p.is_file())
     models = ("s101_224", "s101_256", "s101_288", "s200_224")
-    weights = sum((repo / "logs" / model / "model_final.pth").is_file() for model in models)
+    weights = sum((runs_root / model / "model_final.pth").is_file() for model in models)
     features = sum(
-        (repo / "logs" / model / f"{kind}_f.npy").is_file()
+        (runs_root / model / f"{kind}_f.npy").is_file()
         for model in models
         for kind in ("query", "gallery")
     )
 
-    split_root = repo / "data" / "splits"
+    split_root = data_root / "splits"
     train_ids = (
         set((split_root / "train_ids.txt").read_text(encoding="utf-8").split())
         if (split_root / "train_ids.txt").is_file()
@@ -290,11 +292,12 @@ def verify(repo: Path) -> dict:
             labels = [int(row["label"]) for row in csv.DictReader(handle)]
 
     report = {
-        "repo": str(repo.resolve()),
+        "data_root": str(data_root.resolve()),
+        "runs_root": str(runs_root.resolve()),
         "train_images": train_images,
         "test_images": test_images,
-        "test_csv": (repo / "data" / "test" / "test_data.csv").is_file(),
-        "filename_map": (repo / "data" / "test" / "filename_map.csv").is_file(),
+        "test_csv": (data_root / "test" / "test_data.csv").is_file(),
+        "filename_map": (data_root / "test" / "filename_map.csv").is_file(),
         "weights": weights,
         "features": features,
         "train_identities": len(train_ids),
@@ -321,8 +324,13 @@ def verify(repo: Path) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--bundle-root", type=Path, default=BUNDLE_ROOT)
-    parser.add_argument("--repo", type=Path, default=DEFAULT_REPO)
+    parser.add_argument("--bundle-root", type=Path, default=WORKSPACE_ROOT)
+    parser.add_argument(
+        "--source-root", "--repo", dest="source_root", type=Path,
+        default=DEFAULT_SOURCE_ROOT,
+    )
+    parser.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT)
+    parser.add_argument("--runs-root", type=Path, default=DEFAULT_RUNS_ROOT)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--validation-ratio", type=float, default=0.10)
@@ -331,19 +339,21 @@ def main() -> int:
     args = parser.parse_args()
 
     bundle = args.bundle_root.resolve()
-    repo = args.repo.expanduser().resolve()
-    validate_destination(repo)
+    source_root = args.source_root.expanduser().resolve()
+    data_root = args.data_root.expanduser().resolve()
+    runs_root = args.runs_root.expanduser().resolve()
+    validate_destination(source_root)
     written = {"train": 0, "test": 0, "mapping": 0, "logs": 0, "split": 0}
     split_report: dict = {}
     if not args.verify_only:
         for archive in ("dir_train.zip", "test.zip", "logs.zip"):
             if not (bundle / archive).is_file():
                 raise SystemExit(f"Missing archive: {bundle / archive}")
-        written["train"] = extract_train(bundle, repo, args.force)
-        written["test"], written["mapping"] = extract_test(bundle, repo, args.force)
-        written["logs"] = extract_logs(bundle, repo, args.force)
+        written["train"] = extract_train(bundle, data_root, args.force)
+        written["test"], written["mapping"] = extract_test(bundle, data_root, args.force)
+        written["logs"] = extract_logs(bundle, runs_root, args.force)
         split_report = generate_validation_split(
-            repo,
+            data_root,
             args.validation_ratio,
             args.validation_seed,
             args.validation_pairs_per_class,
@@ -351,7 +361,8 @@ def main() -> int:
         )
         written["split"] = split_report.pop("files_written")
 
-    report = verify(repo)
+    report = verify(data_root, runs_root)
+    report["source_root"] = str(source_root)
     report["files_written"] = written
     if split_report:
         report["split"] = split_report

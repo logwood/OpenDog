@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "locked_at": "2026-08-26T17:20:23.337217+00:00",
+  "selection_basis": "a priori fixed 5000-step training budget",
+  "blind_test_status": "locked_before_first_blind_feature_extraction",
+  "source_checkpoint": "artifacts/runs/legacy/dogfacenet_shared_v2_fixed5000_joint_4000/model_final.pth",
+  "packaged_checkpoint": "models/selected/dogfacenet_shared_v2_fixed5000/model_final.pth",
+  "checkpoint_sha256": "94eec30fdff4af849818e41d0ab06a8c1777d12bb5d147d3425dc80f96d30ae8",
+  "config_file": "models/selected/dogfacenet_shared_v2_fixed5000/config.yaml",
+  "fixed_budget_selection": "models/selected/dogfacenet_shared_v2_fixed5000/fixed_budget_selection.json",
+  "protocol_files": {
+    "train": {
+      "path": "artifacts/runs/legacy/dogfacenet_joint800_protocol_v1/train_manifest.json",
+      "sha256": "c1dec0eaa73efc71885e9617ebd80d13a2d039c3fbf1a6675205744c81f188a4"
+    },
+    "validation": {
+      "path": "artifacts/runs/legacy/dogfacenet_joint800_protocol_v1/validation_manifest.json",
+      "sha256": "217d1cc1aac69e8519cce16a39f4d8f3afcf3ce1700862b77a9b838671f4e35c"
+    },
+    "blind_test": {
+      "path": "artifacts/runs/legacy/dogfacenet_joint800_protocol_v1/blind_test_manifest.json",
+      "sha256": "6f7ec3164e7f1535cc9eaf26c0cfa57abb0f62e40a6307eecb3ab034a9137d5a"
+    }
+  },
+  "config_sha256": "5b48d2575f4679ba67b1da090e3817cd5e411f4b497b3d5da130ad8b0fd50943",
+  "source_checkpoint_sha256": "94eec30fdff4af849818e41d0ab06a8c1777d12bb5d147d3425dc80f96d30ae8"
+}

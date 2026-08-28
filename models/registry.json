@@ -1,0 +1,418 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-28T04:07:37.603909+00:00",
+  "default_deployment": {
+    "model_package": "dogfacenet_semantic_v3_v1",
+    "config": "models/selected/dogfacenet_semantic_v3_v1/config.yaml",
+    "checkpoint": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+    "onnx": "models/selected/dogfacenet_semantic_v3_v1/onnx/pet_embedding.onnx",
+    "seed_gallery": "models/selected/local_pet_gallery_semantic_v3_onnx_v1/gallery_model.json",
+    "persistent_gallery": "data/gallery_store/pet_api_gallery_semantic_v3_v1"
+  },
+  "packages": [
+    {
+      "name": "dogfacenet_joint100_v1",
+      "role": "research",
+      "purpose": "Locked 100-class joint-fusion protocol package.",
+      "config": {
+        "path": "models/selected/dogfacenet_joint100_v1/config.yaml",
+        "sha256": "c189d785f3e9464901dbe4cf31350f053aef90f953a7720aa65ca61ff4c12819"
+      },
+      "source": "artifacts/runs/legacy/dogfacenet_joint100_phase1_v1/checkpoint_0000800.pth",
+      "metrics": {},
+      "evidence": [
+        "models/selected/dogfacenet_joint100_v1/blind_completion.json",
+        "models/selected/dogfacenet_joint100_v1/validation_selection.json",
+        "models/selected/dogfacenet_joint100_v1/lock_record.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_joint100_v1/blind_completion.json",
+          "bytes": 1403,
+          "sha256": "bb7794b20d205e3d8059ccdd4f1bb39d8dd0b2b1821395c4f36435902b1cde4f"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint100_v1/config.yaml",
+          "bytes": 1043,
+          "sha256": "c189d785f3e9464901dbe4cf31350f053aef90f953a7720aa65ca61ff4c12819"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint100_v1/lock_record.json",
+          "bytes": 1477,
+          "sha256": "5ac842450d0c24bfbcc19d8352fe032bc243534c604b6a3908ab9401d96a7dc5"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint100_v1/model_final.pth",
+          "bytes": 316708703,
+          "sha256": "2b87dfad54f83912ac8a76cd30f006063496578dbd0a4b3c1c9c201a6efeeef3"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint100_v1/validation_selection.json",
+          "bytes": 9972,
+          "sha256": "b8a047d3f5846b0f4b7b6047710ec01ced4026ca9d572481da4537df1afffd78"
+        }
+      ]
+    },
+    {
+      "name": "dogfacenet_joint800_v1",
+      "role": "rollback",
+      "purpose": "Locked 800-class joint-fusion rollback and comparison package.",
+      "config": {
+        "path": "models/selected/dogfacenet_joint800_v1/config.yaml",
+        "sha256": "c189d785f3e9464901dbe4cf31350f053aef90f953a7720aa65ca61ff4c12819"
+      },
+      "source": "artifacts/runs/legacy/dogfacenet_joint800_train_v1/model_final.pth",
+      "metrics": {
+        "queries": 400
+      },
+      "evidence": [
+        "models/selected/dogfacenet_joint800_v1/blind_completion.json",
+        "models/selected/dogfacenet_joint800_v1/fixed_budget_selection.json",
+        "models/selected/dogfacenet_joint800_v1/lock_record.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/blind_completion.json",
+          "bytes": 2786,
+          "sha256": "058d2aca715d7e0ff8b24aa27905ebb52fb895fa475da33bb581ddeb9e0e1066"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/config.yaml",
+          "bytes": 1043,
+          "sha256": "c189d785f3e9464901dbe4cf31350f053aef90f953a7720aa65ca61ff4c12819"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/fixed_budget_selection.json",
+          "bytes": 462,
+          "sha256": "2480706d513458991c5fd0ca996cf500a744410865a850c7d2c735e3e521dd79"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/lock_record.json",
+          "bytes": 1495,
+          "sha256": "cc83401dd065767be677291a42779e3507ccd9b97c714b74bba70f53c50b6b52"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/model_final.pth",
+          "bytes": 365239780,
+          "sha256": "4f76e7f57bd9683193e3fdfa7d117f9f7663eac0a7d0ba9d3b02217fc74e3ffa"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/onnx/metadata.json",
+          "bytes": 3070,
+          "sha256": "53ede464325acb901603f1843a392ea6c6907bfa5963c5d6938aebd42eaa4cdb"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/onnx/pet_embedding.onnx",
+          "bytes": 297183553,
+          "sha256": "b2818dfe2af0d15c204eaabdea573d33257546d9bd01f74a38840e8442615a21"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/onnx/validation.json",
+          "bytes": 4174,
+          "sha256": "37cd54e6b414f32ae5ec296769c83c2f86c659778d3eaf1c2558701d922bf89a"
+        }
+      ]
+    },
+    {
+      "name": "dogfacenet_semantic_v3_v1",
+      "role": "production",
+      "purpose": "Default 800-class Semantic V3 joint embedding used by the API.",
+      "config": {
+        "path": "models/selected/dogfacenet_semantic_v3_v1/config.yaml",
+        "sha256": "056adeca9bd94298a7d16e57fdfd499b1226a0d69486e9e4be0c8b20ffc6be63"
+      },
+      "source": "artifacts/runs/legacy/dogfacenet_semantic_v3_final800_0500/model_final.pth",
+      "metrics": {
+        "fresh_blind": {
+          "identities": 64,
+          "queries": 128,
+          "legacy_top1_accuracy": 0.96875,
+          "semantic_v3_top1_accuracy": 0.96875,
+          "legacy_top5_accuracy": 1.0,
+          "semantic_v3_top5_accuracy": 1.0
+        },
+        "development_conflict": {
+          "candidate_recipe": "semantic_residual_v3_v3b_500_steps",
+          "normal_dev_top1_old": 0.965,
+          "normal_dev_top1_candidate": 0.965,
+          "cross_identity_nose_conflict_top1_old": 0.915,
+          "cross_identity_nose_conflict_top1_candidate": 0.965,
+          "conflict_mean_nose_weight_old_clean": 0.38701156035065654,
+          "conflict_mean_nose_weight_old_corrupted": 0.3870097954571247,
+          "conflict_mean_nose_weight_candidate_clean": 0.2622216796875,
+          "conflict_mean_nose_weight_candidate_corrupted": 0.148004150390625,
+          "candidate_gate_decreased_rate": 0.83
+        },
+        "onnx_status": "validated"
+      },
+      "evidence": [
+        "models/selected/dogfacenet_semantic_v3_v1/deployment_record.json",
+        "models/selected/dogfacenet_semantic_v3_v1/blind_completion.json",
+        "models/selected/dogfacenet_semantic_v3_v1/model_lock.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/blind_completion.json",
+          "bytes": 2658,
+          "sha256": "3950949827bfd6a0e98659b075390408c4b3733130e7b3e2f7f5c08341c42d97"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/config.yaml",
+          "bytes": 1654,
+          "sha256": "056adeca9bd94298a7d16e57fdfd499b1226a0d69486e9e4be0c8b20ffc6be63"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/deployment_record.json",
+          "bytes": 5690,
+          "sha256": "69e7ebeeccbb1946a622fe7d25d37d29d2d90893ead84ef12cd6b071826f73a9"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+          "bytes": 336478330,
+          "sha256": "abe38784b93655936156c86eabf4d89dd09e9d05fa6fa20d321110e3ecd878d6"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/model_lock.json",
+          "bytes": 3679,
+          "sha256": "d1484ac56ff2067a5ad51f33b3f1b185b25246bec3a5724e6b64a8a8e7602c70"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/onnx/metadata.json",
+          "bytes": 3119,
+          "sha256": "4ed9c234cd143fab9248449ff3887545ea9a7c08edacb8d9750d8328f986d3f0"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/onnx/pet_embedding.onnx",
+          "bytes": 296200048,
+          "sha256": "21a2e2543b34ebd09426cba6bb1ff2c9dc0651b15d5186453e91ecbcf55d532a"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/onnx/validation.json",
+          "bytes": 4211,
+          "sha256": "4e17c84a8363597ad86703cdb5105b49cda75de43c0fe244b80426270439a046"
+        }
+      ]
+    },
+    {
+      "name": "dogfacenet_shared_v2_fixed5000",
+      "role": "research",
+      "purpose": "Fixed-budget shared-space V2 comparison package.",
+      "config": {
+        "path": "models/selected/dogfacenet_shared_v2_fixed5000/config.yaml",
+        "sha256": "5b48d2575f4679ba67b1da090e3817cd5e411f4b497b3d5da130ad8b0fd50943"
+      },
+      "source": "artifacts/runs/legacy/dogfacenet_shared_v2_fixed5000_joint_4000/model_final.pth",
+      "metrics": {
+        "queries": 400
+      },
+      "evidence": [
+        "models/selected/dogfacenet_shared_v2_fixed5000/blind_completion.json",
+        "models/selected/dogfacenet_shared_v2_fixed5000/fixed_budget_selection.json",
+        "models/selected/dogfacenet_shared_v2_fixed5000/lock_record.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/blind_completion.json",
+          "bytes": 3654,
+          "sha256": "0d6bbee988b2bcf879c0217548f6df39abb97ec801e0a2c4aa70a69d5d48af63"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/config.yaml",
+          "bytes": 1437,
+          "sha256": "5b48d2575f4679ba67b1da090e3817cd5e411f4b497b3d5da130ad8b0fd50943"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/fixed_budget_selection.json",
+          "bytes": 802,
+          "sha256": "3fef6cc8f98eb98c900f5f3a07c0c301c640b1364f03e368e83306e3e7f8bd13"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/lock_record.json",
+          "bytes": 1532,
+          "sha256": "c538fafc82b15b4a664a6c779554987d81997cadca731a2044102b2ecb672817"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/model_final.pth",
+          "bytes": 597819911,
+          "sha256": "94eec30fdff4af849818e41d0ab06a8c1777d12bb5d147d3425dc80f96d30ae8"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/onnx/metadata.json",
+          "bytes": 3129,
+          "sha256": "7f85e59492a6cc1263e7a6838c07f90f4d4015ead9df936fb5e2f6e09a89a7d3"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/onnx/pet_embedding.onnx",
+          "bytes": 297156393,
+          "sha256": "231d8c575af1638e458435c58b9b09246dab3cf0462d9eaedb2804dc632d9745"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/onnx/validation.json",
+          "bytes": 4188,
+          "sha256": "63ca95340b553bbdf29d51202409f372d374f08e1aa6cb81a91a0fe1664cd0e6"
+        }
+      ]
+    },
+    {
+      "name": "dogfacenet_shared_v2_smoke_10",
+      "role": "smoke",
+      "purpose": "Ten-class ONNX systems-check export; not a production model.",
+      "config": null,
+      "source": null,
+      "metrics": {},
+      "evidence": [],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_shared_v2_smoke_10/onnx/metadata.json",
+          "bytes": 3137,
+          "sha256": "f595ad1897ff39f70089eefbc1a568ff7140fe3aee3c51f4dadcadccdac8eadc"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_smoke_10/onnx/pet_embedding.onnx",
+          "bytes": 297156393,
+          "sha256": "c94dad1eed05f25b4ea48dc307c6c3389b38821424f426027a591470f65c9584"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_smoke_10/onnx/validation.json",
+          "bytes": 4102,
+          "sha256": "802acaaede595382c7d20afd096113e3c4cfcf565630af28cff5515513cf6bc5"
+        }
+      ]
+    },
+    {
+      "name": "local_pet_gallery_joint100_v1",
+      "role": "research-gallery",
+      "purpose": "Prototype gallery encoded by the Joint100 model.",
+      "config": null,
+      "source": null,
+      "metrics": {},
+      "evidence": [],
+      "artifacts": [
+        {
+          "path": "models/selected/local_pet_gallery_joint100_v1/gallery_features.npz",
+          "bytes": 236388,
+          "sha256": "e75fed4ff6ec1800984fbb9a44aa5cc4247a736ab4093e1051ba5a9dbf83c668"
+        },
+        {
+          "path": "models/selected/local_pet_gallery_joint100_v1/gallery_model.json",
+          "bytes": 15418,
+          "sha256": "53d502f9d9505b8178799975e0be27ef13ca752f6cb28a800bf1104014e33a1b"
+        }
+      ]
+    },
+    {
+      "name": "local_pet_gallery_joint800_onnx_v1",
+      "role": "rollback-gallery",
+      "purpose": "Seed prototype gallery encoded by the Joint800 ONNX rollback model.",
+      "config": null,
+      "source": null,
+      "metrics": {},
+      "evidence": [],
+      "artifacts": [
+        {
+          "path": "models/selected/local_pet_gallery_joint800_onnx_v1/gallery_features.npz",
+          "bytes": 124228,
+          "sha256": "8745da3fc68390fb02b4468839bf449fd4973c54dc54e2b8608cb6d26b5d2603"
+        },
+        {
+          "path": "models/selected/local_pet_gallery_joint800_onnx_v1/gallery_model.json",
+          "bytes": 8549,
+          "sha256": "80c919694b72790bbd6c2f69436fd3e17210b199bda017fc2b43e35e58f370eb"
+        }
+      ]
+    },
+    {
+      "name": "local_pet_gallery_semantic_v3_onnx_v1",
+      "role": "production-gallery",
+      "purpose": "Seed prototype gallery encoded by the production Semantic V3 ONNX model.",
+      "config": null,
+      "source": null,
+      "metrics": {},
+      "evidence": [],
+      "artifacts": [
+        {
+          "path": "models/selected/local_pet_gallery_semantic_v3_onnx_v1/gallery_features.npz",
+          "bytes": 70073,
+          "sha256": "3cc85ab75e0dd2b4749fa8883bb6449185d95e627c77af62595539e2af6c4515"
+        },
+        {
+          "path": "models/selected/local_pet_gallery_semantic_v3_onnx_v1/gallery_model.json",
+          "bytes": 8636,
+          "sha256": "d61b9626553bcee94f0a474203883cfaead5a5f73fb795f03c8e8c9438d3932a"
+        }
+      ]
+    },
+    {
+      "name": "local_pet_gallery_v1",
+      "role": "legacy-gallery",
+      "purpose": "Original local prototype-gallery package retained for comparison.",
+      "config": null,
+      "source": null,
+      "metrics": {},
+      "evidence": [],
+      "artifacts": [
+        {
+          "path": "models/selected/local_pet_gallery_v1/gallery_features.npz",
+          "bytes": 236374,
+          "sha256": "b6fa2bb17920244fae1f8528685ba7af87d84c2f81354c7a74672bf632ff691d"
+        },
+        {
+          "path": "models/selected/local_pet_gallery_v1/gallery_model.json",
+          "bytes": 15331,
+          "sha256": "b5378af8e0c65a5b8ddec0de7e017771082b720d6d1a4927f868fbe2bde3b82b"
+        }
+      ]
+    }
+  ],
+  "pretrained": [
+    {
+      "path": "models/pretrained/anyface/yolov5l6_best.pt",
+      "bytes": 93733090,
+      "sha256": "b78a85f59b8a18dafd09d770550180f997330cdca3f74b0c6641ee0543ee8b14",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/BIFOR/f1/f(1)/background_net/background_net.ckpt",
+      "bytes": 593793301,
+      "sha256": "f75c00eada990ea4af15fb2299d7aeab0ed84d28a49a2e6870abc4e68113f5d3",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/BIFOR/f2/bifor.pth",
+      "bytes": 197942210,
+      "sha256": "cceb7c464ab6fe7346a8627fabf3452fce1d3815a7d95f17fcb279036452b08c",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/dog.pt",
+      "bytes": 194309749,
+      "sha256": "512456ef50f0537b58a872059ec7028fab2387dcc3dcb258805d08331fe66bb1",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/resnest101-22405ba7.pth",
+      "bytes": 193782911,
+      "sha256": "22405ba7b72e11273cf7505b2ca983c40aeec3d40b81e7e61fda7cf45da9b23f",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/resnest200-75117900.pth",
+      "bytes": 281998154,
+      "sha256": "75117900eb834cc4c2bfbe8ba4d1f2c21e45909a7563b9fddd8605d55d35358d",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/sam2/sam2.1_hiera_tiny.pt",
+      "bytes": 156008466,
+      "sha256": "7402e0d864fa82708a20fbd15bc84245c2f26dff0eb43a4b5b93452deb34be69",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    }
+  ]
+}

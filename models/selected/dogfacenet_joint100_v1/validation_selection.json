@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "selection_data": "validation identities only; blind-test manifest was not read",
+  "selection_rule": "lexicographic descending: gallery_rank1, leave_one_out_rank1, fused_auc, fused_balanced_accuracy, fused_mean_gap, fused_worst_gap",
+  "baseline": {
+    "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_validation_frozen_v1/evaluation.json",
+    "checkpoint": null,
+    "model_source": "frozen_pretrained",
+    "gallery_rank1": 0.9333333333333333,
+    "leave_one_out_rank1": 0.94,
+    "fused_auc": 0.9606684210526316,
+    "fused_balanced_accuracy": 0.8916842105263159,
+    "fused_mean_gap": 0.37262048612512944,
+    "fused_worst_gap": -0.4512361139059067,
+    "joint_mix": 0.002500000409781933
+  },
+  "candidates_ranked": [
+    {
+      "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_phase1_val_0800/evaluation.json",
+      "checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase1_v1/checkpoint_0000800.pth",
+      "model_source": "trained_fusion_checkpoint",
+      "gallery_rank1": 1.0,
+      "leave_one_out_rank1": 0.97,
+      "fused_auc": 0.9920578947368421,
+      "fused_balanced_accuracy": 0.9546842105263158,
+      "fused_mean_gap": 0.4874047923843426,
+      "fused_worst_gap": -0.4087216556072235,
+      "joint_mix": 0.0027789343148469925,
+      "rank": 1,
+      "delta_vs_frozen": {
+        "gallery_rank1": 0.06666666666666665,
+        "leave_one_out_rank1": 0.030000000000000027,
+        "fused_auc": 0.03138947368421052,
+        "fused_balanced_accuracy": 0.06299999999999994,
+        "fused_mean_gap": 0.11478430625921315,
+        "fused_worst_gap": 0.042514458298683167
+      }
+    },
+    {
+      "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_phase1_val_0600/evaluation.json",
+      "checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase1_v1/checkpoint_0000600.pth",
+      "model_source": "trained_fusion_checkpoint",
+      "gallery_rank1": 1.0,
+      "leave_one_out_rank1": 0.97,
+      "fused_auc": 0.99196,
+      "fused_balanced_accuracy": 0.9548684210526316,
+      "fused_mean_gap": 0.4855443350700661,
+      "fused_worst_gap": -0.4069136083126068,
+      "joint_mix": 0.0027311379089951515,
+      "rank": 2,
+      "delta_vs_frozen": {
+        "gallery_rank1": 0.06666666666666665,
+        "leave_one_out_rank1": 0.030000000000000027,
+        "fused_auc": 0.03129157894736834,
+        "fused_balanced_accuracy": 0.06318421052631573,
+        "fused_mean_gap": 0.11292384894493668,
+        "fused_worst_gap": 0.044322505593299866
+      }
+    },
+    {
+      "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_phase1_val_0400/evaluation.json",
+      "checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase1_v1/checkpoint_0000400.pth",
+      "model_source": "trained_fusion_checkpoint",
+      "gallery_rank1": 1.0,
+      "leave_one_out_rank1": 0.97,
+      "fused_auc": 0.9919421052631578,
+      "fused_balanced_accuracy": 0.9548684210526316,
+      "fused_mean_gap": 0.48579732201068265,
+      "fused_worst_gap": -0.4080328047275543,
+      "joint_mix": 0.0026850979775190353,
+      "rank": 3,
+      "delta_vs_frozen": {
+        "gallery_rank1": 0.06666666666666665,
+        "leave_one_out_rank1": 0.030000000000000027,
+        "fused_auc": 0.03127368421052623,
+        "fused_balanced_accuracy": 0.06318421052631573,
+        "fused_mean_gap": 0.11317683588555322,
+        "fused_worst_gap": 0.043203309178352356
+      }
+    },
+    {
+      "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_phase1_val_1000/evaluation.json",
+      "checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase1_v1/checkpoint_0001000.pth",
+      "model_source": "trained_fusion_checkpoint",
+      "gallery_rank1": 0.9833333333333333,
+      "leave_one_out_rank1": 0.97,
+      "fused_auc": 0.9918031578947368,
+      "fused_balanced_accuracy": 0.955078947368421,
+      "fused_mean_gap": 0.4832924778199828,
+      "fused_worst_gap": -0.4062260091304779,
+      "joint_mix": 0.0028178587090224028,
+      "rank": 4,
+      "delta_vs_frozen": {
+        "gallery_rank1": 0.04999999999999993,
+        "leave_one_out_rank1": 0.030000000000000027,
+        "fused_auc": 0.031134736842105215,
+        "fused_balanced_accuracy": 0.06339473684210517,
+        "fused_mean_gap": 0.11067199169485337,
+        "fused_worst_gap": 0.04501010477542877
+      }
+    },
+    {
+      "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_phase1_val_0200/evaluation.json",
+      "checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase1_v1/checkpoint_0000200.pth",
+      "model_source": "trained_fusion_checkpoint",
+      "gallery_rank1": 0.9833333333333333,
+      "leave_one_out_rank1": 0.97,
+      "fused_auc": 0.9910663157894737,
+      "fused_balanced_accuracy": 0.9553947368421052,
+      "fused_mean_gap": 0.4730547150034017,
+      "fused_worst_gap": -0.40054744482040405,
+      "joint_mix": 0.0026225694455206394,
+      "rank": 5,
+      "delta_vs_frozen": {
+        "gallery_rank1": 0.04999999999999993,
+        "leave_one_out_rank1": 0.030000000000000027,
+        "fused_auc": 0.030397894736842068,
+        "fused_balanced_accuracy": 0.06371052631578933,
+        "fused_mean_gap": 0.10043422887827225,
+        "fused_worst_gap": 0.050688669085502625
+      }
+    },
+    {
+      "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_phase2_val_0100/evaluation.json",
+      "checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase2_v1/checkpoint_0000100.pth",
+      "model_source": "trained_fusion_checkpoint",
+      "gallery_rank1": 0.9666666666666667,
+      "leave_one_out_rank1": 0.98,
+      "fused_auc": 0.9852484210526316,
+      "fused_balanced_accuracy": 0.9516842105263158,
+      "fused_mean_gap": 0.459147006565613,
+      "fused_worst_gap": -0.4412083299830556,
+      "joint_mix": 0.0027849082835018635,
+      "rank": 6,
+      "delta_vs_frozen": {
+        "gallery_rank1": 0.033333333333333326,
+        "leave_one_out_rank1": 0.040000000000000036,
+        "fused_auc": 0.024579999999999935,
+        "fused_balanced_accuracy": 0.05999999999999994,
+        "fused_mean_gap": 0.08652652044048359,
+        "fused_worst_gap": 0.010027783922851086
+      }
+    },
+    {
+      "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_phase2_val_0300/evaluation.json",
+      "checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase2_v1/checkpoint_0000300.pth",
+      "model_source": "trained_fusion_checkpoint",
+      "gallery_rank1": 0.9666666666666667,
+      "leave_one_out_rank1": 0.98,
+      "fused_auc": 0.9840378947368421,
+      "fused_balanced_accuracy": 0.9515263157894738,
+      "fused_mean_gap": 0.45083109201569305,
+      "fused_worst_gap": -0.46101561561226845,
+      "joint_mix": 0.0027970767114311457,
+      "rank": 7,
+      "delta_vs_frozen": {
+        "gallery_rank1": 0.033333333333333326,
+        "leave_one_out_rank1": 0.040000000000000036,
+        "fused_auc": 0.023369473684210496,
+        "fused_balanced_accuracy": 0.05984210526315792,
+        "fused_mean_gap": 0.07821060589056361,
+        "fused_worst_gap": -0.00977950170636177
+      }
+    },
+    {
+      "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_phase2_val_0200/evaluation.json",
+      "checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase2_v1/checkpoint_0000200.pth",
+      "model_source": "trained_fusion_checkpoint",
+      "gallery_rank1": 0.9666666666666667,
+      "leave_one_out_rank1": 0.97,
+      "fused_auc": 0.9878042105263158,
+      "fused_balanced_accuracy": 0.9575,
+      "fused_mean_gap": 0.4524241882076941,
+      "fused_worst_gap": -0.47846479155123234,
+      "joint_mix": 0.0027907276526093483,
+      "rank": 8,
+      "delta_vs_frozen": {
+        "gallery_rank1": 0.033333333333333326,
+        "leave_one_out_rank1": 0.030000000000000027,
+        "fused_auc": 0.027135789473684224,
+        "fused_balanced_accuracy": 0.06581578947368416,
+        "fused_mean_gap": 0.07980370208256465,
+        "fused_worst_gap": -0.02722867764532566
+      }
+    },
+    {
+      "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_phase2_val_0400/evaluation.json",
+      "checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase2_v1/checkpoint_0000400.pth",
+      "model_source": "trained_fusion_checkpoint",
+      "gallery_rank1": 0.95,
+      "leave_one_out_rank1": 0.97,
+      "fused_auc": 0.9879357894736842,
+      "fused_balanced_accuracy": 0.9611315789473684,
+      "fused_mean_gap": 0.4554676174100636,
+      "fused_worst_gap": -0.48869551345705986,
+      "joint_mix": 0.0028047296218574047,
+      "rank": 9,
+      "delta_vs_frozen": {
+        "gallery_rank1": 0.016666666666666607,
+        "leave_one_out_rank1": 0.030000000000000027,
+        "fused_auc": 0.027267368421052596,
+        "fused_balanced_accuracy": 0.06944736842105259,
+        "fused_mean_gap": 0.08284713128493415,
+        "fused_worst_gap": -0.03745939955115318
+      }
+    }
+  ],
+  "selected": {
+    "evaluation": "artifacts/runs/legacy/dogfacenet_joint100_phase1_val_0800/evaluation.json",
+    "checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase1_v1/checkpoint_0000800.pth",
+    "model_source": "trained_fusion_checkpoint",
+    "gallery_rank1": 1.0,
+    "leave_one_out_rank1": 0.97,
+    "fused_auc": 0.9920578947368421,
+    "fused_balanced_accuracy": 0.9546842105263158,
+    "fused_mean_gap": 0.4874047923843426,
+    "fused_worst_gap": -0.4087216556072235,
+    "joint_mix": 0.0027789343148469925,
+    "rank": 1,
+    "delta_vs_frozen": {
+      "gallery_rank1": 0.06666666666666665,
+      "leave_one_out_rank1": 0.030000000000000027,
+      "fused_auc": 0.03138947368421052,
+      "fused_balanced_accuracy": 0.06299999999999994,
+      "fused_mean_gap": 0.11478430625921315,
+      "fused_worst_gap": 0.042514458298683167
+    }
+  },
+  "selected_beats_frozen_primary": true
+}

@@ -1,0 +1,14 @@
+_BASE_: modern_s101_224.yaml
+
+# Final competition-oriented fit after model selection on the held-out split.
+DATASETS:
+  NAMES: ("PetIDFull",)
+  TESTS: ()
+
+TEST:
+  EVAL_PERIOD: 0
+
+SOLVER:
+  CHECKPOINT_PERIOD: 5
+
+OUTPUT_DIR: artifacts/runs/legacy/retrained_s101_224

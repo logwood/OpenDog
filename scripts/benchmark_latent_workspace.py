@@ -14,7 +14,7 @@ import torch
 
 
 BUNDLE_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = BUNDLE_ROOT / "upstream" / "Pet-ReID-IMAG"
+REPO_ROOT = BUNDLE_ROOT / "src" / "Pet-ReID-IMAG"
 sys.path.insert(0, str(REPO_ROOT))
 os.chdir(REPO_ROOT)
 
@@ -23,12 +23,14 @@ from fastreid.modeling import build_model  # noqa: E402
 from fastreid.solver import build_optimizer  # noqa: E402
 from fastreid.utils.events import EventStorage  # noqa: E402
 from pet_id import add_retri_config  # noqa: E402
+from pet_id.workspace_paths import normalize_runtime_config  # noqa: E402
 
 
 def build_config(config_path, num_classes, latent_dim=None):
     cfg = get_cfg()
     add_retri_config(cfg)
     cfg.merge_from_file(config_path)
+    normalize_runtime_config(cfg)
     cfg.MODEL.BACKBONE.PRETRAIN = False
     cfg.MODEL.HEADS.NUM_CLASSES = num_classes
     cfg.MODEL.LATENT_WORKSPACE.HEALTH_PERIOD = 0

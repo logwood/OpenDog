@@ -32,20 +32,21 @@ def fit_image(path: Path, size: tuple[int, int]) -> Image.Image:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repo", type=Path, default=Path("upstream/Pet-ReID-IMAG"))
-    parser.add_argument(
-        "--scores", default="logs/fusion_submit/submit_modern.csv"
-    )
+    workspace_default = Path(__file__).resolve().parents[1]
+    parser.add_argument("--workspace-root", type=Path, default=workspace_default)
+    parser.add_argument("--scores", type=Path)
     parser.add_argument("--per-group", type=int, default=3)
     parser.add_argument(
-        "--output", type=Path, default=Path("results/phase_b_pair_examples.png")
+        "--output", type=Path
     )
     args = parser.parse_args()
     if args.per_group < 1:
         raise ValueError("--per-group must be positive")
 
-    repo = args.repo.resolve()
-    frame = pd.read_csv(repo / args.scores)
+    workspace = args.workspace_root.expanduser().resolve()
+    data_root = workspace / "data" / "processed" / "pet-reid-imag"
+    scores = (args.scores or workspace / "artifacts" / "runs" / "legacy" / "fusion_submit" / "submit_modern.csv").expanduser().resolve()
+    frame = pd.read_csv(scores)
     required = {"imageA", "imageB", "prediction"}
     if not required.issubset(frame.columns):
         raise ValueError(f"Score CSV must contain {sorted(required)}")
@@ -57,13 +58,13 @@ def main() -> None:
         ignore_index=True,
     )
 
-    with (repo / "data/test/filename_map.csv").open(
+    with (data_root / "test" / "filename_map.csv").open(
         "r", encoding="utf-8", newline=""
     ) as handle:
         local_by_original = {
             row["original_name"]: row["local_name"] for row in csv.DictReader(handle)
         }
-    image_root = repo / "data/test/test"
+    image_root = data_root / "test" / "test"
 
     margin = 24
     label_width = 190
@@ -119,7 +120,7 @@ def main() -> None:
         draw.text((x_a, top + image_size[1] + 5), "A", font=small_font, fill="#444444")
         draw.text((x_b, top + image_size[1] + 5), "B", font=small_font, fill="#444444")
 
-    output = args.output.resolve()
+    output = (args.output or workspace / "artifacts" / "reports" / "phase_b_pair_examples.png").expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(output, optimize=True)
     print(

@@ -3,6 +3,10 @@
 /data/
 /artifacts/
 /archive/
+/models/pretrained/
+
+# Selected-model metadata and the registry are source-controlled. Binary
+# payloads below them remain excluded by the global model/media patterns.
 
 # Guard against accidentally recreating generated directories inside source.
 /src/Pet-ReID-IMAG/data/

@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-26T17:22:16.892531+00:00",
+  "model": "models/selected/dogfacenet_shared_v2_fixed5000/onnx/pet_embedding.onnx",
+  "onnx_sha256": "231d8c575af1638e458435c58b9b09246dab3cf0462d9eaedb2804dc632d9745",
+  "onnx_bytes": 297156393,
+  "source_checkpoint": "models/selected/dogfacenet_shared_v2_fixed5000/model_final.pth",
+  "source_checkpoint_sha256": "94eec30fdff4af849818e41d0ab06a8c1777d12bb5d147d3425dc80f96d30ae8",
+  "config_file": "models/selected/dogfacenet_shared_v2_fixed5000/config.yaml",
+  "config_sha256": "5b48d2575f4679ba67b1da090e3817cd5e411f4b497b3d5da130ad8b0fd50943",
+  "torch_version": "2.11.0+cu126",
+  "onnx_version": "1.22.0",
+  "onnxruntime_version": "1.26.0",
+  "opset": 20,
+  "fusion_mode": "shared_space_v2",
+  "dynamic_batch": {
+    "minimum": 1,
+    "declared_maximum": 8,
+    "validated_batch_sizes": [
+      1,
+      4
+    ]
+  },
+  "inputs": {
+    "nose_crop": {
+      "shape": [
+        "N",
+        3,
+        244,
+        244
+      ],
+      "dtype": "float32",
+      "range": [
+        0,
+        255
+      ]
+    },
+    "face_crop": {
+      "shape": [
+        "N",
+        3,
+        224,
+        224
+      ],
+      "dtype": "float32",
+      "range": [
+        0,
+        255
+      ]
+    },
+    "nose_mask": {
+      "shape": [
+        "N",
+        1,
+        244,
+        244
+      ],
+      "dtype": "float32",
+      "range": [
+        0,
+        1
+      ]
+    },
+    "quality_signals": {
+      "shape": [
+        "N",
+        6
+      ],
+      "dtype": "float32",
+      "order": [
+        "nose_quality",
+        "face_quality",
+        "detection_confidence",
+        "sam_predicted_iou",
+        "nose_resolution",
+        "face_resolution"
+      ]
+    },
+    "viewpoint_signals": {
+      "shape": [
+        "N",
+        4
+      ],
+      "dtype": "float32",
+      "order": [
+        "nose_horizontal",
+        "mouth_horizontal",
+        "nose_mouth_distance_asymmetry",
+        "nose_vertical"
+      ]
+    },
+    "branch_available": {
+      "shape": [
+        "N",
+        2
+      ],
+      "dtype": "bool",
+      "order": [
+        "nose",
+        "face"
+      ]
+    }
+  },
+  "outputs": {
+    "embedding": {
+      "shape": [
+        "N",
+        512
+      ],
+      "l2_normalized": true
+    },
+    "nose_embedding": {
+      "shape": [
+        "N",
+        2048
+      ],
+      "l2_normalized": true
+    },
+    "face_embedding": {
+      "shape": [
+        "N",
+        512
+      ],
+      "l2_normalized": true
+    },
+    "fusion_weights": {
+      "shape": [
+        "N",
+        2
+      ]
+    },
+    "joint_weights": {
+      "shape": [
+        "N",
+        2
+      ]
+    },
+    "viewpoint_frontality": {
+      "shape": [
+        "N"
+      ]
+    }
+  },
+  "excluded": [
+    "AnyFace detection",
+    "SAM2 segmentation",
+    "EXIF handling",
+    "rotated ROI extraction",
+    "800-class training-only classifier"
+  ],
+  "model_sha256": "231d8c575af1638e458435c58b9b09246dab3cf0462d9eaedb2804dc632d9745"
+}

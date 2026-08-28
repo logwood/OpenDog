@@ -1,0 +1,15 @@
+_BASE_: modern_mesh_workspace_s101_224.yaml
+
+# Decisive anti-collapse ablation: keep the exact balanced-MESH setup and seed,
+# but prevent shared inter-slot attention from increasing beyond its safe
+# initial contribution. Twelve epochs cover the original collapse onset.
+MODEL:
+  LATENT_WORKSPACE:
+    MIX_GATE_INIT: 0.05
+    MIX_GATE_TRAINABLE: False
+
+SOLVER:
+  MAX_EPOCH: 12
+  CHECKPOINT_PERIOD: 2
+
+OUTPUT_DIR: artifacts/runs/legacy/ablation_mesh_mix_fixed005_s101_224_d192

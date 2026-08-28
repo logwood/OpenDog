@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "selection_data": "fixed a priori two-stage training budget; no final-model blind-test features or scores were computed",
+  "selection_rule": "use the final checkpoint after exactly 1000 frozen-encoder warmup steps plus 4000 joint tail-finetuning steps; do not choose among checkpoints using blind-test results",
+  "selected": {
+    "checkpoint": "artifacts/runs/legacy/dogfacenet_shared_v2_fixed5000_joint_4000/model_final.pth",
+    "step": 5000,
+    "phase_steps": {
+      "frozen_encoder_warmup": 1000,
+      "joint_tail_finetuning": 4000
+    },
+    "classes": 800,
+    "records": 3200,
+    "fusion_mode": "shared_space_v2",
+    "fused_dim": 512,
+    "warm_start": "artifacts/runs/legacy/dogfacenet_shared_v2_fixed5000_stage1_1000/model_final.pth"
+  }
+}

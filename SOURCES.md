@@ -22,11 +22,17 @@ The workspace was consolidated under the outer `logwood/OpenDog` repository on
   `69e7be7a82bece98dfaf832ad79d3c80f1a844f9`.
 - SAM 2: `https://github.com/facebookresearch/sam2.git`, commit
   `2b90b9f5ceec907a1c18123530e92e794ad901a4`.
+- BIFOR: `https://github.com/eugeniodias5/BIFOR.git`, commit
+  `47b27892e0062a31e7ba0c894fa9cae7928172c`.
 
 Complete verified bundles, working-tree patches, staged patches and untracked
 file lists are stored under `archive/git/2026-08-28/`. The original nested Git
 metadata is recoverably quarantined under
 `archive/quarantine/2026-08-28/inner-git/`; it is not part of the source tree.
+The later-added BIFOR checkout is also owned by the outer repository; its
+original bundle and untracked-file snapshot are under
+`archive/git/2026-08-28/nested/BIFOR*`, and its nested Git metadata is under
+`archive/quarantine/2026-08-28/inner-git/BIFOR.git/`.
 The local source differs from the baselines through the compatibility,
 multimodal, joint-fusion, ONNX, gallery, API, Java and frontend work recorded in
 the outer repository and the snapshot inventories.

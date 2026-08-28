@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "selection_data": "fixed a priori training budget; no blind-test features or scores were computed",
+  "selection_rule": "use the final checkpoint after exactly 5000 steps; do not choose among checkpoints using blind-test results",
+  "selected": {
+    "checkpoint": "artifacts/runs/legacy/dogfacenet_joint800_train_v1/model_final.pth",
+    "step": 5000,
+    "classes": 800,
+    "records": 3200,
+    "warm_start": null
+  }
+}

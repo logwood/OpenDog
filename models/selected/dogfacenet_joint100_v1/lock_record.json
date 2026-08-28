@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "locked_at": "2026-08-25T07:04:55.538546+00:00",
+  "selection_basis": "validation identities only",
+  "blind_test_status": "locked_before_first_blind_evaluation",
+  "source_checkpoint": "artifacts/runs/legacy/dogfacenet_joint100_phase1_v1/checkpoint_0000800.pth",
+  "packaged_checkpoint": "models/selected/dogfacenet_joint100_v1/model_final.pth",
+  "checkpoint_sha256": "2b87dfad54f83912ac8a76cd30f006063496578dbd0a4b3c1c9c201a6efeeef3",
+  "config_file": "models/selected/dogfacenet_joint100_v1/config.yaml",
+  "validation_selection": "models/selected/dogfacenet_joint100_v1/validation_selection.json",
+  "protocol_files": {
+    "train": {
+      "path": "artifacts/runs/legacy/dogfacenet_joint100_protocol_v1/train_manifest.json",
+      "sha256": "27a32cfca12ca09bddb5a6b9c5b22fbac1c867aafc6125e9a582a95f932fd9e9"
+    },
+    "validation": {
+      "path": "artifacts/runs/legacy/dogfacenet_joint100_protocol_v1/validation_manifest.json",
+      "sha256": "a364f5f401ff3fae59e8ea44af392bcec4ce21e86ab9f29b6085384c2f15db35"
+    },
+    "blind_test": {
+      "path": "artifacts/runs/legacy/dogfacenet_joint100_protocol_v1/blind_test_manifest.json",
+      "sha256": "eca87ecb82a9f4fa1b35685978835e7aabda096db3b348b90e11d10cb665faeb"
+    }
+  },
+  "config_sha256": "c189d785f3e9464901dbe4cf31350f053aef90f953a7720aa65ca61ff4c12819",
+  "source_checkpoint_sha256": "2b87dfad54f83912ac8a76cd30f006063496578dbd0a4b3c1c9c201a6efeeef3"
+}

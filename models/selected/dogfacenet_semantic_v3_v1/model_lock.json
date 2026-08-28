@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "status": "LOCKED_BEFORE_FRESH_BLIND_EVALUATION",
+  "locked_at_local_date": "2026-08-27",
+  "model_name": "dogfacenet_semantic_v3_final800_0500",
+  "decision": {
+    "candidate_recipe": "semantic_residual_v3_v3b_500_steps",
+    "normal_dev_top1_old": 0.965,
+    "normal_dev_top1_candidate": 0.965,
+    "cross_identity_nose_conflict_top1_old": 0.915,
+    "cross_identity_nose_conflict_top1_candidate": 0.965,
+    "conflict_mean_nose_weight_old_clean": 0.38701156035065654,
+    "conflict_mean_nose_weight_old_corrupted": 0.3870097954571247,
+    "conflict_mean_nose_weight_candidate_clean": 0.2622216796875,
+    "conflict_mean_nose_weight_candidate_corrupted": 0.148004150390625,
+    "candidate_gate_decreased_rate": 0.83
+  },
+  "training_recipe": {
+    "manifest": "artifacts/runs/legacy/dogfacenet_joint800_protocol_v1/train_manifest.json",
+    "config": "src/Pet-ReID-IMAG/configs/multimodal_dogfacenet_semantic_v3.yaml",
+    "warm_start": "models/selected/dogfacenet_joint800_v1/model_final.pth",
+    "warm_start_scope": "encoders",
+    "steps": 500,
+    "identities_per_batch": 4,
+    "images_per_identity": 2,
+    "encoder_lr": 1e-05,
+    "new_lr": 0.0003,
+    "weight_decay": 0.0001,
+    "grad_clip": 5.0,
+    "flip_probability": 0.5,
+    "color_jitter": 0.12,
+    "seed": 20260829,
+    "amp_dtype": "bfloat16",
+    "transferred_encoder_tensors": 1265,
+    "transferred_fusion_tensors": 0,
+    "classification_heads_reinitialized": true
+  },
+  "artifacts": {
+    "model_final.pth": {
+      "bytes": 336478330,
+      "sha256": "abe38784b93655936156c86eabf4d89dd09e9d05fa6fa20d321110e3ecd878d6"
+    },
+    "train_summary.json": {
+      "bytes": 1690,
+      "sha256": "585ebfbafbc1df20a459ac25d8f6301516e88915329372163aa0fcf03ca9505a"
+    },
+    "config": {
+      "bytes": 1611,
+      "sha256": "9e37a64e952bb698e373c7cfc1ab32bca48d661c605b8f703ef8a9a01b2e3811"
+    },
+    "train_manifest": {
+      "bytes": 9261308,
+      "sha256": "c1dec0eaa73efc71885e9617ebd80d13a2d039c3fbf1a6675205744c81f188a4"
+    },
+    "warm_start_model": {
+      "bytes": 365239780,
+      "sha256": "4f76e7f57bd9683193e3fdfa7d117f9f7663eac0a7d0ba9d3b02217fc74e3ffa"
+    }
+  },
+  "code": {
+    "pet_id/multimodal.py": "803253ae3e7defea69a084717b7cc4b015239bdb6b27f65366a8fc62d30a87f3",
+    "pet_id/onnx_export.py": "a28e95f7dae9b536702e24734502011ccfb9271998c6a157304ba096046bb79f",
+    "tools/train_multimodal_dogfacenet.py": "396a920805d22194bd9450b0866226922e05554505b714206218b3f723ef5ec8",
+    "tools/evaluate_multimodal_conflict_robustness.py": "35492a8bda45c3677b791f6b9cba85a48194ffca50c7d3422863fa289d890047"
+  },
+  "development_evidence": {
+    "legacy_conflict_evaluation": {
+      "path": "artifacts/runs/legacy/dogfacenet_joint800_v1_devval_conflict_v1/conflict_evaluation.json",
+      "sha256": "4bfb316901b3f73c31884405bd374c3da1838b455e408b1717c32d48f142225e"
+    },
+    "v3b_conflict_evaluation": {
+      "path": "artifacts/runs/legacy/dogfacenet_semantic_v3b_devval_conflict_0500/conflict_evaluation.json",
+      "sha256": "3e0d0b09841d82287ac78dc89abd58c75c483d61b867e4167fbf07c92ad82ef7"
+    }
+  },
+  "fresh_blind_protocol": {
+    "protocol_lock_sha256": "eb14136e993cdab8880c0ee109ba1b2d6287c64269d7ef7ce3394d27e32e6549",
+    "manifest": "artifacts/runs/legacy/dogfacenet_shared_v3_protocol_v1/fresh_blind_manifest.json",
+    "manifest_sha256": "11ada226361f567c5871a71931b0247d5d4f395c6aec1fa1cbf16ee9087d3d86",
+    "identities": 64,
+    "records": 256,
+    "usage_policy": "single_final_evaluation_after_model_lock",
+    "evaluation_state_at_lock": "NOT_OPENED"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "completed_at": "2026-08-26T01:40:24.461610+00:00",
+  "protocol": "800 train identities -> 200 unseen identity-prototype gallery",
+  "retrieval": "200-way; 2 gallery and 2 query images per identity",
+  "queries": 400,
+  "checkpoint_sha256_before_and_after_blind": "4f76e7f57bd9683193e3fdfa7d117f9f7663eac0a7d0ba9d3b02217fc74e3ffa",
+  "checkpoint_unchanged": true,
+  "models_evaluated": [
+    "predeclared frozen baseline",
+    "a-priori fixed-budget locked model"
+  ],
+  "no_post_blind_model_selection": true,
+  "frozen": {
+    "evaluation": "artifacts/runs/legacy/dogfacenet_joint800_blind_frozen_v1/evaluation.json",
+    "fused": {
+      "top1_correct": 336,
+      "top1_accuracy": 0.84,
+      "top5_correct": 381,
+      "top5_accuracy": 0.9525,
+      "mean_reciprocal_rank": 0.8880498351729971,
+      "auc": 0.9888406721105527
+    },
+    "nose": {
+      "top1_correct": 260,
+      "top1_accuracy": 0.65,
+      "top5_correct": 317,
+      "top5_accuracy": 0.7925,
+      "mean_reciprocal_rank": 0.7159339270911819,
+      "auc": 0.9533064070351759
+    },
+    "face": {
+      "top1_correct": 376,
+      "top1_accuracy": 0.94,
+      "top5_correct": 397,
+      "top5_accuracy": 0.9925,
+      "mean_reciprocal_rank": 0.9607162698412699,
+      "auc": 0.998404648241206
+    }
+  },
+  "selected": {
+    "evaluation": "artifacts/runs/legacy/dogfacenet_joint800_blind_selected_v1/evaluation.json",
+    "fused": {
+      "top1_correct": 380,
+      "top1_accuracy": 0.95,
+      "top5_correct": 397,
+      "top5_accuracy": 0.9925,
+      "mean_reciprocal_rank": 0.9676260822510824,
+      "auc": 0.9979804962311558
+    },
+    "nose": {
+      "top1_correct": 260,
+      "top1_accuracy": 0.65,
+      "top5_correct": 317,
+      "top5_accuracy": 0.7925,
+      "mean_reciprocal_rank": 0.7159339270911819,
+      "auc": 0.9533064070351759
+    },
+    "face": {
+      "top1_correct": 376,
+      "top1_accuracy": 0.94,
+      "top5_correct": 397,
+      "top5_accuracy": 0.9925,
+      "mean_reciprocal_rank": 0.9607162698412699,
+      "auc": 0.998404648241206
+    }
+  },
+  "delta": {
+    "fused": {
+      "top1_correct": 44,
+      "top1_accuracy": 0.10999999999999999,
+      "top5_correct": 16,
+      "top5_accuracy": 0.040000000000000036,
+      "mean_reciprocal_rank": 0.0795762470780853,
+      "auc": 0.009139824120603102
+    },
+    "face": {
+      "top1_correct": 0,
+      "top1_accuracy": 0.0,
+      "top5_correct": 0,
+      "top5_accuracy": 0.0,
+      "mean_reciprocal_rank": 0.0,
+      "auc": 0.0
+    },
+    "nose": {
+      "top1_correct": 0,
+      "top1_accuracy": 0.0,
+      "top5_correct": 0,
+      "top5_accuracy": 0.0,
+      "mean_reciprocal_rank": 0.0,
+      "auc": 0.0
+    }
+  }
+}
