@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "packaged_at": "2026-08-27T03:45:11.758942+00:00",
+  "name": "dogfacenet_semantic_v3_v1",
+  "fusion_mode": "semantic_residual_v3",
+  "embedding_dim": 512,
+  "rollback_package": "models/dogfacenet_joint800_v1",
+  "source_artifacts": {
+    "checkpoint": {
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\logs\\dogfacenet_semantic_v3_final800_0500\\model_final.pth",
+      "sha256": "abe38784b93655936156c86eabf4d89dd09e9d05fa6fa20d321110e3ecd878d6"
+    },
+    "config": {
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\configs\\multimodal_dogfacenet_semantic_v3.yaml",
+      "sha256": "9e37a64e952bb698e373c7cfc1ab32bca48d661c605b8f703ef8a9a01b2e3811"
+    },
+    "model_lock": {
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\logs\\dogfacenet_semantic_v3_final800_0500\\model_lock.json",
+      "sha256": "77217d68b498e9f9e767b3b6078aa8b3834d3608a4d4df201816791878b7e87a"
+    },
+    "blind_completion": {
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\logs\\dogfacenet_shared_v3_fresh_blind_final_comparison_20260827\\blind_completion.json",
+      "sha256": "2dfbf4d3208000d1ae7467caf6cdd867261f4b7389945675864f89e4faba3e70"
+    }
+  },
+  "packaged_artifacts": {
+    "model_final.pth": {
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\models\\dogfacenet_semantic_v3_v1\\model_final.pth",
+      "sha256": "abe38784b93655936156c86eabf4d89dd09e9d05fa6fa20d321110e3ecd878d6"
+    },
+    "config.yaml": {
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\models\\dogfacenet_semantic_v3_v1\\config.yaml",
+      "sha256": "9e37a64e952bb698e373c7cfc1ab32bca48d661c605b8f703ef8a9a01b2e3811"
+    },
+    "model_lock.json": {
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\models\\dogfacenet_semantic_v3_v1\\model_lock.json",
+      "sha256": "77217d68b498e9f9e767b3b6078aa8b3834d3608a4d4df201816791878b7e87a"
+    },
+    "blind_completion.json": {
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\models\\dogfacenet_semantic_v3_v1\\blind_completion.json",
+      "sha256": "2dfbf4d3208000d1ae7467caf6cdd867261f4b7389945675864f89e4faba3e70"
+    }
+  },
+  "fresh_blind": {
+    "identities": 64,
+    "queries": 128,
+    "legacy_top1_accuracy": 0.96875,
+    "semantic_v3_top1_accuracy": 0.96875,
+    "legacy_top5_accuracy": 1.0,
+    "semantic_v3_top5_accuracy": 1.0
+  },
+  "development_conflict": {
+    "candidate_recipe": "semantic_residual_v3_v3b_500_steps",
+    "normal_dev_top1_old": 0.965,
+    "normal_dev_top1_candidate": 0.965,
+    "cross_identity_nose_conflict_top1_old": 0.915,
+    "cross_identity_nose_conflict_top1_candidate": 0.965,
+    "conflict_mean_nose_weight_old_clean": 0.38701156035065654,
+    "conflict_mean_nose_weight_old_corrupted": 0.3870097954571247,
+    "conflict_mean_nose_weight_candidate_clean": 0.2622216796875,
+    "conflict_mean_nose_weight_candidate_corrupted": 0.148004150390625,
+    "candidate_gate_decreased_rate": 0.83
+  },
+  "onnx": {
+    "status": "validated",
+    "model": "models/dogfacenet_semantic_v3_v1/onnx/pet_embedding.onnx",
+    "sha256": "21a2e2543b34ebd09426cba6bb1ff2c9dc0651b15d5186453e91ecbcf55d532a",
+    "bytes": 296200048,
+    "metadata_sha256": "f25f11d3c9fe997fd1e1d2484771a78446dab91eacc7bde2b4d004317e987641",
+    "validation_sha256": "978e971626e3cea600a0974f713a5d437f8ce2dcb9e4e3cbcac0688fb13250cb",
+    "source_checkpoint_sha256": "abe38784b93655936156c86eabf4d89dd09e9d05fa6fa20d321110e3ecd878d6",
+    "opset": 20,
+    "dynamic_batch_range": [1, 8],
+    "embedding_shape": ["N", 512],
+    "wrapper_vs_full_pytorch_max_abs": 0.0,
+    "onnxruntime_max_abs": 2.980232238769531e-07,
+    "validated_batch_sizes": [1, 8],
+    "nearest_neighbor_top1_consistent": true
+  },
+  "integration_validation": {
+    "python_api_dual_branch": {
+      "status": "passed",
+      "report": "logs/pet_api_semantic_v3_dual_branch_smoke.json",
+      "report_sha256": "d07d0eab50eca8614233d4d4deeb3a919c9904e7ef02705744be0805668af360",
+      "predicted_pet_id": "pet-a",
+      "top1_score": 0.8814373016357422,
+      "margin": 0.8675371408462524,
+      "branch_available": [true, true],
+      "fusion_weights": [0.11771368235349655, 0.8822863101959229]
+    },
+    "java_gateway": {
+      "status": "passed",
+      "report": "logs/java_gateway_semantic_v3_e2e/e2e_result.json",
+      "report_sha256": "d7e012891c61000facb6d6ba5d2238de83a0ff301b3aa23d7134c91c5827b401",
+      "unit_tests": {
+        "run": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "transport": "Java Spring gateway -> Python FastAPI -> CUDA ONNX Runtime",
+      "persistent_gallery": "models/pet_api_gallery_semantic_v3_v1",
+      "gallery_pets": 2,
+      "gallery_reference_images": 4
+    },
+    "frontend_readiness": {
+      "status": "passed",
+      "cors_unit_tests": 3,
+      "cors_preflight_allowed_status": 200,
+      "cors_preflight_denied_status": 403,
+      "default_policy": "same-origin only",
+      "report": "logs/frontend_cors_smoke/result.json",
+      "report_sha256": "84a838407ce2267a899776be8c5945cc01f5b461ff9fb47dd1257072ed1722b5"
+    }
+  },
+  "final_verification": {
+    "completed_at": "2026-08-27T12:23:14.1034766+08:00",
+    "python_unittest": {
+      "tests_run": 76,
+      "failures": 0,
+      "errors": 0,
+      "status": "passed"
+    },
+    "java_maven": {
+      "tests_run": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "status": "passed"
+    },
+    "ruff": "passed",
+    "json_parse": "passed",
+    "git_diff_check": "passed"
+  }
+}

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="鼻纹、ArcFace 与 AnyFace 联合犬只身份识别阶段成果。">
+  <title>犬只身份识别 · 阶段成果</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="shell">
+      <p class="eyebrow">PET RE-ID · EXPERIMENT REPORT</p>
+      <h1>鼻纹 × ArcFace × AnyFace</h1>
+      <p class="lead">从犬脸定位、鼻部区域提取，到双分支编码和身份检索。这里集中展示当前模型的真实结果、代表性 Top-1 案例与失败边界。</p>
+      <div class="metrics" aria-label="核心实验结果">
+        <article>
+          <span>一次性盲测 Top-1</span>
+          <strong>6 / 6</strong>
+          <small>锁定模型后打开</small>
+        </article>
+        <article>
+          <span>补充评估 Top-1</span>
+          <strong>20 / 20</strong>
+          <small>冻结基线为 19 / 20</small>
+        </article>
+        <article>
+          <span>补充评估 AUC</span>
+          <strong>0.9799</strong>
+          <small>冻结基线为 0.9666</small>
+        </article>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="section" id="overview">
+      <div class="section-heading">
+        <div>
+          <p class="kicker">01 · OVERVIEW</p>
+          <h2>系统接线与总体结果</h2>
+        </div>
+        <p>输入图像经过 AnyFace 与 SAM 定位，进入脸部和鼻纹双分支，再由视角感知联合颈部生成用于图库检索的特征。</p>
+      </div>
+      <figure class="media-frame">
+        <img src="assets/pet-reid-showcase-overview.png" alt="犬只身份识别系统结构、实验协议和总体结果">
+        <figcaption>严格身份隔离协议：训练、验证、盲测和补充集合的身份、路径与文件内容均无重叠。</figcaption>
+      </figure>
+    </section>
+
+    <section class="section" id="top1">
+      <div class="section-heading">
+        <div>
+          <p class="kicker">02 · TOP-1 RETRIEVAL</p>
+          <h2>第一名到底匹配成什么样</h2>
+        </div>
+        <p>左侧是查询图，右侧是图库中余弦相似度最高的候选。领先余量越小，越接近被第二名反超。</p>
+      </div>
+      <figure class="media-frame">
+        <img src="assets/pet-reid-top1-examples.png" alt="六个从困难到清晰的 Top-1 检索案例">
+        <figcaption>六个正确案例：Wanda、Boris 和 George 属于当前更困难的低余量查询。</figcaption>
+      </figure>
+      <figure class="media-frame accent-frame">
+        <img src="assets/pet-reid-top1-wanda-before-after.png" alt="Wanda 在冻结模型和联合模型中的 Top-1 前后变化">
+        <figcaption>Wanda：冻结模型第一名为 Boris；联合模型把第一名纠正为 Wanda。</figcaption>
+      </figure>
+    </section>
+
+    <section class="section" id="expanded">
+      <div class="section-heading">
+        <div>
+          <p class="kicker">03 · EXPANDED SET</p>
+          <h2>20 个新身份的逐项结果</h2>
+        </div>
+        <p>每个格子同时展示查询图、正确图库图和最强错误候选，避免只展示容易匹配的样本。</p>
+      </div>
+      <figure class="media-frame">
+        <img src="assets/pet-reid-expanded20-query-board.png" alt="20 个新身份、60 张图片的补充评估结果">
+        <figcaption>该集合不参与训练、验证或模型选择，因此只能作为补充泛化证据，不能替代一次性盲测。</figcaption>
+      </figure>
+    </section>
+
+    <section class="section" id="evidence">
+      <div class="section-heading">
+        <div>
+          <p class="kicker">04 · EVIDENCE & LIMITS</p>
+          <h2>成功案例和失败边界放在一起</h2>
+        </div>
+        <p>模型能纠正部分身份错配，但强光照、距离与视角突变仍可能破坏同犬图像之间的一致性。</p>
+      </div>
+      <figure class="media-frame">
+        <img src="assets/pet-reid-results-evidence.png" alt="Wanda 成功纠错与 Peanut 困难案例">
+        <figcaption>当前判断：组合方向有效，但 Peanut 类型的困难同犬对仍需要针对性训练和更严格测试。</figcaption>
+      </figure>
+    </section>
+
+    <section class="closing" aria-label="阶段结论">
+      <p class="kicker">CURRENT CONCLUSION</p>
+      <h2>系统已经能够工作，但距离“稳定识别各种拍摄条件”还有明确差距。</h2>
+      <p>下一步比继续增加随机样本更有价值的，是构建同色同品种异犬、侧脸、远距离、遮挡和过曝组成的困难集合。</p>
+    </section>
+  </main>
+</body>
+</html>

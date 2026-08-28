@@ -1,0 +1,7 @@
+# Install the ONNX/CUDA runtime first from requirements-onnx-gpu.txt.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32
+# Required only by TestClient and tools/smoke_test_pet_api.py.
+httpx==0.28.1
+

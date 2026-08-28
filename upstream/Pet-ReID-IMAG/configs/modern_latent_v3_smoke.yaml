@@ -1,0 +1,28 @@
+_BASE_: modern_latent_v3_s101_224.yaml
+
+MODEL:
+  BACKBONE:
+    PRETRAIN: False
+  LATENT_WORKSPACE:
+    HEALTH_PERIOD: 1
+
+SOLVER:
+  MAX_EPOCH: 1
+  WARMUP_ITERS: 1
+  FREEZE_ITERS: 0
+  DELAY_EPOCHS: 0
+  IMS_PER_BATCH: 8
+
+DATALOADER:
+  NUM_WORKERS: 0
+
+TEST:
+  EVAL_PERIOD: 1
+  IMS_PER_BATCH: 16
+
+DATASETS:
+  NAMES: ("PetIDSmoke",)
+  TESTS: ("PetIDValidationSmoke",)
+
+OUTPUT_DIR: logs/modern_latent_v3_smoke_d192
+

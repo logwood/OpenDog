@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "completed_at": "2026-08-25T07:06:05.753800+00:00",
+  "checkpoint_sha256_before_and_after_blind": "2b87dfad54f83912ac8a76cd30f006063496578dbd0a4b3c1c9c201a6efeeef3",
+  "checkpoint_unchanged": true,
+  "models_evaluated": [
+    "predeclared frozen baseline",
+    "validation-locked selected model"
+  ],
+  "no_post_blind_model_selection": true,
+  "frozen": {
+    "evaluation": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\logs\\dogfacenet_joint100_blind_frozen_v1\\evaluation.json",
+    "gallery_rank1": 0.8666666666666667,
+    "leave_one_out_rank1": 0.95,
+    "fused_auc": 0.9632168421052631,
+    "fused_balanced_accuracy": 0.9043947368421053,
+    "fused_mean_gap": 0.4344957234687662,
+    "fused_worst_gap": -0.48779551684856415
+  },
+  "selected": {
+    "evaluation": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\logs\\dogfacenet_joint100_blind_selected_v1\\evaluation.json",
+    "gallery_rank1": 1.0,
+    "leave_one_out_rank1": 1.0,
+    "fused_auc": 0.9887747368421053,
+    "fused_balanced_accuracy": 0.9636842105263157,
+    "fused_mean_gap": 0.5542128516994173,
+    "fused_worst_gap": -0.4432857185602188
+  },
+  "delta": {
+    "gallery_rank1": 0.1333333333333333,
+    "leave_one_out_rank1": 0.050000000000000044,
+    "fused_auc": 0.025557894736842113,
+    "fused_balanced_accuracy": 0.05928947368421045,
+    "fused_mean_gap": 0.11971712823065106,
+    "fused_worst_gap": 0.04450979828834534
+  }
+}

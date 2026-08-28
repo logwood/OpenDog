@@ -4,10 +4,9 @@
 @contact: sherlockliao01@gmail.com
 """
 
-import logging
 import sys
 
-sys.path.append('.')
+sys.path.append(".")
 
 from fastreid.config import get_cfg
 
@@ -28,9 +27,22 @@ from pet_id.latent_hooks import LatentHealthHook
 class Trainer(DefaultTrainer):
     def build_hooks(self):
         trainer_hooks = super().build_hooks()
-        if self.cfg.MODEL.META_ARCHITECTURE == "LatentWorkspaceBaseline":
+        if self.cfg.MODEL.META_ARCHITECTURE in {
+            "LatentWorkspaceBaseline",
+            "LatentWorkspaceV2Baseline",
+            "LatentWorkspaceV3Baseline",
+        }:
+            workspace = self.cfg.MODEL.LATENT_WORKSPACE
             health_hook = LatentHealthHook(
-                self.model, self.cfg.MODEL.LATENT_WORKSPACE.HEALTH_PERIOD
+                self.model,
+                workspace.HEALTH_PERIOD,
+                early_abort_enabled=workspace.EARLY_ABORT_ENABLED,
+                early_abort_warmup_iters=workspace.EARLY_ABORT_WARMUP_ITERS,
+                early_abort_patience=workspace.EARLY_ABORT_PATIENCE,
+                slot_cosine_max=workspace.EARLY_ABORT_SLOT_COSINE_MAX,
+                min_effective_rank=workspace.EARLY_ABORT_MIN_EFFECTIVE_RANK,
+                query_cosine_max=workspace.EARLY_ABORT_QUERY_COSINE_MAX,
+                min_query_rank=workspace.EARLY_ABORT_MIN_QUERY_RANK,
             )
             # Metrics must be present before PeriodicWriter flushes this step.
             writer_index = next(
@@ -93,7 +105,9 @@ def main(args):
         cfg.MODEL.BACKBONE.PRETRAIN = False
         model = Trainer.build_model(cfg)
 
-        Checkpointer(model, save_dir=cfg.OUTPUT_DIR).load(cfg.MODEL.WEIGHTS)  # load trained model
+        Checkpointer(model, save_dir=cfg.OUTPUT_DIR).load(
+            cfg.MODEL.WEIGHTS
+        )  # load trained model
 
         if args.save_features:
             res = FeatureExtractor.test(cfg, model)
@@ -112,7 +126,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = default_argument_parser()
-    parser.add_argument("--commit", action="store_true", help="submission testing results")
+    parser.add_argument(
+        "--commit", action="store_true", help="submission testing results"
+    )
     parser.add_argument(
         "--save-features",
         action="store_true",

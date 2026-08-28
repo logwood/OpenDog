@@ -1,0 +1,550 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-25T02:40:37.466180+00:00",
+  "model_type": "locked_multimodal_checkpoint_plus_l2_prototype_gallery",
+  "identity_model_policy": "the neural checkpoint is locked; only gallery reference prototypes are added",
+  "prototype_policy": "mean reference descriptors per identity, then L2 normalize",
+  "score": "cosine similarity",
+  "identities": [
+    "local-1",
+    "local-2"
+  ],
+  "identity_to_index": {
+    "local-1": 0,
+    "local-2": 1
+  },
+  "references": [
+    {
+      "identity": "local-1",
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\data\\local_pet_gallery_v1\\images\\gallery\\local-1\\001_mmexport1787622883216.jpg",
+      "sha256": "dda990e9c11d81ec460a35c1e29077a09cdaf5a4c6558ccd3e92e7d641ec3589",
+      "selected_inference": {
+        "detections": 1,
+        "selected_detection": 0,
+        "descriptor": {
+          "fusion_weights": [
+            0.6966749429702759,
+            0.3033250868320465
+          ],
+          "branch_quality": [
+            0.9064725405453553,
+            0.6202195371270526
+          ],
+          "branch_available": [
+            true,
+            true
+          ],
+          "detection": {
+            "bbox_xyxy": [
+              23.1566162109375,
+              248.86070251464844,
+              684.3599853515625,
+              977.5386962890625
+            ],
+            "confidence": 0.8256276249885559,
+            "landmarks_xy": [
+              [
+                130.9871368408203,
+                372.20574951171875
+              ],
+              [
+                577.3326416015625,
+                432.7440490722656
+              ],
+              [
+                383.9984130859375,
+                548.9984741210938
+              ],
+              [
+                140.4993438720703,
+                878.1824340820312
+              ],
+              [
+                589.7570190429688,
+                905.2271728515625
+              ]
+            ],
+            "class_id": 0
+          },
+          "segmentation": {
+            "roi_box_xyxy": [
+              225,
+              446,
+              543,
+              710
+            ],
+            "predicted_iou": 0.875,
+            "selected_candidate": 2,
+            "roi_mask_fraction": 0.6939679817038308
+          },
+          "identity_scores": [
+            {
+              "identity": "dog1",
+              "probability": 0.48611992597579956
+            },
+            {
+              "identity": "dog5",
+              "probability": 0.1451587677001953
+            },
+            {
+              "identity": "dog3",
+              "probability": 0.10671068727970123
+            },
+            {
+              "identity": "benji",
+              "probability": 0.07300952076911926
+            },
+            {
+              "identity": "barry",
+              "probability": 0.0511641763150692
+            }
+          ],
+          "inference_size": [
+            960,
+            1280
+          ],
+          "viewpoint": [
+            0.10936304926872253,
+            0.17010661959648132,
+            -0.004694768693298101,
+            0.31344082951545715
+          ]
+        }
+      },
+      "frozen_inference": {
+        "detections": 1,
+        "selected_detection": 0,
+        "descriptor": {
+          "fusion_weights": [
+            0.8142853379249573,
+            0.18571464717388153
+          ],
+          "branch_quality": [
+            0.9064725405453553,
+            0.6202195371270526
+          ],
+          "branch_available": [
+            true,
+            true
+          ],
+          "detection": {
+            "bbox_xyxy": [
+              23.1566162109375,
+              248.86070251464844,
+              684.3599853515625,
+              977.5386962890625
+            ],
+            "confidence": 0.8256276249885559,
+            "landmarks_xy": [
+              [
+                130.9871368408203,
+                372.20574951171875
+              ],
+              [
+                577.3326416015625,
+                432.7440490722656
+              ],
+              [
+                383.9984130859375,
+                548.9984741210938
+              ],
+              [
+                140.4993438720703,
+                878.1824340820312
+              ],
+              [
+                589.7570190429688,
+                905.2271728515625
+              ]
+            ],
+            "class_id": 0
+          },
+          "segmentation": {
+            "roi_box_xyxy": [
+              225,
+              446,
+              543,
+              710
+            ],
+            "predicted_iou": 0.875,
+            "selected_candidate": 2,
+            "roi_mask_fraction": 0.6939679817038308
+          },
+          "identity_scores": [],
+          "inference_size": [
+            960,
+            1280
+          ],
+          "viewpoint": [
+            0.10936304926872253,
+            0.17010661959648132,
+            -0.004694768693298101,
+            0.31344082951545715
+          ]
+        }
+      }
+    },
+    {
+      "identity": "local-1",
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\data\\local_pet_gallery_v1\\images\\gallery\\local-1\\002_mmexport1787622883370.jpg",
+      "sha256": "f1c021a482131d3f9f9b3bf504c5fdf695844d98cbc55b35c3b8ff6e4fc0f358",
+      "selected_inference": {
+        "detections": 1,
+        "selected_detection": 0,
+        "descriptor": {
+          "fusion_weights": [
+            1.0,
+            0.0
+          ],
+          "branch_quality": [
+            0.7641882162529549,
+            0.0
+          ],
+          "branch_available": [
+            true,
+            false
+          ],
+          "detection": null,
+          "segmentation": null,
+          "identity_scores": [
+            {
+              "identity": "dog9",
+              "probability": 0.6341496109962463
+            },
+            {
+              "identity": "ronja",
+              "probability": 0.0816071480512619
+            },
+            {
+              "identity": "dog3",
+              "probability": 0.08146882802248001
+            },
+            {
+              "identity": "barry",
+              "probability": 0.04504579305648804
+            },
+            {
+              "identity": "balu",
+              "probability": 0.026326840743422508
+            }
+          ],
+          "inference_size": [
+            960,
+            1280
+          ],
+          "viewpoint": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "frozen_inference": {
+        "detections": 1,
+        "selected_detection": 0,
+        "descriptor": {
+          "fusion_weights": [
+            1.0,
+            0.0
+          ],
+          "branch_quality": [
+            0.7641882162529549,
+            0.0
+          ],
+          "branch_available": [
+            true,
+            false
+          ],
+          "detection": null,
+          "segmentation": null,
+          "identity_scores": [],
+          "inference_size": [
+            960,
+            1280
+          ],
+          "viewpoint": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "identity": "local-2",
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\data\\local_pet_gallery_v1\\images\\gallery\\local-2\\001_mmexport1787622179349.jpg",
+      "sha256": "7ec77655c5fad203bad96753f72003be3b5bf9f3d24125732168f320857835d5",
+      "selected_inference": {
+        "detections": 1,
+        "selected_detection": 0,
+        "descriptor": {
+          "fusion_weights": [
+            0.6369993686676025,
+            0.36300066113471985
+          ],
+          "branch_quality": [
+            0.9462544280065704,
+            0.8204538596619809
+          ],
+          "branch_available": [
+            true,
+            true
+          ],
+          "detection": {
+            "bbox_xyxy": [
+              157.3984375,
+              129.58140563964844,
+              759.0225830078125,
+              835.9185791015625
+            ],
+            "confidence": 0.893794596195221,
+            "landmarks_xy": [
+              [
+                266.69976806640625,
+                241.7225341796875
+              ],
+              [
+                660.6517944335938,
+                323.11578369140625
+              ],
+              [
+                439.0638122558594,
+                461.41729736328125
+              ],
+              [
+                214.27737426757812,
+                659.6185913085938
+              ],
+              [
+                618.7747802734375,
+                703.4890747070312
+              ]
+            ],
+            "class_id": 0
+          },
+          "segmentation": {
+            "roi_box_xyxy": [
+              294,
+              362,
+              584,
+              617
+            ],
+            "predicted_iou": 0.90625,
+            "selected_candidate": 2,
+            "roi_mask_fraction": 0.7547126436781609
+          },
+          "identity_scores": [
+            {
+              "identity": "barry",
+              "probability": 0.34198319911956787
+            },
+            {
+              "identity": "dog5",
+              "probability": 0.33145999908447266
+            },
+            {
+              "identity": "dog1",
+              "probability": 0.13185392320156097
+            },
+            {
+              "identity": "dog3",
+              "probability": 0.078523188829422
+            },
+            {
+              "identity": "dotty",
+              "probability": 0.022167982533574104
+            }
+          ],
+          "inference_size": [
+            960,
+            1280
+          ],
+          "viewpoint": [
+            0.030115025117993355,
+            0.08597132563591003,
+            -0.005988146178424358,
+            0.44814333319664
+          ]
+        }
+      },
+      "frozen_inference": {
+        "detections": 1,
+        "selected_detection": 0,
+        "descriptor": {
+          "fusion_weights": [
+            0.7757842540740967,
+            0.22421568632125854
+          ],
+          "branch_quality": [
+            0.9462544280065704,
+            0.8204538596619809
+          ],
+          "branch_available": [
+            true,
+            true
+          ],
+          "detection": {
+            "bbox_xyxy": [
+              157.3984375,
+              129.58140563964844,
+              759.0225830078125,
+              835.9185791015625
+            ],
+            "confidence": 0.893794596195221,
+            "landmarks_xy": [
+              [
+                266.69976806640625,
+                241.7225341796875
+              ],
+              [
+                660.6517944335938,
+                323.11578369140625
+              ],
+              [
+                439.0638122558594,
+                461.41729736328125
+              ],
+              [
+                214.27737426757812,
+                659.6185913085938
+              ],
+              [
+                618.7747802734375,
+                703.4890747070312
+              ]
+            ],
+            "class_id": 0
+          },
+          "segmentation": {
+            "roi_box_xyxy": [
+              294,
+              362,
+              584,
+              617
+            ],
+            "predicted_iou": 0.90625,
+            "selected_candidate": 2,
+            "roi_mask_fraction": 0.7547126436781609
+          },
+          "identity_scores": [],
+          "inference_size": [
+            960,
+            1280
+          ],
+          "viewpoint": [
+            0.030115025117993355,
+            0.08597132563591003,
+            -0.005988146178424358,
+            0.44814333319664
+          ]
+        }
+      }
+    },
+    {
+      "identity": "local-2",
+      "path": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\data\\local_pet_gallery_v1\\images\\gallery\\local-2\\002_mmexport1787622181189.jpg",
+      "sha256": "4db17442db74402b367d8688a6815129780c7cf8f6d74304bfa487c8ce17d2e7",
+      "selected_inference": {
+        "detections": 1,
+        "selected_detection": 0,
+        "descriptor": {
+          "fusion_weights": [
+            1.0,
+            0.0
+          ],
+          "branch_quality": [
+            0.7415944021745955,
+            0.0
+          ],
+          "branch_available": [
+            true,
+            false
+          ],
+          "detection": null,
+          "segmentation": null,
+          "identity_scores": [
+            {
+              "identity": "ronja",
+              "probability": 0.3782002627849579
+            },
+            {
+              "identity": "dog12",
+              "probability": 0.26864153146743774
+            },
+            {
+              "identity": "shark",
+              "probability": 0.0918675884604454
+            },
+            {
+              "identity": "balu",
+              "probability": 0.04415319487452507
+            },
+            {
+              "identity": "dotty",
+              "probability": 0.04183363541960716
+            }
+          ],
+          "inference_size": [
+            960,
+            1280
+          ],
+          "viewpoint": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "frozen_inference": {
+        "detections": 1,
+        "selected_detection": 0,
+        "descriptor": {
+          "fusion_weights": [
+            1.0,
+            0.0
+          ],
+          "branch_quality": [
+            0.7415944021745955,
+            0.0
+          ],
+          "branch_available": [
+            true,
+            false
+          ],
+          "detection": null,
+          "segmentation": null,
+          "identity_scores": [],
+          "inference_size": [
+            960,
+            1280
+          ],
+          "viewpoint": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    }
+  ],
+  "variants": {
+    "selected_fused": "locked residual-view joint checkpoint",
+    "frozen_fused": "frozen pretrained encoders with quality-gated concatenation",
+    "selected_nose": "nose branch from the locked selected model",
+    "selected_face": "face ArcFace branch from the locked selected model",
+    "frozen_nose": "frozen nose checkpoint",
+    "frozen_face": "frozen dog.pt ArcFace checkpoint"
+  },
+  "config_file": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\configs\\multimodal_inference.yaml",
+  "config_sha256": "5c3a144e83dbff44045620badd01fa4e192467a08c0a2ad8abb1ba9a3089df23",
+  "selected_checkpoint": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\logs\\multimodal_protocol32_selected\\model_final.pth",
+  "selected_checkpoint_sha256": "c3cbbd69a5f39fd0380cc153c94d89673020627e9dbb2405d5a83c0812b76b96",
+  "dataset_manifest": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\upstream\\Pet-ReID-IMAG\\data\\local_pet_gallery_v1\\dataset_manifest.json",
+  "dataset_manifest_sha256": "92e516f0374ff87fe93e5f3de484db1cdb9f5b30112f7f457bfcdd7e7dbb9b88",
+  "features_file": "gallery_features.npz",
+  "features_sha256": "b6fa2bb17920244fae1f8528685ba7af87d84c2f81354c7a74672bf632ff691d"
+}

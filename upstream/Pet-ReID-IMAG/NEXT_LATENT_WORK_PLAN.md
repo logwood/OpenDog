@@ -2,6 +2,58 @@
 
 Plan date: 2026-08-23
 
+## V2 implementation status
+
+The planned replacement is now implemented in a new, isolated
+`LatentWorkspaceV2Baseline`. Existing latent configs retain their historical
+defaults and output directories.
+
+The V2 data flow is:
+
+1. fixed orthogonal role anchors are injected into every C2-C5 read and write;
+2. deterministic 2D sine/cosine positions are added to the stage tokens;
+3. the shared MESH GRU uses residual admission factors
+   `[0.05, 0.10, 0.15, 0.20]` instead of replacing the complete state;
+4. direct inter-slot self-attention is disabled and the per-slot FFN uses
+   LayerScale `0.10`;
+5. a shared per-slot projection forms a 512-D slot-set descriptor;
+6. its CNN fusion projection starts at exactly zero, while an auxiliary
+   metric/classification loss teaches the descriptor from the first update;
+7. inference returns a normalized 2560-D fused embedding suitable for exact or
+   ANN 1:N gallery search.
+
+Before a full run, use the following escalation ladder:
+
+```powershell
+# Zero optimizer steps: structural and numerical audit.
+.\scripts\train_latent_v2.ps1 -PreflightOnly
+
+# Four optimizer steps: data, AMP, forward/backward, validation and checkpoint.
+.\scripts\train_latent_v2.ps1 -Smoke
+
+# Exactly 100 optimizer steps on eight identities with the CNN frozen.
+# The launcher automatically judges loss reduction, slot collapse, effective
+# rank, latent gradients, and whether the zero-initialized fusion became active.
+.\scripts\train_latent_v2.ps1 -Microfit
+
+# Only after all three gates pass:
+.\scripts\train_latent_v2.ps1
+```
+
+During the full run, health records are emitted every 50 iterations. Starting at
+iteration 100, two consecutive records with final slot cosine at least 0.995,
+effective rank below 2, zero/non-finite latent gradients, or non-finite
+diagnostics abort the run automatically. This normally caps a structurally bad
+run at about 150 updates.
+
+A retained checkpoint can also be audited without training:
+
+```powershell
+D:\CondaData\envs\torch312\python.exe tools\preflight_latent_v2.py `
+  --config-file configs\modern_latent_v2_s101_224.yaml `
+  --weights logs\modern_latent_v2_s101_224_d192\model_0002.pth --device cuda
+```
+
 ## Current conclusion
 
 - The MHA workspace reached ROC-AUC 0.996559, but its final eight slots collapsed.

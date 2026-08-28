@@ -1,0 +1,39 @@
+# Stage 2 for shared-space fusion v2.  Start this from a frozen-encoder v2
+# checkpoint and use a much smaller encoder LR than the fusion-head LR.
+MULTIMODAL:
+  ENABLED: True
+  NOSE_CONFIG: logs/s101_224/config.yaml
+  NOSE_WEIGHTS: logs/s101_224/model_final.pth
+  IDENTITY_WEIGHTS: ""
+  ARCFACE_WEIGHTS: ../../dog.pt
+  ANYFACE_ROOT: third_party/AnyFace
+  ANYFACE_WEIGHTS: third_party/AnyFace/yolov5-face/weights/yolov5l6_best.pt
+  SAM2_CHECKPOINT: third_party/sam2/checkpoints/sam2.1_hiera_tiny.pt
+  SAM2_CONFIG: configs/sam2.1/sam2.1_hiera_t.yaml
+  ANYFACE_IMAGE_SIZE: 800
+  ANYFACE_CONFIDENCE: 0.20
+  MAX_LONG_SIDE: 1280
+  NOSE_SIZE: [244, 244]
+  FACE_SIZE: [224, 224]
+  NOSE_PRIOR: 0.50
+  FACE_PRIOR: 0.50
+  NUM_CLASSES: 0
+  # Conservative end-to-end fine-tuning: frozen prefixes keep their BatchNorm
+  # statistics fixed; only the semantic tails receive identity gradients.
+  NOSE_TRAINABLE_PARTS: ["layer4"]
+  ARCFACE_TRAINABLE_PARTS: ["layer4", "fc"]
+  JOINT_ENABLED: True
+  FUSION_MODE: shared_space_v2
+  JOINT_DIM: 512
+  ADAPTER_BOTTLENECK_DIM: 128
+  JOINT_INITIAL_MIX: 0.50
+  MODALITY_DROPOUT: 0.25
+  CROSS_VIEW_WEIGHT: 0.20
+  CROSS_MODAL_WEIGHT: 0.05
+  BRANCH_CONSISTENCY_WEIGHT: 0.25
+  CONTRASTIVE_TEMPERATURE: 0.10
+  CONTRASTIVE_POSE_BOOST: 1.0
+  VIEWPOINT_NOSE_PENALTY: 0.35
+  VIEWPOINT_NOSE_FLOOR: 0.50
+  ALLOW_RAW_NOSE_FALLBACK: True
+  CACHE_DIR: logs/multimodal_cache_shared_v2

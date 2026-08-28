@@ -1,6 +1,7 @@
 # encoding: utf-8
 """Regression checks for the persistent latent-workspace experiment."""
 
+import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +15,10 @@ from fastreid.modeling.backbones.resnest import Bottleneck, ResNeSt
 from fastreid.modeling.meta_arch.latent_workspace import (
     PersistentLatentWorkspace,
     _CompetitiveMeshRead,
+    _IdentityQueryHead,
+    _SlotSetHead,
+    _orthogonal_role_anchors,
+    _sincos_2d_position,
     _sinkhorn_log_domain,
 )
 from fastreid.solver.build import get_default_optimizer_params
@@ -21,6 +26,22 @@ from fastreid.utils.checkpoint import Checkpointer
 from fastreid.utils.events import EventStorage
 from pet_id import add_retri_config
 from pet_id.latent_hooks import LatentHealthHook
+
+
+def _load_tool_module(name):
+    path = Path(__file__).resolve().parents[1] / "tools" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"test_{name}", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load test tool module from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+microfit_report = _load_tool_module("analyze_latent_microfit")._report
+_load_workspace_weights = _load_tool_module(
+    "preflight_latent_v2"
+)._load_workspace_weights
 
 
 class LatentWorkspaceTest(unittest.TestCase):
@@ -98,9 +119,7 @@ class LatentWorkspaceTest(unittest.TestCase):
         self.assertFalse(hasattr(mesh_read, "slot_marginal"))
         slots = torch.randn(2, 4, 16)
         context = torch.randn(2, 17, 16)
-        _, diagnostics, _ = mesh_read(
-            slots, context, collect_diagnostics=True
-        )
+        _, diagnostics, _ = mesh_read(slots, context, collect_diagnostics=True)
         self.assertGreater(diagnostics["effective_slots"].item(), 3.5)
 
     def test_mesh_mix_gate_can_be_fixed_for_ablation(self):
@@ -125,6 +144,193 @@ class LatentWorkspaceTest(unittest.TestCase):
         (output.square().mean() + latents.square().mean()).backward()
         self.assertIsNone(gate.grad)
 
+    def test_v2_roles_positions_and_residual_path_remain_diverse(self):
+        torch.manual_seed(17)
+        workspace = PersistentLatentWorkspace(
+            dim=32,
+            num_slots=8,
+            num_heads=8,
+            mlp_ratio=2.0,
+            gate_min=0.05,
+            gate_init=0.10,
+            dropout=0.0,
+            read_mode="mesh",
+            role_anchor_enabled=True,
+            role_anchor_scale=0.25,
+            position_encoding_enabled=True,
+            update_mode="residual",
+            update_alphas=(0.05, 0.10, 0.15, 0.20),
+            mix_enabled=False,
+            ffn_layer_scale=0.10,
+        ).eval()
+        self.assertFalse(hasattr(workspace.cell, "mix_attention"))
+
+        normalized = torch.nn.functional.normalize(
+            _orthogonal_role_anchors(8, 32), dim=1
+        )
+        torch.testing.assert_close(
+            normalized @ normalized.t(),
+            torch.eye(8),
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        position = _sincos_2d_position(
+            4, 4, 32, device=torch.device("cpu"), dtype=torch.float32
+        )
+        self.assertEqual(tuple(position.shape), (1, 16, 32))
+        self.assertGreater((position[:, 0] - position[:, -1]).abs().sum().item(), 0.0)
+
+        stage_features = {
+            "c2": torch.randn(2, 256, 8, 8),
+            "c3": torch.randn(2, 512, 4, 4),
+            "c4": torch.randn(2, 1024, 2, 2),
+            "c5": torch.randn(2, 2048, 2, 2),
+        }
+        latents = None
+        with torch.no_grad():
+            for stage_name in workspace.stage_names:
+                _, latents = workspace.forward_stage(
+                    stage_name,
+                    stage_features[stage_name],
+                    latents,
+                    collect_diagnostics=True,
+                )
+        diagnostics = workspace.diagnostics()
+        self.assertLess(diagnostics["slot_cosine_max"].item(), 0.995)
+        self.assertGreater(diagnostics["slot_effective_rank"].item(), 2.0)
+        for stage_name in workspace.stage_names:
+            self.assertLessEqual(
+                diagnostics[f"{stage_name}_transport_entropy_delta"].item(),
+                1e-3,
+            )
+
+    def test_slot_set_head_starts_with_zero_main_path_intervention(self):
+        torch.manual_seed(19)
+        head = _SlotSetHead(
+            workspace_dim=32,
+            num_slots=8,
+            dim_per_slot=4,
+            output_dim=64,
+            num_classes=3,
+            cls_type="CosSoftmax",
+            scale=64.0,
+            margin=0.35,
+        )
+        latents = torch.randn(4, 8, 32)
+        targets = torch.tensor([0, 0, 1, 1])
+        outputs = head(latents, targets)
+        self.assertEqual(tuple(outputs["features"].shape), (4, 32))
+        self.assertEqual(tuple(outputs["cls_outputs"].shape), (4, 3))
+        torch.testing.assert_close(
+            outputs["feature_delta"],
+            torch.zeros(4, 64),
+            rtol=0,
+            atol=0,
+        )
+        head.eval()
+        descriptor, feature_delta = head(latents)
+        self.assertEqual(tuple(descriptor.shape), (4, 32))
+        self.assertEqual(tuple(feature_delta.shape), (4, 64))
+
+    def test_v3_spatial_write_and_read_only_c5(self):
+        torch.manual_seed(23)
+        workspace = PersistentLatentWorkspace(
+            dim=32,
+            num_slots=8,
+            num_heads=8,
+            mlp_ratio=2.0,
+            gate_min=0.0,
+            gate_init=0.05,
+            dropout=0.0,
+            read_mode="mesh",
+            role_anchor_enabled=True,
+            position_encoding_enabled=True,
+            update_mode="residual",
+            update_alphas=(0.05, 0.10, 0.15, 0.20),
+            mix_enabled=True,
+            mix_gate_init=0.02,
+            mix_role_conditioned=True,
+            mix_centered=True,
+            ffn_layer_scale=0.05,
+            write_stages=("c2", "c3", "c4"),
+            spatial_write_gate_enabled=True,
+        ).eval()
+        self.assertTrue(workspace.adapters["c2"].write_enabled)
+        self.assertFalse(workspace.adapters["c5"].write_enabled)
+        self.assertTrue(workspace.cell.mix_role_conditioned)
+        self.assertTrue(workspace.cell.mix_centered)
+
+        stage_features = {
+            "c2": torch.randn(2, 256, 8, 8),
+            "c3": torch.randn(2, 512, 4, 4),
+            "c4": torch.randn(2, 1024, 2, 2),
+            "c5": torch.randn(2, 2048, 2, 2),
+        }
+        latents = None
+        outputs = {}
+        with torch.no_grad():
+            for stage_name in workspace.stage_names:
+                outputs[stage_name], latents = workspace.forward_stage(
+                    stage_name,
+                    stage_features[stage_name],
+                    latents,
+                    collect_diagnostics=True,
+                )
+        self.assertFalse(torch.equal(outputs["c2"], stage_features["c2"]))
+        torch.testing.assert_close(
+            outputs["c5"], stage_features["c5"], rtol=0, atol=0
+        )
+        diagnostics = workspace.diagnostics()
+        for stage_name in ("c2", "c3", "c4"):
+            self.assertAlmostEqual(
+                diagnostics[f"{stage_name}_gate"].item(), 0.05, places=6
+            )
+            self.assertIn(f"{stage_name}_gate_min", diagnostics)
+            self.assertIn(f"{stage_name}_gate_max", diagnostics)
+        self.assertNotIn("c5_gate", diagnostics)
+        self.assertLess(diagnostics["slot_cosine_max"].item(), 0.995)
+        self.assertGreater(diagnostics["slot_effective_rank"].item(), 2.0)
+
+    def test_identity_query_head_decodes_four_views_with_gradients(self):
+        torch.manual_seed(29)
+        head = _IdentityQueryHead(
+            workspace_dim=32,
+            num_slots=8,
+            num_queries=4,
+            dim_per_query=8,
+            num_heads=4,
+            ffn_scale=0.10,
+            role_anchor_scale=0.25,
+            num_classes=3,
+            cls_type="CosSoftmax",
+            scale=64.0,
+            margin=0.35,
+        )
+        latents = torch.randn(4, 8, 32, requires_grad=True)
+        targets = torch.tensor([0, 0, 1, 1])
+        outputs = head(latents, targets, collect_diagnostics=True)
+        self.assertEqual(tuple(outputs["features"].shape), (4, 32))
+        self.assertEqual(tuple(outputs["cls_outputs"].shape), (4, 3))
+        diagnostics = head.diagnostics()
+        self.assertLess(diagnostics["query_cosine_max"].item(), 0.995)
+        self.assertGreater(diagnostics["query_effective_rank"].item(), 1.5)
+        loss = outputs["features"].square().mean() + outputs[
+            "cls_outputs"
+        ].square().mean()
+        loss.backward()
+        self.assertTrue(torch.isfinite(latents.grad).all())
+        self.assertGreater(latents.grad.abs().sum().item(), 0.0)
+        for name, parameter in head.named_parameters():
+            if not parameter.requires_grad:
+                continue
+            self.assertIsNotNone(parameter.grad, name)
+            self.assertTrue(torch.isfinite(parameter.grad).all(), name)
+
+        head.eval()
+        with torch.no_grad():
+            descriptor = head(latents.detach())
+        self.assertEqual(tuple(descriptor.shape), (4, 32))
+
     def test_mesh_workspace_has_finite_nonzero_gradients(self):
         torch.manual_seed(13)
         workspace = self._workspace(dim=32, read_mode="mesh")
@@ -144,7 +350,9 @@ class LatentWorkspaceTest(unittest.TestCase):
                 collect_diagnostics=True,
             )
             outputs.append(output)
-        (sum(output.square().mean() for output in outputs) + latents.square().mean()).backward()
+        (
+            sum(output.square().mean() for output in outputs) + latents.square().mean()
+        ).backward()
 
         for name, parameter in workspace.named_parameters():
             self.assertIsNotNone(parameter.grad, name)
@@ -165,22 +373,24 @@ class LatentWorkspaceTest(unittest.TestCase):
 
     @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required for AMP coverage")
     def test_mesh_read_is_finite_under_cuda_amp(self):
-        mesh_read = _CompetitiveMeshRead(
-            dim=32,
-            num_slots=8,
-            mlp_ratio=2.0,
-            mesh_iterations=4,
-            sinkhorn_iterations=5,
-            mesh_lr=1.0,
-            noise_std=1e-3,
-            temperature=1.0,
-        ).cuda().train()
+        mesh_read = (
+            _CompetitiveMeshRead(
+                dim=32,
+                num_slots=8,
+                mlp_ratio=2.0,
+                mesh_iterations=4,
+                sinkhorn_iterations=5,
+                mesh_lr=1.0,
+                noise_std=1e-3,
+                temperature=1.0,
+            )
+            .cuda()
+            .train()
+        )
         slots = torch.randn(2, 8, 32, device="cuda", requires_grad=True)
         context = torch.randn(2, 64, 32, device="cuda", requires_grad=True)
         with torch.autocast(device_type="cuda", dtype=torch.float16):
-            output, diagnostics, _ = mesh_read(
-                slots, context, collect_diagnostics=True
-            )
+            output, diagnostics, _ = mesh_read(slots, context, collect_diagnostics=True)
             loss = output.square().mean()
         loss.backward()
         self.assertTrue(torch.isfinite(output).all())
@@ -250,7 +460,8 @@ class LatentWorkspaceTest(unittest.TestCase):
     def test_workspace_checkpoint_roundtrip(self):
         workspace = self._workspace()
         original = {
-            name: value.detach().clone() for name, value in workspace.state_dict().items()
+            name: value.detach().clone()
+            for name, value in workspace.state_dict().items()
         }
         with tempfile.TemporaryDirectory() as directory:
             checkpointer = Checkpointer(workspace, save_dir=directory)
@@ -263,6 +474,44 @@ class LatentWorkspaceTest(unittest.TestCase):
         self.assertEqual(metadata["epoch"], 3)
         for name, value in workspace.state_dict().items():
             torch.testing.assert_close(value, original[name], rtol=0, atol=0)
+
+    def test_preflight_loads_workspace_from_full_model_checkpoint(self):
+        source = self._workspace(dim=32, read_mode="mesh")
+        self.assertNotIn("role_anchors", source.state_dict())
+        payload = {
+            "model": {
+                f"workspace.{name}": value.detach().clone()
+                for name, value in source.state_dict().items()
+            }
+        }
+        restored = self._workspace(dim=32, read_mode="mesh")
+        with torch.no_grad():
+            restored.latent_slots.add_(1.0)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "full_model.pth"
+            torch.save(payload, path)
+            report = _load_workspace_weights(restored, path)
+        self.assertEqual(report["loaded_tensors"], len(source.state_dict()))
+        self.assertEqual(report["missing_keys"], [])
+        for name, value in restored.state_dict().items():
+            torch.testing.assert_close(value, source.state_dict()[name])
+
+    def test_microfit_report_accepts_learning_without_slot_collapse(self):
+        records = []
+        for index in range(10):
+            records.append(
+                {
+                    "total_loss": 100.0 - 5.0 * index,
+                    "latent/slot_cosine_max": 0.70 + 0.01 * index,
+                    "latent/slot_effective_rank": 6.0,
+                    "latent/grad_norm": 1.0,
+                    "latent/grad_finite_fraction": 1.0,
+                    "latent/slot_set_fusion_ratio": 0.001 * (index + 1),
+                }
+            )
+        report = microfit_report(records, window=5, max_loss_ratio=0.85)
+        self.assertEqual(report["status"], "PASS")
+        self.assertTrue(all(report["checks"].values()))
 
     def test_health_hook_reports_live_finite_gradients(self):
         model = torch.nn.Module()
@@ -278,6 +527,63 @@ class LatentWorkspaceTest(unittest.TestCase):
         self.assertGreater(latest["latent/grad_nonzero_fraction"][0], 0.0)
         self.assertEqual(latest["latent/grad_finite_fraction"][0], 1.0)
         self.assertGreater(latest["latent/parameters_with_grad_fraction"][0], 0.0)
+
+    def test_health_hook_early_abort_requires_consecutive_bad_checks(self):
+        model = torch.nn.Module()
+        model.workspace = self._workspace()
+        model.workspace.latent_slots.square().sum().backward()
+        model.workspace._last_diagnostics["slot_cosine_max"] = torch.tensor(0.999)
+        model.workspace._last_diagnostics["slot_effective_rank"] = torch.tensor(1.2)
+        health_hook = LatentHealthHook(
+            model,
+            period=1,
+            early_abort_enabled=True,
+            early_abort_warmup_iters=0,
+            early_abort_patience=2,
+            slot_cosine_max=0.995,
+            min_effective_rank=2.0,
+        )
+        health_hook.trainer = SimpleNamespace(iter=0)
+        with EventStorage(0):
+            health_hook.after_step()
+
+        self.assertEqual(health_hook._consecutive_bad_checks, 1)
+        health_hook.trainer.iter = 1
+        with EventStorage(1):
+            with self.assertRaisesRegex(
+                RuntimeError, "Latent workspace early-abort gate"
+            ):
+                health_hook.after_step()
+        self.assertEqual(health_hook._consecutive_bad_checks, 2)
+
+    def test_health_hook_stops_collapsed_identity_queries(self):
+        model = torch.nn.Module()
+        model.workspace = self._workspace()
+        model.identity_query_head = torch.nn.Linear(4, 4)
+        model.fusion_weight_logit = torch.nn.Parameter(torch.tensor(0.0))
+        model.workspace.latent_slots.square().sum().backward()
+        model.workspace._last_diagnostics.update(
+            {
+                "slot_cosine_max": torch.tensor(0.8),
+                "slot_effective_rank": torch.tensor(5.0),
+                "identity_query_cosine_max": torch.tensor(0.999),
+                "identity_query_effective_rank": torch.tensor(1.1),
+            }
+        )
+        health_hook = LatentHealthHook(
+            model,
+            period=1,
+            early_abort_enabled=True,
+            early_abort_warmup_iters=0,
+            early_abort_patience=1,
+            query_cosine_max=0.995,
+            min_query_rank=1.5,
+        )
+        health_hook.trainer = SimpleNamespace(iter=0)
+
+        with EventStorage(0):
+            with self.assertRaisesRegex(RuntimeError, "identity query"):
+                health_hook.after_step()
 
     def test_config_build_and_freeze_boundary(self):
         cfg = get_cfg()
@@ -302,6 +608,36 @@ class LatentWorkspaceTest(unittest.TestCase):
         self.assertEqual(mesh_cfg.MODEL.LATENT_WORKSPACE.READ_MODE, "mesh")
         self.assertEqual(mesh_cfg.MODEL.LATENT_WORKSPACE.MESH_ITERS, 4)
         self.assertEqual(mesh_cfg.SEED, 20260811)
+
+        v2_cfg = get_cfg()
+        add_retri_config(v2_cfg)
+        v2_cfg.merge_from_file("configs/modern_latent_v2_s101_224.yaml")
+        self.assertEqual(v2_cfg.MODEL.META_ARCHITECTURE, "LatentWorkspaceV2Baseline")
+        self.assertTrue(v2_cfg.MODEL.LATENT_WORKSPACE.ROLE_ANCHOR_ENABLED)
+        self.assertTrue(v2_cfg.MODEL.LATENT_WORKSPACE.POSITION_ENCODING_ENABLED)
+        self.assertEqual(v2_cfg.MODEL.LATENT_WORKSPACE.UPDATE_MODE, "residual")
+        self.assertFalse(v2_cfg.MODEL.LATENT_WORKSPACE.MIX_ENABLED)
+        self.assertTrue(v2_cfg.MODEL.LATENT_WORKSPACE.SLOT_SET_HEAD_ENABLED)
+
+        v3_cfg = get_cfg()
+        add_retri_config(v3_cfg)
+        v3_cfg.merge_from_file("configs/modern_latent_v3_s101_224.yaml")
+        self.assertEqual(v3_cfg.MODEL.META_ARCHITECTURE, "LatentWorkspaceV3Baseline")
+        self.assertEqual(
+            v3_cfg.MODEL.LATENT_WORKSPACE.WRITE_STAGES, ["c2", "c3", "c4"]
+        )
+        self.assertTrue(
+            v3_cfg.MODEL.LATENT_WORKSPACE.SPATIAL_WRITE_GATE_ENABLED
+        )
+        self.assertTrue(v3_cfg.MODEL.LATENT_WORKSPACE.MIX_ROLE_CONDITIONED)
+        self.assertTrue(v3_cfg.MODEL.LATENT_WORKSPACE.MIX_CENTERED)
+        self.assertTrue(v3_cfg.MODEL.LATENT_WORKSPACE.IDENTITY_QUERY_HEAD_ENABLED)
+        self.assertFalse(v3_cfg.MODEL.LATENT_WORKSPACE.SLOT_SET_HEAD_ENABLED)
+        self.assertEqual(v3_cfg.MODEL.LATENT_WORKSPACE.SLOT_FEATURE_FUSION_SCALE, 0.0)
+        self.assertEqual(
+            v3_cfg.MODEL.LATENT_WORKSPACE.EARLY_ABORT_QUERY_COSINE_MAX, 0.995
+        )
+        self.assertEqual(v3_cfg.MODEL.LATENT_WORKSPACE.EARLY_ABORT_MIN_QUERY_RANK, 1.5)
 
         parameter_groups = get_default_optimizer_params(
             model,

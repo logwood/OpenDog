@@ -18,15 +18,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from fastreid.config import get_cfg
+from fastreid.config import get_cfg  # noqa: E402
 
-from pet_id import add_retri_config
-from pet_id.dogfacenet_alignment import (
+from pet_id import add_retri_config  # noqa: E402
+from pet_id.dogfacenet_alignment import (  # noqa: E402
     PKBatchSampler,
     PreparedDogFaceNetDataset,
     collate_prepared_dogfacenet,
 )
-from pet_id.multimodal import build_local_identity_model
+from pet_id.multimodal import build_local_identity_model  # noqa: E402
 
 
 def _optimizer(model, *, encoder_lr, new_lr, weight_decay):
@@ -65,6 +65,57 @@ def _gradient_norm(module) -> float:
     return float(total.sqrt()) if total is not None else 0.0
 
 
+def _load_transferable_warm_start(
+    model,
+    checkpoint_path,
+    *,
+    scope="compatible",
+) -> dict:
+    checkpoint_path = Path(checkpoint_path).resolve()
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    source_state = checkpoint.get("model", checkpoint)
+    target_state = model.state_dict()
+    if scope not in {"compatible", "encoders"}:
+        raise ValueError(f"Unknown warm-start scope: {scope}")
+    compatible = {
+        name: value
+        for name, value in source_state.items()
+        if "classifier" not in name
+        and (
+            scope == "compatible"
+            or name.startswith(("nose_encoder.", "face_encoder."))
+        )
+        and name in target_state
+        and tuple(value.shape) == tuple(target_state[name].shape)
+    }
+    transferable_prefixes = (
+        "gate.", "view_gate.", "nose_adapter.", "face_adapter.",
+        "cross_modal_residual.", "joint_mix_logit",
+    )
+    transferred_fusion = sorted(
+        name for name in compatible if name.startswith(transferable_prefixes)
+    )
+    transferred_encoders = sorted(
+        name
+        for name in compatible
+        if name.startswith(("nose_encoder.", "face_encoder."))
+    )
+    if scope == "compatible" and not transferred_fusion:
+        raise ValueError(f"Warm-start checkpoint has no compatible fusion tensors: {checkpoint_path}")
+    if scope == "encoders" and not transferred_encoders:
+        raise ValueError(f"Warm-start checkpoint has no compatible encoder tensors: {checkpoint_path}")
+    model.load_state_dict(compatible, strict=False)
+    return {
+        "checkpoint": str(checkpoint_path),
+        "scope": scope,
+        "source_num_classes": checkpoint.get("num_classes"),
+        "loaded_tensors": len(compatible),
+        "transferred_encoder_tensors": len(transferred_encoders),
+        "transferred_fusion_tensors": len(transferred_fusion),
+        "classification_heads_reinitialized": True,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("manifest", help="manifest.json from geometry preparation")
@@ -76,10 +127,28 @@ def main() -> None:
         help="optional joint checkpoint used to initialize a later fine-tuning phase",
     )
     parser.add_argument(
+        "--warm-start-weights",
+        default="",
+        help=("transfer compatible encoders/fusion tensors from another identity set; "
+              "local classification heads are deliberately reinitialized"),
+    )
+    parser.add_argument(
+        "--warm-start-scope",
+        choices=("compatible", "encoders"),
+        default="compatible",
+        help=(
+            "load all compatible non-classifier tensors, or only the identity "
+            "encoders; encoder-only is the safe v3 migration path"
+        ),
+    )
+    parser.add_argument(
         "--joint-mix",
         type=float,
         default=None,
-        help="override the checkpoint joint residual share for a post-warmup phase",
+        help=(
+            "override the legacy checkpoint joint residual share for a "
+            "post-warmup phase; unavailable for shared-space fusion modes"
+        ),
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--steps", type=int, default=1000)
@@ -109,6 +178,8 @@ def main() -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
     device = torch.device(args.device)
+    if args.identity_weights and args.warm_start_weights:
+        raise ValueError("Use either --identity-weights or --warm-start-weights, not both")
     output_root = Path(args.output_dir).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
 
@@ -148,11 +219,22 @@ def main() -> None:
         for_training=True,
         identity_weights=args.identity_weights or None,
     )
+    warm_start_report = (
+        _load_transferable_warm_start(
+            model,
+            args.warm_start_weights,
+            scope=args.warm_start_scope,
+        )
+        if args.warm_start_weights
+        else None
+    )
     if model.identity_to_label and model.identity_to_label != dataset.identity_to_label:
         raise ValueError("Checkpoint and current manifest use different identity labels")
     if args.joint_mix is not None:
-        if not model.joint_enabled:
-            raise ValueError("--joint-mix requires a joint-neck model")
+        if not hasattr(model, "joint_mix_logit"):
+            raise ValueError(
+                "--joint-mix is only available for legacy joint-neck models"
+            )
         if not 0.0 < args.joint_mix < 1.0:
             raise ValueError("--joint-mix must be strictly between 0 and 1")
         logit = math.log(args.joint_mix / (1.0 - args.joint_mix))
@@ -189,11 +271,22 @@ def main() -> None:
                 "manifest": str(Path(args.manifest).resolve()),
                 "max_images_per_identity": args.max_images_per_identity,
                 "history": history,
+                "warm_start": warm_start_report,
                 "architecture": {
-                    "name": "residual_view_joint_v1" if model.joint_enabled else "legacy_concat_v1",
+                    "name": (
+                        model.fusion_mode
+                        if model.fusion_mode
+                        in {"shared_space_v2", "semantic_residual_v3"}
+                        else "residual_view_joint_v1"
+                        if model.joint_enabled
+                        else "legacy_concat_v1"
+                    ),
+                    "fusion_mode": model.fusion_mode,
                     "joint_enabled": model.joint_enabled,
                     "joint_dim": model.joint_dim,
                     "fused_dim": model.fused_dim,
+                    "semantic_max_nose_weight": model.semantic_max_nose_weight,
+                    "semantic_residual_scale": model.semantic_residual_scale,
                 },
             },
             path,
@@ -222,12 +315,15 @@ def main() -> None:
                 {
                     "adapter_gradient_norm": _gradient_norm(model.nose_adapter)
                     + _gradient_norm(model.face_adapter),
-                    "view_gate_gradient_norm": _gradient_norm(model.view_gate),
                     "interaction_gradient_norm": _gradient_norm(
                         model.cross_modal_residual
                     ),
                 }
             )
+            if hasattr(model, "view_gate"):
+                branch_gradient_norms["view_gate_gradient_norm"] = _gradient_norm(
+                    model.view_gate
+                )
         gradient_norm = float(torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip))
         if not math.isfinite(float(loss.detach())) or not math.isfinite(gradient_norm):
             optimizer.zero_grad(set_to_none=True)
@@ -239,6 +335,7 @@ def main() -> None:
         scaler.update()
         metrics = {
             "step": step,
+            "fusion_mode": model.fusion_mode,
             "loss": float(loss.detach()),
             "gradient_norm": gradient_norm,
             "nose_weight": float(output["fusion_weights"][:, 0].detach().mean()),
@@ -247,6 +344,21 @@ def main() -> None:
             "joint_nose_weight": (
                 float(output["joint_weights"][:, 0].detach().mean())
                 if output["joint_weights"] is not None
+                else 0.0
+            ),
+            "semantic_cosine": (
+                float(output["semantic_agreement"][:, 0].detach().mean())
+                if output["semantic_agreement"] is not None
+                else 0.0
+            ),
+            "semantic_mean_abs_difference": (
+                float(output["semantic_agreement"][:, 1].detach().mean())
+                if output["semantic_agreement"] is not None
+                else 0.0
+            ),
+            "conflict_nose_weight": (
+                float(output["conflict_nose_weight"])
+                if output["conflict_nose_weight"] is not None
                 else 0.0
             ),
             "amp_dtype": str(amp_dtype).removeprefix("torch.") if use_amp else "float32",
@@ -268,6 +380,7 @@ def main() -> None:
         "encoder_parameter_tensors": encoder_parameters,
         "new_parameter_tensors": new_parameters,
         "final_checkpoint": str(final_path),
+        "warm_start": warm_start_report,
         "last_metrics": history[-1] if history else None,
     }
     (output_root / "train_summary.json").write_text(

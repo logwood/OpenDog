@@ -1,14 +1,28 @@
-# Local datasets and dataset-derived artifacts: never commit these.
-/DogFaceNet_alignment/
+# Workspace layout: source is tracked; local inputs, runtime outputs, recovery
+# material and binary model payloads are not.
+/data/
+/artifacts/
+/archive/
+
+# Guard against accidentally recreating generated directories inside source.
+/src/Pet-ReID-IMAG/data/
+/src/Pet-ReID-IMAG/datasets/
+/src/Pet-ReID-IMAG/pretrain/
+/src/Pet-ReID-IMAG/logs/
+
+# Legacy locations stay guarded until and after their contents are migrated.
+/logs/
+/results/
 /upstream/Pet-ReID-IMAG/data/
 /upstream/Pet-ReID-IMAG/datasets/
 /upstream/Pet-ReID-IMAG/pretrain/
 /upstream/Pet-ReID-IMAG/logs/
-/upstream/Pet-ReID-IMAG/third_party/
+
+# Vendor training annotations are local data, not application source.
+/upstream/Pet-ReID-IMAG/third_party/AnyFace/yolov5-face/widerface/
+/src/Pet-ReID-IMAG/third_party/AnyFace/yolov5-face/widerface/
 
 # Generated outputs.
-/logs/
-/results/
 **/outputs/
 **/checkpoints/
 **/weights/
@@ -47,6 +61,11 @@
 *.safetensors
 *.pkl
 *.pickle
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
 *.zip
 *.7z
 *.rar
@@ -68,6 +87,11 @@ htmlcov/
 .venv/
 venv/
 env/
+node_modules/
+.next/
+target/
+dist/
+build/
 .idea/
 .vscode/
 
@@ -81,4 +105,3 @@ env/
 *.pfx
 credentials*
 secrets*
-

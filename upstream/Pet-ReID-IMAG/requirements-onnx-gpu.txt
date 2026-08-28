@@ -1,0 +1,5 @@
+onnx==1.22.0
+onnxscript==0.7.1
+# ONNX Runtime 1.27+ PyPI wheels require CUDA 13.
+# Version 1.26 is the newest CUDA 12.x line and matches this PyTorch cu126 environment.
+onnxruntime-gpu==1.26.0

@@ -43,6 +43,11 @@ from .localization import (
 
 
 QUALITY_DIM = 6
+LEGACY_CONCAT_FUSION = "legacy_concat"
+SHARED_SPACE_FUSION_V2 = "shared_space_v2"
+SEMANTIC_RESIDUAL_FUSION_V3 = "semantic_residual_v3"
+SHARED_FUSION_MODES = {SHARED_SPACE_FUSION_V2, SEMANTIC_RESIDUAL_FUSION_V3}
+FUSION_MODES = {LEGACY_CONCAT_FUSION, *SHARED_FUSION_MODES}
 
 
 @dataclass(frozen=True)
@@ -294,6 +299,140 @@ class QualityFusionGate(nn.Module):
         return logits.softmax(dim=1)
 
 
+class SemanticReliabilityGate(nn.Module):
+    """Bounded nose reliability learned from geometry and cross-modal agreement.
+
+    When both branches are present, face is the safety anchor and the nose may
+    contribute at most ``max_nose_weight``. Missing-branch cases still map to
+    exact [1, 0] or [0, 1] weights.
+    """
+
+    def __init__(
+        self,
+        quality_dim: int,
+        feature_dim: int,
+        *,
+        hidden_dim=128,
+        branch_priors=(0.10, 0.90),
+        max_nose_weight=0.35,
+    ):
+        super().__init__()
+        priors = torch.as_tensor(branch_priors, dtype=torch.float32)
+        if priors.shape != (2,) or (priors <= 0).any():
+            raise ValueError("Two positive branch priors are required")
+        self.max_nose_weight = float(max_nose_weight)
+        if not 0.0 < self.max_nose_weight < 0.5:
+            raise ValueError("max_nose_weight must be strictly between 0 and 0.5")
+        initial_nose_weight = float(priors[0] / priors.sum())
+        if not 0.0 < initial_nose_weight < self.max_nose_weight:
+            raise ValueError(
+                "The normalized nose prior must be below max_nose_weight"
+            )
+
+        hidden_dim = int(hidden_dim)
+        relation_dim = max(16, hidden_dim // 2)
+        self.relation_encoder = nn.Sequential(
+            nn.LayerNorm(2 * int(feature_dim)),
+            nn.Linear(2 * int(feature_dim), hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, relation_dim),
+            nn.GELU(),
+        )
+        self.quality_norm = nn.LayerNorm(int(quality_dim))
+        self.reliability = nn.Sequential(
+            nn.Linear(relation_dim + int(quality_dim) + 2, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, 1),
+        )
+        probability = initial_nose_weight / self.max_nose_weight
+        initial_logit = math.log(probability / (1.0 - probability))
+        nn.init.zeros_(self.reliability[-1].weight)
+        nn.init.constant_(self.reliability[-1].bias, initial_logit)
+
+    @staticmethod
+    def agreement_signals(
+        nose_features: torch.Tensor,
+        face_features: torch.Tensor,
+    ) -> torch.Tensor:
+        cosine = F.cosine_similarity(
+            nose_features.float(), face_features.float(), dim=1
+        )
+        mean_absolute_difference = (
+            nose_features.float() - face_features.float()
+        ).abs().mean(dim=1)
+        return torch.stack((cosine, mean_absolute_difference), dim=1)
+
+    def reliability_logits(
+        self,
+        quality_signals: torch.Tensor,
+        nose_features: torch.Tensor,
+        face_features: torch.Tensor,
+    ) -> torch.Tensor:
+        if quality_signals.ndim != 2:
+            raise ValueError("quality_signals must have shape [batch, quality_dim]")
+        if nose_features.shape != face_features.shape or nose_features.ndim != 2:
+            raise ValueError("Aligned nose/face features must have the same 2D shape")
+        if nose_features.shape[0] != quality_signals.shape[0]:
+            raise ValueError("Quality and feature batches must have the same size")
+        relational = torch.cat(
+            (
+                (nose_features - face_features).abs(),
+                nose_features * face_features,
+            ),
+            dim=1,
+        )
+        encoded_relation = self.relation_encoder(relational.float()).to(
+            dtype=quality_signals.dtype
+        )
+        agreement = self.agreement_signals(nose_features, face_features).to(
+            dtype=quality_signals.dtype
+        )
+        return self.reliability(
+            torch.cat(
+                (
+                    self.quality_norm(quality_signals.float()).to(
+                        dtype=quality_signals.dtype
+                    ),
+                    encoded_relation,
+                    agreement,
+                ),
+                dim=1,
+            )
+        )
+
+    def forward(
+        self,
+        quality_signals: torch.Tensor,
+        nose_features: torch.Tensor,
+        face_features: torch.Tensor,
+        branch_available: torch.Tensor,
+    ) -> torch.Tensor:
+        if branch_available.shape != (quality_signals.shape[0], 2):
+            raise ValueError("branch_available must have shape [batch, 2]")
+        if not branch_available.any(dim=1).all():
+            raise ValueError("Every sample needs at least one identity branch")
+        bounded_nose_weight = (
+            self.max_nose_weight
+            * self.reliability_logits(
+                quality_signals,
+                nose_features,
+                face_features,
+            ).sigmoid()
+        )
+        nose_available = branch_available[:, 0:1].bool()
+        face_available = branch_available[:, 1:2].bool()
+        nose_weight = torch.where(
+            nose_available & ~face_available,
+            torch.ones_like(bounded_nose_weight),
+            torch.where(
+                nose_available & face_available,
+                bounded_nose_weight,
+                torch.zeros_like(bounded_nose_weight),
+            ),
+        )
+        return torch.cat((nose_weight, 1.0 - nose_weight), dim=1)
+
+
 class ResidualProjectionAdapter(nn.Module):
     """Project a pretrained descriptor while preserving a low-rank residual path."""
 
@@ -361,6 +500,80 @@ def viewpoint_supervised_contrastive_loss(
     return -(weights[valid] * log_probabilities[valid]).sum(dim=1).mean()
 
 
+def cross_modal_supervised_contrastive_loss(
+    nose_features: torch.Tensor,
+    face_features: torch.Tensor,
+    targets: torch.Tensor,
+    *,
+    temperature=0.10,
+) -> torch.Tensor:
+    """Align modalities by identity without treating same-ID views as negatives."""
+
+    nose_features = F.normalize(nose_features.float(), dim=1)
+    face_features = F.normalize(face_features.float(), dim=1)
+    targets = targets.reshape(-1)
+    logits = nose_features @ face_features.T / float(temperature)
+    positives = targets[:, None].eq(targets[None, :])
+    row_log_probability = (
+        torch.logsumexp(logits.masked_fill(~positives, -float("inf")), dim=1)
+        - torch.logsumexp(logits, dim=1)
+    )
+    column_log_probability = (
+        torch.logsumexp(
+            logits.masked_fill(~positives, -float("inf")),
+            dim=0,
+        )
+        - torch.logsumexp(logits, dim=0)
+    )
+    return -0.5 * (
+        row_log_probability.mean() + column_log_probability.mean()
+    )
+
+
+def batch_hard_metric_violation(
+    features: torch.Tensor,
+    targets: torch.Tensor,
+    *,
+    margin=0.3,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return per-sample batch-hard violations and their validity mask."""
+
+    features = F.normalize(features.float(), dim=1)
+    targets = targets.reshape(-1)
+    similarities = features @ features.T
+    eye = torch.eye(
+        similarities.shape[0], dtype=torch.bool, device=similarities.device
+    )
+    positives = targets[:, None].eq(targets[None, :]) & ~eye
+    negatives = ~targets[:, None].eq(targets[None, :])
+    valid = positives.any(dim=1) & negatives.any(dim=1)
+    hardest_positive = similarities.masked_fill(
+        ~positives, float("inf")
+    ).min(dim=1).values
+    hardest_negative = similarities.masked_fill(
+        ~negatives, -float("inf")
+    ).max(dim=1).values
+    violation = F.relu(float(margin) + hardest_negative - hardest_positive)
+    return torch.where(valid, violation, torch.zeros_like(violation)), valid
+
+
+def different_identity_permutation(
+    targets: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Choose one deterministic different-identity partner per valid sample."""
+
+    targets = targets.reshape(-1)
+    indices = torch.arange(targets.shape[0], device=targets.device)
+    permutation = indices.clone()
+    valid = torch.zeros_like(indices, dtype=torch.bool)
+    for offset in range(1, targets.shape[0]):
+        candidate = (indices + offset) % targets.shape[0]
+        take = ~valid & targets[candidate].ne(targets)
+        permutation = torch.where(take, candidate, permutation)
+        valid |= take
+    return permutation, valid
+
+
 class LocalEndToEndPetIDModel(nn.Module):
     """Differentiable ROI-to-identity model with frozen geometry prompts."""
 
@@ -378,12 +591,20 @@ class LocalEndToEndPetIDModel(nn.Module):
         nose_aux_weight=0.25,
         face_aux_weight=0.15,
         joint_enabled=False,
+        fusion_mode=LEGACY_CONCAT_FUSION,
         joint_dim=512,
         adapter_bottleneck_dim=128,
         joint_initial_mix=0.0025,
         modality_dropout=0.0,
         cross_view_weight=0.0,
         cross_modal_weight=0.0,
+        branch_consistency_weight=0.0,
+        semantic_max_nose_weight=0.35,
+        semantic_residual_scale=0.05,
+        semantic_conflict_weight=0.0,
+        semantic_conflict_margin=0.05,
+        dominance_weight=0.0,
+        dominance_tolerance=0.02,
         contrastive_temperature=0.10,
         contrastive_pose_boost=1.0,
         viewpoint_nose_penalty=0.35,
@@ -393,13 +614,50 @@ class LocalEndToEndPetIDModel(nn.Module):
         self.nose_encoder = nose_encoder
         self.face_encoder = face_encoder
         self.cropper = DifferentiableROICropper()
-        self.gate = QualityFusionGate(quality_dim, branch_priors=branch_priors)
         self.nose_size = tuple(int(value) for value in nose_size)
         self.face_size = tuple(int(value) for value in face_size)
         self.base_fused_dim = nose_encoder.feature_dim + face_encoder.feature_dim
-        self.joint_enabled = bool(joint_enabled)
+        self.fusion_mode = str(fusion_mode).casefold()
+        if self.fusion_mode not in FUSION_MODES:
+            raise ValueError(
+                f"fusion_mode must be one of {sorted(FUSION_MODES)}, "
+                f"got {fusion_mode!r}"
+            )
+        self.joint_enabled = bool(
+            joint_enabled or self.fusion_mode in SHARED_FUSION_MODES
+        )
         self.joint_dim = int(joint_dim) if self.joint_enabled else 0
-        self.fused_dim = self.base_fused_dim + self.joint_dim
+        if (
+            self.fusion_mode == SEMANTIC_RESIDUAL_FUSION_V3
+            and self.joint_dim != face_encoder.feature_dim
+        ):
+            raise ValueError(
+                "semantic_residual_v3 requires joint_dim to equal the raw "
+                f"face feature dimension ({face_encoder.feature_dim})"
+            )
+        self.fused_dim = (
+            self.joint_dim
+            if self.fusion_mode in SHARED_FUSION_MODES
+            else self.base_fused_dim + self.joint_dim
+        )
+        gate_input_dim = (
+            quality_dim + VIEWPOINT_DIM
+            if self.fusion_mode in SHARED_FUSION_MODES
+            else quality_dim
+        )
+        if self.fusion_mode == SEMANTIC_RESIDUAL_FUSION_V3:
+            self.gate = SemanticReliabilityGate(
+                gate_input_dim,
+                self.joint_dim,
+                hidden_dim=adapter_bottleneck_dim,
+                branch_priors=branch_priors,
+                max_nose_weight=semantic_max_nose_weight,
+            )
+        else:
+            self.gate = QualityFusionGate(
+                gate_input_dim,
+                branch_priors=branch_priors,
+            )
         self.num_classes = int(num_classes)
         self.classifier_scale = float(classifier_scale)
         self.nose_aux_weight = float(nose_aux_weight)
@@ -407,6 +665,13 @@ class LocalEndToEndPetIDModel(nn.Module):
         self.modality_dropout = float(modality_dropout)
         self.cross_view_weight = float(cross_view_weight)
         self.cross_modal_weight = float(cross_modal_weight)
+        self.branch_consistency_weight = float(branch_consistency_weight)
+        self.semantic_max_nose_weight = float(semantic_max_nose_weight)
+        self.semantic_residual_scale = float(semantic_residual_scale)
+        self.semantic_conflict_weight = float(semantic_conflict_weight)
+        self.semantic_conflict_margin = float(semantic_conflict_margin)
+        self.dominance_weight = float(dominance_weight)
+        self.dominance_tolerance = float(dominance_tolerance)
         self.contrastive_temperature = float(contrastive_temperature)
         self.contrastive_pose_boost = float(contrastive_pose_boost)
         self.viewpoint_nose_penalty = float(viewpoint_nose_penalty)
@@ -417,31 +682,49 @@ class LocalEndToEndPetIDModel(nn.Module):
             raise ValueError("viewpoint_nose_penalty must be non-negative")
         if not 0.0 <= self.viewpoint_nose_floor <= 1.0:
             raise ValueError("viewpoint_nose_floor must be in [0, 1]")
+        if self.branch_consistency_weight < 0:
+            raise ValueError("branch_consistency_weight must be non-negative")
+        for name, value in (
+            ("semantic_residual_scale", self.semantic_residual_scale),
+            ("semantic_conflict_weight", self.semantic_conflict_weight),
+            ("semantic_conflict_margin", self.semantic_conflict_margin),
+            ("dominance_weight", self.dominance_weight),
+            ("dominance_tolerance", self.dominance_tolerance),
+        ):
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative")
         if self.joint_enabled:
             self.nose_adapter = ResidualProjectionAdapter(
                 nose_encoder.feature_dim,
                 self.joint_dim,
                 adapter_bottleneck_dim,
             )
-            self.face_adapter = ResidualProjectionAdapter(
-                face_encoder.feature_dim,
-                self.joint_dim,
-                adapter_bottleneck_dim,
-            )
-            self.view_gate = QualityFusionGate(
-                quality_dim + VIEWPOINT_DIM,
-                branch_priors=branch_priors,
+            self.face_adapter = (
+                nn.Identity()
+                if self.fusion_mode == SEMANTIC_RESIDUAL_FUSION_V3
+                else ResidualProjectionAdapter(
+                    face_encoder.feature_dim,
+                    self.joint_dim,
+                    adapter_bottleneck_dim,
+                )
             )
             self.cross_modal_residual = CrossModalResidual(
                 self.joint_dim,
                 adapter_bottleneck_dim,
             )
-            initial_mix = float(joint_initial_mix)
-            if not 0.0 < initial_mix < 1.0:
-                raise ValueError("joint_initial_mix must be strictly between 0 and 1")
-            self.joint_mix_logit = nn.Parameter(
-                torch.tensor(math.log(initial_mix / (1.0 - initial_mix)))
-            )
+            if self.fusion_mode == LEGACY_CONCAT_FUSION:
+                self.view_gate = QualityFusionGate(
+                    quality_dim + VIEWPOINT_DIM,
+                    branch_priors=branch_priors,
+                )
+                initial_mix = float(joint_initial_mix)
+                if not 0.0 < initial_mix < 1.0:
+                    raise ValueError(
+                        "joint_initial_mix must be strictly between 0 and 1"
+                    )
+                self.joint_mix_logit = nn.Parameter(
+                    torch.tensor(math.log(initial_mix / (1.0 - initial_mix)))
+                )
         self.register_buffer(
             "face_mean",
             torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1),
@@ -472,6 +755,50 @@ class LocalEndToEndPetIDModel(nn.Module):
     @staticmethod
     def _cosine_logits(features: torch.Tensor, weights: torch.Tensor, scale: float):
         return scale * F.linear(F.normalize(features, dim=1), F.normalize(weights, dim=1))
+
+    def _shared_fusion(
+        self,
+        adapted_nose: torch.Tensor,
+        adapted_face: torch.Tensor,
+        weights: torch.Tensor,
+        available: torch.Tensor,
+    ) -> torch.Tensor:
+        joint_base = (
+            adapted_nose * weights[:, 0:1]
+            + adapted_face * weights[:, 1:2]
+        )
+        interaction = self.cross_modal_residual(adapted_nose, adapted_face)
+        both_available = available.all(dim=1, keepdim=True).to(joint_base.dtype)
+        return F.normalize(joint_base + interaction * both_available, dim=1)
+
+    def _semantic_residual_fusion(
+        self,
+        adapted_nose: torch.Tensor,
+        raw_face: torch.Tensor,
+        weights: torch.Tensor,
+        available: torch.Tensor,
+    ) -> torch.Tensor:
+        """Use the raw face descriptor as an exact, protected anchor."""
+
+        nose_weight = weights[:, 0:1]
+        base = raw_face * (1.0 - nose_weight) + adapted_nose * nose_weight
+        interaction = self.cross_modal_residual(adapted_nose, raw_face)
+        bounded_interaction = torch.tanh(interaction) / math.sqrt(self.joint_dim)
+        both_available = available.all(dim=1, keepdim=True).to(base.dtype)
+        fused = F.normalize(
+            base
+            + (
+                self.semantic_residual_scale
+                * nose_weight
+                * bounded_interaction
+                * both_available
+            ),
+            dim=1,
+        )
+        nose_only = available[:, 0:1] & ~available[:, 1:2]
+        face_only = available[:, 1:2] & ~available[:, 0:1]
+        fused = torch.where(nose_only, adapted_nose, fused)
+        return torch.where(face_only, raw_face, fused)
 
     def forward(
         self,
@@ -534,7 +861,44 @@ class LocalEndToEndPetIDModel(nn.Module):
                 1,
             ] = False
 
-        fusion_weights = self.gate(quality_signals, effective_available)
+        viewpoint_frontality = torch.ones(
+            quality_signals.shape[0], device=device, dtype=dtype
+        )
+        joint_inputs = None
+        if self.joint_enabled:
+            pose_magnitude = viewpoint_signals[:, :3].float().norm(dim=1)
+            viewpoint_frontality = (
+                self.viewpoint_nose_floor
+                + (1.0 - self.viewpoint_nose_floor)
+                * torch.exp(-self.viewpoint_nose_penalty * pose_magnitude)
+            ).to(dtype=dtype)
+            joint_quality = quality_signals.clone()
+            joint_quality[:, 0] = joint_quality[:, 0] * viewpoint_frontality
+            joint_inputs = torch.cat((joint_quality, viewpoint_signals), dim=1)
+        adapted_nose = None
+        adapted_face = None
+        semantic_agreement = None
+        if self.joint_enabled:
+            adapted_nose = self.nose_adapter(nose_features)
+            adapted_face = self.face_adapter(face_features)
+        if self.fusion_mode == SEMANTIC_RESIDUAL_FUSION_V3:
+            fusion_weights = self.gate(
+                joint_inputs,
+                adapted_nose,
+                adapted_face,
+                effective_available,
+            )
+            semantic_agreement = self.gate.agreement_signals(
+                adapted_nose,
+                adapted_face,
+            ).to(dtype=dtype)
+        else:
+            fusion_weights = self.gate(
+                joint_inputs
+                if self.fusion_mode == SHARED_SPACE_FUSION_V2
+                else quality_signals,
+                effective_available,
+            )
         # A missing branch has exactly zero weight.  Clamp before sqrt so its
         # derivative cannot become infinite (0.5 / sqrt(0)) during modality
         # dropout; the availability mask restores the exact zero afterward.
@@ -554,40 +918,41 @@ class LocalEndToEndPetIDModel(nn.Module):
         joint_features = None
         joint_weights = None
         joint_mix = torch.zeros((), device=device, dtype=dtype)
-        viewpoint_frontality = torch.ones(
-            quality_signals.shape[0], device=device, dtype=dtype
-        )
         if self.joint_enabled:
-            adapted_nose = self.nose_adapter(nose_features)
-            adapted_face = self.face_adapter(face_features)
-            pose_magnitude = viewpoint_signals[:, :3].float().norm(dim=1)
-            viewpoint_frontality = (
-                self.viewpoint_nose_floor
-                + (1.0 - self.viewpoint_nose_floor)
-                * torch.exp(-self.viewpoint_nose_penalty * pose_magnitude)
-            ).to(dtype=dtype)
-            joint_quality = quality_signals.clone()
-            joint_quality[:, 0] = joint_quality[:, 0] * viewpoint_frontality
-            joint_inputs = torch.cat((joint_quality, viewpoint_signals), dim=1)
-            joint_weights = self.view_gate(joint_inputs, effective_available)
-            joint_base = (
-                adapted_nose * joint_weights[:, 0:1]
-                + adapted_face * joint_weights[:, 1:2]
+            joint_weights = (
+                fusion_weights
+                if self.fusion_mode in SHARED_FUSION_MODES
+                else self.view_gate(joint_inputs, effective_available)
             )
-            interaction = self.cross_modal_residual(adapted_nose, adapted_face)
-            both_available = effective_available.all(dim=1, keepdim=True).to(dtype)
-            joint_features = F.normalize(joint_base + interaction * both_available, dim=1)
-            joint_mix = self.joint_mix_logit.sigmoid().to(dtype=dtype)
-            fused_features = F.normalize(
-                torch.cat(
-                    (
-                        base_fused_features * (1.0 - joint_mix).sqrt(),
-                        joint_features * joint_mix.sqrt(),
+            if self.fusion_mode == SEMANTIC_RESIDUAL_FUSION_V3:
+                joint_features = self._semantic_residual_fusion(
+                    adapted_nose,
+                    adapted_face,
+                    joint_weights,
+                    effective_available,
+                )
+            else:
+                joint_features = self._shared_fusion(
+                    adapted_nose,
+                    adapted_face,
+                    joint_weights,
+                    effective_available,
+                )
+            if self.fusion_mode in SHARED_FUSION_MODES:
+                joint_mix = torch.ones((), device=device, dtype=dtype)
+                fused_features = joint_features
+            else:
+                joint_mix = self.joint_mix_logit.sigmoid().to(dtype=dtype)
+                fused_features = F.normalize(
+                    torch.cat(
+                        (
+                            base_fused_features * (1.0 - joint_mix).sqrt(),
+                            joint_features * joint_mix.sqrt(),
+                        ),
+                        dim=1,
                     ),
                     dim=1,
-                ),
-                dim=1,
-            )
+                )
         else:
             fused_features = base_fused_features
         output = {
@@ -600,6 +965,8 @@ class LocalEndToEndPetIDModel(nn.Module):
             "face_features": face_features,
             "fusion_weights": fusion_weights,
             "joint_weights": joint_weights,
+            "semantic_agreement": semantic_agreement,
+            "conflict_nose_weight": None,
             "effective_branch_available": effective_available,
             "face_crops": face_crops,
             "nose_crops": nose_crops,
@@ -640,13 +1007,149 @@ class LocalEndToEndPetIDModel(nn.Module):
             if self.joint_enabled and self.cross_modal_weight > 0:
                 both_valid = branch_available.all(dim=1)
                 if both_valid.any():
-                    losses["loss_cross_modal"] = self.cross_modal_weight * (
+                    if self.fusion_mode == SEMANTIC_RESIDUAL_FUSION_V3:
+                        losses["loss_cross_modal"] = (
+                            self.cross_modal_weight
+                            * cross_modal_supervised_contrastive_loss(
+                                adapted_nose[both_valid],
+                                adapted_face[both_valid],
+                                targets[both_valid],
+                                temperature=self.contrastive_temperature,
+                            )
+                        )
+                    else:
+                        losses["loss_cross_modal"] = self.cross_modal_weight * (
+                            1.0
+                            - F.cosine_similarity(
+                                adapted_nose[both_valid].float(),
+                                adapted_face[both_valid].float(),
+                                dim=1,
+                            ).mean()
+                        )
+            if (
+                self.fusion_mode == SHARED_SPACE_FUSION_V2
+                and self.branch_consistency_weight > 0
+            ):
+                both_valid = branch_available.all(dim=1)
+                if both_valid.any():
+                    full_available = branch_available[both_valid]
+                    full_weights = self.gate(
+                        joint_inputs[both_valid],
+                        full_available,
+                    )
+                    full_features = self._shared_fusion(
+                        adapted_nose[both_valid],
+                        adapted_face[both_valid],
+                        full_weights,
+                        full_available,
+                    )
+                    nose_only = adapted_nose[both_valid]
+                    face_only = adapted_face[both_valid]
+                    consistency = 0.5 * (
                         1.0
                         - F.cosine_similarity(
-                            adapted_nose[both_valid].float(),
-                            adapted_face[both_valid].float(),
+                            full_features.float(),
+                            nose_only.float(),
                             dim=1,
                         ).mean()
+                        + 1.0
+                        - F.cosine_similarity(
+                            full_features.float(),
+                            face_only.float(),
+                            dim=1,
+                        ).mean()
+                    )
+                    losses["loss_branch_consistency"] = (
+                        self.branch_consistency_weight * consistency
+                    )
+            if (
+                self.fusion_mode == SEMANTIC_RESIDUAL_FUSION_V3
+                and self.semantic_conflict_weight > 0
+            ):
+                both_indices = branch_available.all(dim=1).nonzero(
+                    as_tuple=False
+                ).flatten()
+                if both_indices.numel() > 1:
+                    local_targets = targets.index_select(0, both_indices)
+                    permutation, conflict_valid = different_identity_permutation(
+                        local_targets
+                    )
+                    if conflict_valid.any():
+                        local_nose = adapted_nose.index_select(0, both_indices)
+                        local_face = adapted_face.index_select(0, both_indices)
+                        local_inputs = joint_inputs.index_select(0, both_indices)
+                        positive_logits = self.gate.reliability_logits(
+                            local_inputs,
+                            local_nose,
+                            local_face,
+                        )
+                        negative_logits = self.gate.reliability_logits(
+                            local_inputs,
+                            local_nose.index_select(0, permutation),
+                            local_face,
+                        )
+                        positive_logits = positive_logits[conflict_valid]
+                        negative_logits = negative_logits[conflict_valid]
+                        classification = 0.5 * (
+                            F.binary_cross_entropy_with_logits(
+                                positive_logits,
+                                torch.ones_like(positive_logits),
+                            )
+                            + F.binary_cross_entropy_with_logits(
+                                negative_logits,
+                                torch.zeros_like(negative_logits),
+                            )
+                        )
+                        positive_probability = positive_logits.sigmoid()
+                        negative_probability = negative_logits.sigmoid()
+                        ranking = F.relu(
+                            self.semantic_conflict_margin
+                            - positive_probability
+                            + negative_probability
+                        ).mean()
+                        losses["loss_semantic_conflict"] = (
+                            self.semantic_conflict_weight
+                            * (classification + ranking)
+                        )
+                        output["conflict_nose_weight"] = (
+                            self.semantic_max_nose_weight
+                            * negative_probability.detach().mean()
+                        )
+            if (
+                self.fusion_mode == SEMANTIC_RESIDUAL_FUSION_V3
+                and self.dominance_weight > 0
+            ):
+                fused_violation, fused_valid = batch_hard_metric_violation(
+                    fused_features,
+                    targets,
+                )
+                nose_violation, nose_metric_valid = batch_hard_metric_violation(
+                    nose_features,
+                    targets,
+                )
+                face_violation, face_metric_valid = batch_hard_metric_violation(
+                    face_features,
+                    targets,
+                )
+                dominance_valid = (
+                    effective_available.all(dim=1)
+                    & fused_valid
+                    & nose_metric_valid
+                    & face_metric_valid
+                )
+                if dominance_valid.any():
+                    best_branch = torch.minimum(
+                        nose_violation.detach(),
+                        face_violation.detach(),
+                    )
+                    degradation = F.relu(
+                        fused_violation
+                        - best_branch
+                        - self.dominance_tolerance
+                    )
+                    losses["loss_branch_dominance"] = (
+                        self.dominance_weight
+                        * degradation[dominance_valid].mean()
                     )
             nose_valid = branch_available[:, 0]
             if nose_valid.any():
@@ -1021,13 +1524,27 @@ def build_local_identity_model(
         nose_encoder.configure_trainable_parts(())
     checkpoint_state = checkpoint["model"] if checkpoint is not None else {}
     checkpoint_architecture = checkpoint.get("architecture", {}) if checkpoint else {}
+    if checkpoint is not None:
+        fusion_mode = checkpoint_architecture.get("fusion_mode")
+        if fusion_mode is None:
+            architecture_name = checkpoint_architecture.get("name")
+            fusion_mode = (
+                architecture_name
+                if architecture_name in SHARED_FUSION_MODES
+                else LEGACY_CONCAT_FUSION
+            )
+    else:
+        fusion_mode = options.FUSION_MODE
     checkpoint_has_joint = any(
         key.startswith("nose_adapter.") for key in checkpoint_state
     )
     joint_enabled = (
         bool(checkpoint_architecture.get("joint_enabled", checkpoint_has_joint))
         if checkpoint is not None
-        else bool(options.JOINT_ENABLED)
+        else bool(
+            options.JOINT_ENABLED
+            or str(fusion_mode).casefold() in SHARED_FUSION_MODES
+        )
     )
     identity_model = LocalEndToEndPetIDModel(
         nose_encoder,
@@ -1041,12 +1558,34 @@ def build_local_identity_model(
         ),
         branch_priors=(options.NOSE_PRIOR, options.FACE_PRIOR),
         joint_enabled=joint_enabled,
+        fusion_mode=fusion_mode,
         joint_dim=int(checkpoint_architecture.get("joint_dim", options.JOINT_DIM)),
         adapter_bottleneck_dim=options.ADAPTER_BOTTLENECK_DIM,
         joint_initial_mix=options.JOINT_INITIAL_MIX,
         modality_dropout=options.MODALITY_DROPOUT if for_training else 0.0,
         cross_view_weight=options.CROSS_VIEW_WEIGHT if for_training else 0.0,
         cross_modal_weight=options.CROSS_MODAL_WEIGHT if for_training else 0.0,
+        branch_consistency_weight=(
+            options.BRANCH_CONSISTENCY_WEIGHT if for_training else 0.0
+        ),
+        semantic_max_nose_weight=float(
+            checkpoint_architecture.get(
+                "semantic_max_nose_weight",
+                options.SEMANTIC_MAX_NOSE_WEIGHT,
+            )
+        ),
+        semantic_residual_scale=float(
+            checkpoint_architecture.get(
+                "semantic_residual_scale",
+                options.SEMANTIC_RESIDUAL_SCALE,
+            )
+        ),
+        semantic_conflict_weight=(
+            options.SEMANTIC_CONFLICT_WEIGHT if for_training else 0.0
+        ),
+        semantic_conflict_margin=options.SEMANTIC_CONFLICT_MARGIN,
+        dominance_weight=options.DOMINANCE_WEIGHT if for_training else 0.0,
+        dominance_tolerance=options.DOMINANCE_TOLERANCE,
         contrastive_temperature=options.CONTRASTIVE_TEMPERATURE,
         contrastive_pose_boost=options.CONTRASTIVE_POSE_BOOST,
         viewpoint_nose_penalty=options.VIEWPOINT_NOSE_PENALTY,

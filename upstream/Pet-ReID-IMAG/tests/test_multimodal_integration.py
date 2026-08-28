@@ -22,6 +22,7 @@ from pet_id.multimodal import (
     LocalEndToEndPetIDModel,
     PetDescriptor,
     QualityFusionGate,
+    SemanticReliabilityGate,
     compare_descriptors,
     viewpoint_supervised_contrastive_loss,
 )
@@ -222,6 +223,160 @@ class MultimodalIntegrationTest(unittest.TestCase):
         self.assertGreater(float(model.nose_adapter.projection.weight.grad.abs().sum()), 0.0)
         self.assertGreater(float(model.face_adapter.projection.weight.grad.abs().sum()), 0.0)
         self.assertIsNotNone(model.joint_mix_logit.grad)
+
+    def test_shared_space_v2_has_no_legacy_bypass_and_backpropagates(self):
+        torch.manual_seed(11)
+        model = LocalEndToEndPetIDModel(
+            _FakeNoseEncoder(),
+            _FakeFaceEncoder(),
+            nose_size=(24, 24),
+            face_size=(20, 20),
+            num_classes=2,
+            nose_aux_weight=0.0,
+            face_aux_weight=0.0,
+            fusion_mode="shared_space_v2",
+            joint_dim=5,
+            adapter_bottleneck_dim=4,
+            modality_dropout=0.0,
+            branch_consistency_weight=0.25,
+        )
+        images = torch.rand(4, 3, 64, 64) * 255
+        rois = torch.tensor(
+            [[index, 8, 8, 56, 56] for index in range(4)],
+            dtype=torch.float32,
+        )
+        output = model(
+            images,
+            face_rois=rois,
+            nose_rois=rois,
+            roll_angles_radians=torch.zeros(4),
+            nose_masks=torch.ones(4, 1, 64, 64),
+            quality_signals=torch.ones(4, 6),
+            viewpoint_signals=torch.zeros(4, 4),
+            branch_available=torch.tensor(
+                [[True, True], [True, False], [False, True], [True, True]]
+            ),
+            targets=torch.tensor([0, 0, 1, 1]),
+        )
+        self.assertEqual(model.fused_dim, 5)
+        self.assertEqual(tuple(output["features"].shape), (4, 5))
+        torch.testing.assert_close(output["features"], output["joint_features"])
+        torch.testing.assert_close(output["features"].norm(dim=1), torch.ones(4))
+        self.assertEqual(float(output["joint_mix"]), 1.0)
+        self.assertFalse(hasattr(model, "joint_mix_logit"))
+        self.assertFalse(hasattr(model, "view_gate"))
+        torch.testing.assert_close(
+            output["fusion_weights"],
+            output["joint_weights"],
+        )
+        torch.testing.assert_close(
+            output["fusion_weights"][1],
+            torch.tensor([1.0, 0.0]),
+        )
+        torch.testing.assert_close(
+            output["fusion_weights"][2],
+            torch.tensor([0.0, 1.0]),
+        )
+        self.assertIn("loss_branch_consistency", output["losses"])
+        output["losses"]["loss_fusion_cls"].backward()
+        self.assertGreater(float(model.nose_adapter.projection.weight.grad.abs().sum()), 0.0)
+        self.assertGreater(float(model.face_adapter.projection.weight.grad.abs().sum()), 0.0)
+        self.assertGreater(float(model.gate.residual[-1].weight.grad.abs().sum()), 0.0)
+        self.assertGreater(
+            float(model.cross_modal_residual.network[-1].weight.grad.abs().sum()),
+            0.0,
+        )
+
+    def test_semantic_reliability_gate_is_bounded_and_missing_branch_exact(self):
+        gate = SemanticReliabilityGate(
+            quality_dim=10,
+            feature_dim=3,
+            branch_priors=(0.10, 0.90),
+            max_nose_weight=0.35,
+        )
+        nose = F.normalize(torch.randn(3, 3), dim=1)
+        face = F.normalize(torch.randn(3, 3), dim=1)
+        available = torch.tensor(
+            [[True, True], [True, False], [False, True]]
+        )
+        weights = gate(torch.ones(3, 10), nose, face, available)
+        self.assertLessEqual(float(weights[0, 0].detach()), 0.35)
+        torch.testing.assert_close(weights.sum(dim=1), torch.ones(3))
+        torch.testing.assert_close(weights[1], torch.tensor([1.0, 0.0]))
+        torch.testing.assert_close(weights[2], torch.tensor([0.0, 1.0]))
+
+    def test_semantic_v3_protects_face_anchor_and_trains_reliability(self):
+        torch.manual_seed(19)
+        model = LocalEndToEndPetIDModel(
+            _FakeNoseEncoder(),
+            _FakeFaceEncoder(),
+            nose_size=(24, 24),
+            face_size=(20, 20),
+            num_classes=2,
+            nose_aux_weight=0.0,
+            face_aux_weight=0.0,
+            fusion_mode="semantic_residual_v3",
+            joint_dim=3,
+            adapter_bottleneck_dim=4,
+            modality_dropout=0.0,
+            cross_modal_weight=0.05,
+            semantic_max_nose_weight=0.35,
+            semantic_residual_scale=0.0,
+            semantic_conflict_weight=0.5,
+            semantic_conflict_margin=0.05,
+            dominance_weight=0.5,
+            dominance_tolerance=0.02,
+            branch_priors=(0.10, 0.90),
+        )
+        images = torch.rand(4, 3, 64, 64) * 255
+        rois = torch.tensor(
+            [[index, 8, 8, 56, 56] for index in range(4)],
+            dtype=torch.float32,
+        )
+        common = {
+            "images_0_255": images,
+            "face_rois": rois,
+            "nose_rois": rois,
+            "roll_angles_radians": torch.zeros(4),
+            "nose_masks": torch.ones(4, 1, 64, 64),
+            "quality_signals": torch.ones(4, 6),
+            "viewpoint_signals": torch.zeros(4, 4),
+        }
+        output = model(
+            **common,
+            branch_available=torch.ones(4, 2, dtype=torch.bool),
+            targets=torch.tensor([0, 0, 1, 1]),
+        )
+        self.assertEqual(model.fused_dim, 3)
+        self.assertIsInstance(model.face_adapter, nn.Identity)
+        self.assertTrue((output["fusion_weights"][:, 0] <= 0.35).all())
+        self.assertIn("loss_semantic_conflict", output["losses"])
+        self.assertIn("loss_branch_dominance", output["losses"])
+        sum(output["losses"].values()).backward()
+        self.assertGreater(
+            float(model.nose_adapter.projection.weight.grad.abs().sum()),
+            0.0,
+        )
+        self.assertGreater(
+            float(model.gate.reliability[-1].weight.grad.abs().sum()),
+            0.0,
+        )
+
+        model.eval()
+        available = torch.tensor(
+            [[True, True], [False, True], [True, False], [True, True]]
+        )
+        with torch.inference_mode():
+            missing_output = model(**common, branch_available=available)
+            expected_nose = model.nose_adapter(missing_output["nose_features"])
+        torch.testing.assert_close(
+            missing_output["features"][1],
+            missing_output["face_features"][1],
+        )
+        torch.testing.assert_close(
+            missing_output["features"][2],
+            expected_nose[2],
+        )
 
     def test_viewpoint_supervised_contrastive_loss_is_finite(self):
         features = F.normalize(torch.randn(4, 8), dim=1)

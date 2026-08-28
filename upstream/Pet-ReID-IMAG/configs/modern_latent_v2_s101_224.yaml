@@ -1,0 +1,43 @@
+_BASE_: modern_mesh_workspace_s101_224.yaml
+
+# V2 keeps the proven ResNeSt-101 training recipe while preventing recurrent
+# slots from losing their roles. All outputs are isolated from earlier runs.
+SEED: 20260823
+
+MODEL:
+  META_ARCHITECTURE: LatentWorkspaceV2Baseline
+  LATENT_WORKSPACE:
+    ROLE_ANCHOR_ENABLED: True
+    ROLE_ANCHOR_SCALE: 0.25
+    POSITION_ENCODING_ENABLED: True
+    POSITION_ENCODING_SCALE: 1.0
+
+    # Slow residual admission prevents one GRU proposal from replacing the
+    # complete persistent state. C2 observes; deeper stages intervene gradually.
+    UPDATE_MODE: residual
+    UPDATE_ALPHAS: [0.05, 0.10, 0.15, 0.20]
+
+    # Cross-slot self-attention was the strongest direct homogenizing path in
+    # the first implementation. Keep only a small per-slot FFN residual.
+    MIX_ENABLED: False
+    FFN_LAYER_SCALE: 0.10
+
+    # Eight role-specific 64-D projections form a 512-D retrieval descriptor.
+    # The projection into the CNN descriptor starts at exactly zero and learns
+    # to enter gradually instead of perturbing the pretrained path at step zero.
+    SLOT_SET_HEAD_ENABLED: True
+    SLOT_SET_DIM_PER_SLOT: 64
+    SLOT_SET_LOSS_WEIGHT: 0.20
+    SLOT_FEATURE_FUSION_SCALE: 0.20
+    SLOT_INFERENCE_FUSION_WEIGHT: 0.20
+    HEALTH_PERIOD: 50
+    EARLY_ABORT_ENABLED: True
+    EARLY_ABORT_WARMUP_ITERS: 100
+    EARLY_ABORT_PATIENCE: 2
+    EARLY_ABORT_SLOT_COSINE_MAX: 0.995
+    EARLY_ABORT_MIN_EFFECTIVE_RANK: 2.0
+
+SOLVER:
+  CHECKPOINT_PERIOD: 2
+
+OUTPUT_DIR: logs/modern_latent_v2_s101_224_d192

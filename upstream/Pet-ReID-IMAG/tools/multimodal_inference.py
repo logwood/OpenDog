@@ -129,15 +129,36 @@ def main() -> None:
         default="",
         help="trained multimodal checkpoint; enables closed-set identity scores",
     )
+    parser.add_argument("--backend", choices=("pytorch", "onnx"), default="pytorch")
+    parser.add_argument(
+        "--onnx-model",
+        default="models/dogfacenet_joint800_v1/onnx/pet_embedding.onnx",
+    )
+    parser.add_argument(
+        "--onnx-provider",
+        choices=("auto", "cuda", "cpu"),
+        default="cuda",
+    )
+    parser.add_argument(
+        "--onnx-warmup-batches",
+        default="1,4,8",
+        help="comma-separated dynamic batch sizes to compile before inference",
+    )
     parser.add_argument("--no-cache", action="store_true")
     args = parser.parse_args()
+    if args.backend == "onnx" and args.identity_weights:
+        parser.error("--identity-weights cannot be combined with --backend onnx")
+    from pet_id.onnx_runtime import parse_warmup_batches
+
+    warmup_batches = parse_warmup_batches(args.onnx_warmup_batches)
+    onnx_model = Path(args.onnx_model).resolve()
 
     cfg = get_cfg()
     add_retri_config(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.defrost()
     cfg.MODEL.DEVICE = args.device
-    if args.identity_weights:
+    if args.backend == "pytorch" and args.identity_weights:
         cfg.MULTIMODAL.IDENTITY_WEIGHTS = args.identity_weights
     cfg.freeze()
     options = cfg.MULTIMODAL
@@ -146,17 +167,25 @@ def main() -> None:
     output_root.mkdir(parents=True, exist_ok=True)
 
     model_files = [
-        options.NOSE_CONFIG,
-        options.NOSE_WEIGHTS,
-        options.ARCFACE_WEIGHTS,
         options.ANYFACE_WEIGHTS,
         options.SAM2_CHECKPOINT,
     ]
-    if options.IDENTITY_WEIGHTS:
-        model_files.append(options.IDENTITY_WEIGHTS)
+    if args.backend == "onnx":
+        model_files.append(onnx_model)
+        onnx_metadata = onnx_model.with_name("metadata.json")
+        if onnx_metadata.is_file():
+            model_files.append(onnx_metadata)
+    else:
+        model_files.extend(
+            (options.NOSE_CONFIG, options.NOSE_WEIGHTS, options.ARCFACE_WEIGHTS)
+        )
+        if options.IDENTITY_WEIGHTS:
+            model_files.append(options.IDENTITY_WEIGHTS)
     namespace = pipeline_namespace(
         model_files,
         {
+            "identity_backend": args.backend,
+            "onnx_provider": args.onnx_provider if args.backend == "onnx" else None,
             "nose_prior": options.NOSE_PRIOR,
             "face_prior": options.FACE_PRIOR,
             "nose_size": list(options.NOSE_SIZE),
@@ -176,7 +205,27 @@ def main() -> None:
         else:
             results[path] = descriptors
 
-    pipeline = build_multimodal_pipeline(cfg, device=args.device) if missing else None
+    backend_info = {
+        "backend": args.backend,
+        "provider": args.onnx_provider if args.backend == "onnx" else str(args.device),
+        "model": str(onnx_model) if args.backend == "onnx" else None,
+        "session_loaded": False,
+    }
+    pipeline = None
+    if missing and args.backend == "onnx":
+        from pet_id.onnx_runtime import build_onnx_multimodal_pipeline
+
+        pipeline = build_onnx_multimodal_pipeline(
+            cfg,
+            model_path=onnx_model,
+            provider=args.onnx_provider,
+            device=args.device,
+            warmup_batches=warmup_batches,
+        )
+        backend_info = pipeline.identity_model.backend_info() | {"session_loaded": True}
+    elif missing:
+        pipeline = build_multimodal_pipeline(cfg, device=args.device)
+        backend_info["session_loaded"] = True
     for path in missing:
         descriptors = pipeline.encode_image(path)
         results[path] = descriptors
@@ -205,6 +254,7 @@ def main() -> None:
         )
 
     summary = {
+        "identity_backend": backend_info,
         "namespace": namespace,
         "images": [
             {
@@ -219,6 +269,7 @@ def main() -> None:
     summary_path = output_root / "run_summary.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     console_summary = {
+        "identity_backend": backend_info,
         "namespace": namespace,
         "images": len(image_paths),
         "pets": sum(len(items) for items in results.values()),

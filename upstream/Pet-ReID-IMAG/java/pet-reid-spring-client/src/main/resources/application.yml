@@ -1,0 +1,40 @@
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: pet-reid-java-api
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  http:
+    clients:
+      connect-timeout: ${PET_REID_CONNECT_TIMEOUT:5s}
+      read-timeout: ${PET_REID_READ_TIMEOUT:10m}
+      imperative:
+        factory: simple
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 120MB
+
+pet-reid:
+  base-url: ${PET_REID_BASE_URL:http://127.0.0.1:8000}
+  api-key: ${PET_REID_API_KEY:}
+
+frontend:
+  cors:
+    allowed-origins: ${FRONTEND_ALLOWED_ORIGINS:}
+
+admin:
+  api-key: ${PET_REID_ADMIN_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
