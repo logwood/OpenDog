@@ -405,6 +405,7 @@ checkpoint 的隔离或删除不应作为源码提交内容；Git 中只保存�
 | Java 回归 | 已完成 | `13 tests, 0 failures, 0 errors` |
 | 前端检查 | 已完成 | `npm run build`、`npx tsc --noEmit`、`npm run lint` 均通过 |
 | 真实 CPU ONNX 比对 | 已完成 | 临时图库双分支查询正确识别 `pet-a`，`CPUExecutionProvider` |
+| 真实 HTTP 全链路 | 已完成 | 独立图库经 Java 8080 → Python ONNX 8000 完成录入、识别、历史复核、4 图批量/CSV、难例、备份/幂等恢复；37 项语义断言通过，结束后 8000/8080/3000 均释放 |
 | 破坏性清理 | 保留待人工确认 | 本轮没有移动或删除 checkpoint、数据、图库、压缩包 |
 
 注意：第 5、6、8 阶段中涉及永久删除的勾选项保持未选中是有意的；需要人工确认后再执行。后续重复运行 `scripts/generate_workspace_metadata.py` 不会仅因时间戳改写 `models/registry.json`。

@@ -41,6 +41,10 @@ Phase B 的 `test_data.csv` 仍然没有隐藏标签，所以本地只能生成 
 .\scripts\pet-reid-stack.ps1 status
 .\stop-pet-reid.cmd
 
+# 真实 HTTP 全链路验收：独立临时图库，结束后自动停服
+.\scripts\test-live-stack.ps1 -Provider cpu
+# CUDA 版：.\scripts\test-live-stack.ps1 -Provider cuda
+
 # 快速验证 AMP 训练、AUC、checkpoint（约 1 分钟）
 .\scripts\run_modern_pipeline.ps1 -Mode Smoke
 
@@ -85,6 +89,7 @@ FastReID 仍会在各自 `OUTPUT_DIR/log.txt` 保存框架日志；`-LogFile` �
 - `scripts/prepare_upstream_assets.py`：Windows 安全解压、文件名映射和固定验证划分；
 - `scripts/run_modern_pipeline.ps1`：训练/恢复/最终训练/Phase B 一键入口；
 - `scripts/benchmark_latent_workspace.py`：baseline/latent 同机 batch-28 资源 A/B；
+- `scripts/test-live-stack.ps1`：隔离图库的 Java → Python ONNX → Web 全链路验收；
 - `scripts/fuse_and_score.py`：带自测的四分支融合与 pair 打分；
 - `scripts/make_pair_contact_sheet.py`：从无标签 Phase B 分数生成高/低相似 pair 定性对比图；
 - `docs/IMPROVEMENT_LEDGER_CN.md`：作者代码疑点、必要复现偏离和后续实验账本；

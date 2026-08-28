@@ -156,6 +156,24 @@ Full regression suite:
 & $Python -m unittest discover -s tests -v
 ```
 
+### Real Java -> Python -> web stack test
+
+From the workspace root, the following command creates a new isolated gallery
+under `artifacts/runs/live-stack-e2e/<run-id>/`, starts the CPU ONNX service,
+Java gateway and frontend, exercises enrollment/identification/history/review,
+administrator batches/CSV/hard cases and gallery backup/merge-restore, then
+always stops the three services in `finally`:
+
+```powershell
+.\scripts\test-live-stack.ps1 -Provider cpu
+```
+
+Use `-Provider cuda` for the CUDA execution provider. The command refuses to
+reuse an existing run directory or an already-running stack, so it cannot
+silently test or modify the production gallery. The JSON report, batch CSV
+and gallery ZIP remain in that run directory for inspection. The default test
+images come from the prepared DogFaceNet alignment dataset.
+
 Real ONNX/CUDA smoke test after starting the server:
 
 ```powershell

@@ -4,4 +4,6 @@ uvicorn[standard]==0.52.4
 python-multipart==0.0.32
 # Required only by TestClient and tools/smoke_test_pet_api.py.
 httpx==0.28.1
+# Required by scripts/smoke_test_live_stack.py for real Java -> Python HTTP checks.
+requests==2.34.2
 
