@@ -7,7 +7,9 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import re
+import subprocess
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,16 +23,44 @@ SELECTED_ROOT = WORKSPACE_ROOT / "models" / "selected"
 PRETRAINED_ROOT = WORKSPACE_ROOT / "models" / "pretrained"
 REPORTS_ROOT = WORKSPACE_ROOT / "artifacts" / "reports"
 SNAPSHOT_HASHES = (
-    WORKSPACE_ROOT
-    / "archive"
-    / "git"
-    / "2026-08-28"
-    / "model-archive-sha256.csv"
+    WORKSPACE_ROOT / "archive" / "git" / "2026-08-28" / "model-archive-sha256.csv"
 )
 CHECKPOINT_SUFFIXES = {".pth", ".pt", ".ckpt", ".onnx", ".safetensors"}
+LEGACY_RUN_INVENTORY = REPORTS_ROOT / "legacy_run_inventory.json"
+
+METRIC_FILE_TOKENS = (
+    "metric",
+    "summary",
+    "result",
+    "report",
+    "eval",
+    "validation",
+    "blind",
+    "selection",
+    "lock",
+)
+METRIC_KEY_TOKENS = (
+    "auc",
+    "accuracy",
+    "top1",
+    "top_1",
+    "top5",
+    "top_5",
+    "precision",
+    "recall",
+    "f1",
+    "map",
+    "loss",
+    "margin",
+)
 
 
 PURPOSES = {
+    "dogfacenet_semantic_v3_bifor_lowrank_v1": (
+        "research-candidate",
+        "Validated Semantic V3 plus 8% BIFOR body-fusion candidate; not the "
+        "default deployment and requires a separately encoded gallery.",
+    ),
     "dogfacenet_semantic_v3_v1": (
         "production",
         "Default 800-class Semantic V3 joint embedding used by the API.",
@@ -110,9 +140,37 @@ def write_json(path: Path, payload: Any) -> None:
     )
 
 
+def write_stable_generated_json(path: Path, payload: dict[str, Any]) -> bool:
+    """Write generated JSON without changing its timestamp or mtime needlessly."""
+
+    previous: dict[str, Any] | None = None
+    if path.is_file():
+        try:
+            candidate = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            candidate = None
+        if isinstance(candidate, dict):
+            previous = candidate
+    if previous is not None:
+        previous_body = dict(previous)
+        previous_timestamp = previous_body.pop("generated_at_utc", None)
+        current_body = dict(payload)
+        current_body.pop("generated_at_utc", None)
+        if previous_body == current_body and isinstance(previous_timestamp, str):
+            payload["generated_at_utc"] = previous_timestamp
+            if payload == previous:
+                return False
+    write_json(path, payload)
+    return True
+
+
 def normalize_metadata_path(value: str) -> str:
     slash = value.replace("\\", "/")
     lowered = slash.casefold()
+    workspace_marker = WORKSPACE_ROOT.as_posix().rstrip("/") + "/"
+    if lowered.startswith(workspace_marker.casefold()):
+        slash = slash[len(workspace_marker) :]
+        lowered = slash.casefold()
     marker = "/upstream/pet-reid-imag/"
     if marker in lowered:
         slash = slash[lowered.index(marker) + len(marker) :]
@@ -140,7 +198,10 @@ def normalize_metadata_path(value: str) -> str:
         ("models/", "models/selected/"),
         ("configs/", "src/Pet-ReID-IMAG/configs/"),
         ("pretrain/", "models/pretrained/"),
-        ("data/local_pet_gallery_v1/", "data/processed/pet-reid-imag/local_pet_gallery_v1/"),
+        (
+            "data/local_pet_gallery_v1/",
+            "data/processed/pet-reid-imag/local_pet_gallery_v1/",
+        ),
         ("data/", "data/processed/pet-reid-imag/"),
         (
             "third_party/AnyFace/yolov5-face/weights/",
@@ -272,7 +333,9 @@ def refresh_local_gallery_manifest() -> dict[str, Any]:
         source = str(record.get("source_path", "")).replace("\\", "/")
         source_lower = source.casefold()
         if workspace_marker in source_lower:
-            source = source[source_lower.index(workspace_marker) + len(workspace_marker) :]
+            source = source[
+                source_lower.index(workspace_marker) + len(workspace_marker) :
+            ]
         if source.startswith("1/"):
             updated_source = "data/local_gallery/local-1/" + source[2:]
         elif source.startswith("2/"):
@@ -356,6 +419,472 @@ def read_run_metrics(directory: Path) -> dict[str, float]:
                 continue
             values[key] = max(float(value), values.get(key, float("-inf")))
     return dict(sorted(values.items())[:12])
+
+
+def _collect_numeric_metrics(
+    value: Any,
+    prefix: str,
+    output: dict[str, float],
+    *,
+    limit: int = 48,
+) -> None:
+    if len(output) >= limit:
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            child = f"{prefix}.{key}" if prefix else str(key)
+            _collect_numeric_metrics(item, child, output, limit=limit)
+            if len(output) >= limit:
+                return
+        return
+    if isinstance(value, list):
+        for item in value[:100]:
+            _collect_numeric_metrics(item, prefix, output, limit=limit)
+            if len(output) >= limit:
+                return
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return
+    key = prefix.rsplit(".", 1)[-1].casefold()
+    number = float(value)
+    if not math.isfinite(number) or not any(
+        token in key for token in METRIC_KEY_TOKENS
+    ):
+        return
+    output.setdefault(prefix, number)
+
+
+def read_legacy_metric_evidence(directory: Path) -> tuple[dict[str, float], list[str]]:
+    metrics = read_run_metrics(directory)
+    candidates = sorted(
+        path
+        for path in directory.rglob("*.json")
+        if "manifest" not in path.name.casefold()
+        and any(token in path.name.casefold() for token in METRIC_FILE_TOKENS)
+    )
+    for path in candidates:
+        try:
+            if path.stat().st_size > 16 * 1024 * 1024:
+                continue
+            payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        discovered: dict[str, float] = {}
+        _collect_numeric_metrics(payload, path.stem, discovered)
+        for key, value in discovered.items():
+            metrics.setdefault(key, value)
+            if len(metrics) >= 48:
+                break
+        if len(metrics) >= 48:
+            break
+    return dict(sorted(metrics.items())), [relative(path) for path in candidates]
+
+
+def legacy_config_files(directory: Path) -> list[dict[str, Any]]:
+    paths = sorted(
+        path
+        for path in directory.rglob("*")
+        if path.is_file()
+        and path.suffix.casefold() in {".yaml", ".yml"}
+        and ("config" in path.name.casefold() or path.name == "resolved_config.yaml")
+    )
+    return [
+        {
+            "path": relative(path),
+            "sha256": sha256_file(path),
+        }
+        for path in paths
+    ]
+
+
+def legacy_seed(configs: list[dict[str, Any]]) -> int | None:
+    for record in configs:
+        path = WORKSPACE_ROOT / record["path"]
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        match = re.search(r"(?mi)^\s*SEED\s*:\s*(-?\d+)\s*$", text)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def existing_legacy_manifests(directory: Path) -> list[str]:
+    return [
+        relative(path)
+        for path in sorted(directory.rglob("*.json"))
+        if "manifest" in path.name.casefold()
+    ]
+
+
+def read_standard_legacy_manifest(directory: Path) -> dict[str, Any]:
+    path = directory / "run_manifest.json"
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def choose_legacy_checkpoint(
+    directory: Path, checkpoints: list[dict[str, Any]]
+) -> tuple[str | None, str | None]:
+    if not checkpoints:
+        return None, None
+    by_name = {Path(item["path"]).name: item for item in checkpoints}
+    pointer = directory / "last_checkpoint"
+    if pointer.is_file():
+        try:
+            pointed_name = Path(pointer.read_text(encoding="utf-8").strip()).name
+        except OSError:
+            pointed_name = ""
+        if pointed_name in by_name:
+            return by_name[pointed_name]["path"], "legacy last_checkpoint pointer"
+    for role, basis in (
+        ("best", "explicit model_best checkpoint"),
+        ("final", "explicit final checkpoint"),
+        ("recent", "latest recovery checkpoint"),
+        ("release", "packaged release checkpoint"),
+    ):
+        matches = sorted(item["path"] for item in checkpoints if item["role"] == role)
+        if matches:
+            return matches[0], basis
+
+    def progress(item: dict[str, Any]) -> tuple[int, int, str]:
+        epoch = item.get("epoch")
+        step = item.get("step")
+        numbers = [int(value) for value in re.findall(r"\d+", Path(item["path"]).stem)]
+        fallback = max(numbers, default=-1)
+        return (
+            int(epoch) if epoch is not None else -1,
+            int(step) if step is not None else fallback,
+            item["path"],
+        )
+
+    selected = max(checkpoints, key=progress)
+    return selected["path"], "inferred latest historical checkpoint"
+
+
+def legacy_run_purpose(run_id: str, checkpoints: list[dict[str, Any]]) -> str:
+    lowered = run_id.casefold()
+    if "smoke" in lowered:
+        return "smoke"
+    if any(token in lowered for token in ("eval", "validation", "blind", "protocol")):
+        return "evaluation"
+    if checkpoints:
+        return "training"
+    return "historical-artifact"
+
+
+def legacy_run_times(directory: Path) -> tuple[str | None, str | None]:
+    timestamps: list[float] = []
+    for path in directory.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            timestamps.append(path.stat().st_mtime)
+        except OSError:
+            continue
+    if not timestamps:
+        return None, None
+    return (
+        datetime.fromtimestamp(min(timestamps), timezone.utc).isoformat(),
+        datetime.fromtimestamp(max(timestamps), timezone.utc).isoformat(),
+    )
+
+
+def build_legacy_run_record(
+    directory: Path, checkpoints: list[dict[str, Any]]
+) -> dict[str, Any]:
+    configs = legacy_config_files(directory)
+    metrics, metric_files = read_legacy_metric_evidence(directory)
+    manifests = existing_legacy_manifests(directory)
+    standard = read_standard_legacy_manifest(directory)
+    selected, selection_basis = choose_legacy_checkpoint(directory, checkpoints)
+    started_at, ended_at = legacy_run_times(directory)
+    status = standard.get("status")
+    if not isinstance(status, str) or not status:
+        if "failed" in directory.name.casefold():
+            status = "failed"
+        elif any(item["role"] in {"best", "final", "release"} for item in checkpoints):
+            status = "completed"
+        else:
+            status = "historical-unknown"
+    command = standard.get("command")
+    git_value = standard.get("git")
+    git_commit = git_value.get("commit") if isinstance(git_value, dict) else None
+    seed = standard.get("seed")
+    if not isinstance(seed, int):
+        seed = legacy_seed(configs)
+    checkpoint_items = [
+        {
+            key: item.get(key)
+            for key in (
+                "path",
+                "size_bytes",
+                "sha256",
+                "role",
+                "epoch",
+                "step",
+                "suggested_action",
+                "reason",
+            )
+        }
+        for item in sorted(checkpoints, key=lambda item: item["path"])
+    ]
+    missing: list[str] = []
+    if not configs:
+        missing.append("config")
+    if not metrics and not metric_files:
+        missing.append("metrics")
+    if command is None:
+        missing.append("command")
+    if seed is None:
+        missing.append("seed")
+    if not git_commit:
+        missing.append("git.commit")
+    if checkpoints and selected is None:
+        missing.append("selected_checkpoint")
+    return {
+        "schema_version": 1,
+        "run_id": directory.name,
+        "workstream": "legacy",
+        "path": relative(directory),
+        "legacy_import": True,
+        "purpose": legacy_run_purpose(directory.name, checkpoints),
+        "status": status,
+        "observed_started_at_utc": started_at,
+        "observed_ended_at_utc": ended_at,
+        "git": {"commit": git_commit},
+        "command": command,
+        "seed": seed,
+        "configs": configs,
+        "metrics": metrics,
+        "metric_files": metric_files,
+        "existing_manifests": manifests,
+        "checkpoints": checkpoint_items,
+        "checkpoint_policy": {
+            "selected_checkpoint": selected,
+            "selection_basis": selection_basis,
+            "historical_inference": bool(
+                selected and "inferred" in (selection_basis or "")
+            ),
+        },
+        "missing_historical_fields": missing,
+    }
+
+
+def checkpoint_inventory_item(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: record.get(key)
+        for key in (
+            "path",
+            "size_bytes",
+            "sha256",
+            "role",
+            "epoch",
+            "step",
+            "suggested_action",
+            "reason",
+        )
+    }
+
+
+def validate_legacy_run_inventory(
+    payload: dict[str, Any], checkpoint_records: list[dict[str, Any]]
+) -> dict[str, int]:
+    errors: list[str] = []
+    expected_runs = {path.name for path in LEGACY_RUNS_ROOT.iterdir() if path.is_dir()}
+    runs = payload.get("runs", [])
+    actual_runs = [item.get("run_id") for item in runs]
+    if set(actual_runs) != expected_runs or len(actual_runs) != len(set(actual_runs)):
+        errors.append("legacy run directories are missing or duplicated")
+    expected_checkpoints = {
+        item["path"]
+        for item in checkpoint_records
+        if item["path"].startswith("artifacts/runs/legacy/")
+    }
+    indexed_checkpoints: set[str] = set()
+    for run in runs:
+        checkpoints = run.get("checkpoints", [])
+        checkpoint_paths = {item.get("path") for item in checkpoints}
+        indexed_checkpoints.update(
+            path for path in checkpoint_paths if isinstance(path, str)
+        )
+        selected = (run.get("checkpoint_policy") or {}).get("selected_checkpoint")
+        if checkpoint_paths and selected not in checkpoint_paths:
+            errors.append(f"{run.get('run_id')}: selected checkpoint is missing")
+        references = [
+            *(item.get("path") for item in run.get("configs", [])),
+            *run.get("metric_files", []),
+            *run.get("existing_manifests", []),
+            *checkpoint_paths,
+        ]
+        for value in references:
+            if not isinstance(value, str):
+                errors.append(f"{run.get('run_id')}: invalid metadata path")
+                continue
+            candidate = (WORKSPACE_ROOT / value).resolve()
+            try:
+                candidate.relative_to(WORKSPACE_ROOT.resolve())
+            except ValueError:
+                errors.append(f"{run.get('run_id')}: path escapes workspace: {value}")
+                continue
+            if not candidate.is_file():
+                errors.append(
+                    f"{run.get('run_id')}: referenced file is missing: {value}"
+                )
+    shared = payload.get("shared_checkpoint_artifacts", [])
+    shared_paths = {item.get("path") for item in shared if isinstance(item, dict)}
+    indexed_checkpoints.update(path for path in shared_paths if isinstance(path, str))
+    shared_selected = (payload.get("shared_checkpoint_policy") or {}).get(
+        "selected_checkpoint"
+    )
+    if shared_paths and shared_selected not in shared_paths:
+        errors.append("shared checkpoint policy does not select an indexed checkpoint")
+    for value in shared_paths:
+        if not isinstance(value, str):
+            errors.append("shared checkpoint inventory contains an invalid path")
+            continue
+        candidate = (WORKSPACE_ROOT / value).resolve()
+        try:
+            candidate.relative_to(WORKSPACE_ROOT.resolve())
+        except ValueError:
+            errors.append(f"shared checkpoint path escapes workspace: {value}")
+            continue
+        if not candidate.is_file():
+            errors.append(f"shared checkpoint file is missing: {value}")
+    if indexed_checkpoints != expected_checkpoints:
+        errors.append("legacy checkpoint inventory is incomplete")
+    if errors:
+        raise RuntimeError(
+            "legacy run inventory validation failed: " + "; ".join(errors[:20])
+        )
+    return {
+        "directories": len(runs),
+        "checkpoints": len(indexed_checkpoints),
+        "errors": 0,
+    }
+
+
+def generate_legacy_run_inventory(records: list[dict[str, Any]]) -> dict[str, Any]:
+    by_run: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        if record["path"].startswith("artifacts/runs/legacy/"):
+            if record["experiment"] != "legacy":
+                by_run[record["experiment"]].append(record)
+    shared_records = [
+        record
+        for record in records
+        if record["path"].startswith("artifacts/runs/legacy/")
+        and record["experiment"] == "legacy"
+    ]
+    runs = [
+        build_legacy_run_record(directory, by_run.get(directory.name, []))
+        for directory in sorted(LEGACY_RUNS_ROOT.iterdir())
+        if directory.is_dir()
+    ]
+    summary = {
+        "directories": len(runs),
+        "runs_with_checkpoints": sum(bool(item["checkpoints"]) for item in runs),
+        "runs_with_selected_checkpoint": sum(
+            bool(item["checkpoint_policy"]["selected_checkpoint"]) for item in runs
+        ),
+        "runs_with_existing_manifest": sum(
+            bool(item["existing_manifests"]) for item in runs
+        ),
+        "runs_with_config": sum(bool(item["configs"]) for item in runs),
+        "runs_with_metrics": sum(
+            bool(item["metrics"] or item["metric_files"]) for item in runs
+        ),
+        "runs_with_command": sum(item["command"] is not None for item in runs),
+        "runs_with_seed": sum(item["seed"] is not None for item in runs),
+        "runs_with_git_commit": sum(bool(item["git"]["commit"]) for item in runs),
+        "shared_checkpoint_artifacts": len(shared_records),
+    }
+    shared_paths = [checkpoint_inventory_item(record) for record in shared_records]
+    shared_policy = {
+        "selected_checkpoint": shared_records[0]["path"] if shared_records else None,
+        "selection_basis": (
+            "only checkpoint directly under legacy root; shared by historical evaluations"
+            if shared_records
+            else None
+        ),
+        "historical_inference": False,
+    }
+    payload = {
+        "schema_version": 1,
+        "generated_at_utc": utc_now(),
+        "scope": "artifacts/runs/legacy",
+        "policy": {
+            "kind": "centralized-retrospective-run-manifest",
+            "future_runs": "use per-run run_manifest.json",
+            "unknown_fields": "preserved as null and listed in missing_historical_fields",
+            "checkpoint_selection": (
+                "existing last_checkpoint, then best/final/recent/release, then inferred latest"
+            ),
+        },
+        "summary": summary,
+        "runs": runs,
+        "shared_checkpoint_artifacts": shared_paths,
+        "shared_checkpoint_policy": shared_policy,
+    }
+    validation = validate_legacy_run_inventory(payload, records)
+    payload["validation"] = validation
+    changed = write_stable_generated_json(LEGACY_RUN_INVENTORY, payload)
+    return {
+        "path": relative(LEGACY_RUN_INVENTORY),
+        "changed": changed,
+        **summary,
+        "validation_errors": validation["errors"],
+    }
+
+
+def verify_git_bundles() -> dict[str, Any]:
+    bundle_root = WORKSPACE_ROOT / "archive" / "git" / "2026-08-28"
+    bundles = sorted(bundle_root.rglob("*.bundle"))
+    results: list[dict[str, str]] = []
+    safe_directory = f"safe.directory={WORKSPACE_ROOT.as_posix()}"
+    for bundle in bundles:
+        completed = subprocess.run(
+            [
+                "git",
+                "-c",
+                safe_directory,
+                "-C",
+                str(WORKSPACE_ROOT),
+                "bundle",
+                "verify",
+                relative(bundle),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
+        output = "\n".join(
+            part.strip()
+            for part in (completed.stdout, completed.stderr)
+            if part.strip()
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"bundle verification failed for {relative(bundle)}: {output}"
+            )
+        log_path = (
+            bundle_root / "bundle-verify.txt"
+            if bundle.parent == bundle_root
+            else bundle.with_name(f"{bundle.stem}-bundle-verify.txt")
+        )
+        rendered = output + "\n"
+        if not log_path.is_file() or log_path.read_text(encoding="utf-8") != rendered:
+            log_path.write_text(rendered, encoding="utf-8")
+        results.append({"bundle": relative(bundle), "log": relative(log_path)})
+    return {"verified": len(results), "records": results}
 
 
 def classify_role(path: Path) -> tuple[str, int | None, int | None]:
@@ -461,7 +990,10 @@ def inventory_records() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         elif record["role"] == "final" and not any(
             token in rel.casefold() for token in ("smoke", "failed")
         ):
-            action, reason = "KEEP", "Final checkpoint without a safer replacement rule."
+            action, reason = (
+                "KEEP",
+                "Final checkpoint without a safer replacement rule.",
+            )
         elif record["role"] == "recent":
             action, reason = "KEEP", "Most recent recovery checkpoint."
         elif record["role"] in {"smoke", "failed"}:
@@ -475,13 +1007,18 @@ def inventory_records() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
                 "Intermediate diagnostic checkpoint requires experiment-owner review.",
             )
         else:
-            action, reason = "REVIEW", "Role is not documented strongly enough for automation."
+            action, reason = (
+                "REVIEW",
+                "Role is not documented strongly enough for automation.",
+            )
         record["suggested_action"] = action
         record["reason"] = reason
     return records, duplicates
 
 
-def write_checkpoint_reports(records: list[dict[str, Any]], duplicates: list[dict[str, Any]]) -> None:
+def write_checkpoint_reports(
+    records: list[dict[str, Any]], duplicates: list[dict[str, Any]]
+) -> None:
     counts = Counter(record["suggested_action"] for record in records)
     bytes_by_action = Counter()
     for record in records:
@@ -520,9 +1057,7 @@ def write_checkpoint_reports(records: list[dict[str, Any]], duplicates: list[dic
         "|---|---:|---:|",
     ]
     for action in ("KEEP", "REVIEW", "QUARANTINE"):
-        lines.append(
-            f"| {action} | {counts[action]} | {bytes_by_action[action]:,} |"
-        )
+        lines.append(f"| {action} | {counts[action]} | {bytes_by_action[action]:,} |")
     lines.extend(
         [
             "",
@@ -593,6 +1128,12 @@ def metric_summary(package: Path) -> dict[str, Any]:
             )
             if key in payload
         }
+    model_lock = package / "model_lock.json"
+    if model_lock.is_file():
+        payload = json.loads(model_lock.read_text(encoding="utf-8"))
+        validation = payload.get("validation")
+        if isinstance(validation, dict):
+            return validation
     return {}
 
 
@@ -626,7 +1167,11 @@ def generate_registry(records: list[dict[str, Any]]) -> None:
         lock = next(
             (
                 path
-                for name in ("deployment_record.json", "lock_record.json", "model_lock.json")
+                for name in (
+                    "deployment_record.json",
+                    "lock_record.json",
+                    "model_lock.json",
+                )
                 if (path := package / name).is_file()
             ),
             None,
@@ -636,7 +1181,13 @@ def generate_registry(records: list[dict[str, Any]]) -> None:
             payload = json.loads(lock.read_text(encoding="utf-8"))
             source = payload.get("source_checkpoint")
             if source is None:
-                source = payload.get("source_artifacts", {}).get("checkpoint", {}).get("path")
+                source = (
+                    payload.get("source_artifacts", {})
+                    .get("checkpoint", {})
+                    .get("path")
+                )
+            if source is None:
+                source = relative(lock)
         packages.append(
             {
                 "name": package.name,
@@ -719,14 +1270,22 @@ def generate_move_map() -> None:
         ("2", "data/local_gallery/local-2", "local-gallery"),
         ("new-images", "data/queries/inbox", "query-inbox"),
         ("DogFaceNet_alignment", "data/raw/DogFaceNet_alignment", "raw-data"),
-        ("upstream/Pet-ReID-IMAG/data", "data/processed/pet-reid-imag", "processed-data"),
+        (
+            "upstream/Pet-ReID-IMAG/data",
+            "data/processed/pet-reid-imag",
+            "processed-data",
+        ),
         ("upstream/Pet-ReID-IMAG/logs", "artifacts/runs/legacy", "legacy-runs"),
         ("logs", "artifacts/workspace_logs", "workspace-logs"),
         ("results", "artifacts/reports", "reports"),
         ("upstream/Pet-ReID-IMAG/models", "models/selected", "selected-models"),
         ("pretrain + vendor weights", "models/pretrained", "pretrained-models"),
         ("gallery databases", "data/gallery_store", "gallery-store"),
-        ("DogFaceNet_alignment.zip", "archive/downloads/DogFaceNet_alignment.zip", "download-archive"),
+        (
+            "DogFaceNet_alignment.zip",
+            "archive/downloads/DogFaceNet_alignment.zip",
+            "download-archive",
+        ),
         ("root design/repro documents", "docs", "documentation"),
     )
     output = WORKSPACE_ROOT / "archive" / "git" / "2026-08-28" / "data-moves.csv"
@@ -756,10 +1315,10 @@ def generate_move_map() -> None:
                     "category": category,
                     "destination_files": count,
                     "destination_bytes": size,
-                    "source_absent": (
-                        source_path is None or not source_path.exists()
-                    ),
-                    "verification": "destination-present" if target.exists() else "missing",
+                    "source_absent": (source_path is None or not source_path.exists()),
+                    "verification": "destination-present"
+                    if target.exists()
+                    else "missing",
                 }
             )
 
@@ -781,6 +1340,8 @@ def main() -> int:
     records, duplicates = inventory_records()
     write_checkpoint_reports(records, duplicates)
     generate_registry(records)
+    legacy_runs = generate_legacy_run_inventory(records)
+    bundles = verify_git_bundles()
     generate_move_map()
     print(
         json.dumps(
@@ -792,6 +1353,8 @@ def main() -> int:
                 "registry": relative(WORKSPACE_ROOT / "models" / "registry.json"),
                 "inventory": relative(REPORTS_ROOT / "checkpoint_inventory.json"),
                 "preview": relative(REPORTS_ROOT / "checkpoint_cleanup_preview.md"),
+                "legacy_runs": legacy_runs,
+                "git_bundles": bundles,
                 "move_map": "archive/git/2026-08-28/data-moves.csv",
             },
             ensure_ascii=False,

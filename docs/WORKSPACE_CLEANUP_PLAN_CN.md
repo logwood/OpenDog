@@ -253,14 +253,14 @@ YYYYMMDD-HHMM_<model>_<purpose>_<seed>
 
 为每个 `.pth`、`.pt`、`.ckpt`、`.onnx` 和 `.safetensors` 记录：
 
-- [ ] 路径和大小。
-- [ ] SHA-256。
+- [x] 路径和大小。
+- [x] SHA-256。
 - [ ] 所属实验和配置。
 - [ ] epoch/step。
 - [ ] 指标。
-- [ ] 角色：best、final、recent、milestone、smoke、failed、release 或 unknown。
-- [ ] 建议动作：KEEP、QUARANTINE 或 REVIEW。
-- [ ] 保留或隔离理由。
+- [x] 角色：best、final、recent、milestone、smoke、failed、release 或 unknown。
+- [x] 建议动作：KEEP、QUARANTINE 或 REVIEW。
+- [x] 保留或隔离理由。
 
 输出建议为：
 
@@ -314,9 +314,9 @@ artifacts/reports/checkpoint_cleanup_preview.md
 
 在确认没有进程使用后，可清理：
 
-- [ ] `__pycache__/`
-- [ ] `.pytest_cache/`
-- [ ] `.ruff_cache/`
+- [x] `__pycache__/`
+- [x] `.pytest_cache/`
+- [x] `.ruff_cache/`
 - [ ] 临时 contact sheet。
 - [ ] 已被正式报告替代的中间导出。
 
@@ -328,28 +328,28 @@ artifacts/reports/checkpoint_cleanup_preview.md
 
 ### 9.1 Git 验证
 
-- [ ] 全工作区只存在一个有效 `.git`。
-- [ ] `git status` 只显示计划中的迁移和修改。
-- [ ] `git ls-files` 中没有图片、数据集、模型、日志或密钥。
-- [ ] `.gitignore` 覆盖 `data/`、`artifacts/`、`archive/` 和模型格式。
+- [x] 全工作区只存在一个有效 `.git`。
+- [x] `git status` 只显示计划中的迁移和修改。
+- [x] `git ls-files` 中没有图片、数据集、模型、日志或密钥。
+- [x] `.gitignore` 覆盖 `data/`、`artifacts/`、`archive/` 和模型格式。
 
 ### 9.2 最小功能验证
 
-- [ ] Python 关键模块能够 import。
-- [ ] 配置文件能够加载。
-- [ ] 数据集能够读取至少一个 batch。
-- [ ] gallery 构建或验证流程能够读取新目录。
-- [ ] 一次最小推理成功。
-- [ ] 一次训练 smoke 成功保存并恢复 checkpoint。
-- [ ] ONNX/API/Java 中实际仍需保留的工作流通过各自 smoke test。
-- [ ] README 中至少一条快速入口命令能够原样运行。
+- [x] Python 关键模块能够 import。
+- [x] 配置文件能够加载。
+- [x] 数据集能够读取至少一个 batch。
+- [x] gallery 构建或验证流程能够读取新目录。
+- [x] 一次最小推理成功。
+- [x] 一次训练 smoke 成功保存并恢复 checkpoint。
+- [x] ONNX/API/Java 中实际仍需保留的工作流通过各自 smoke test。
+- [x] README 中至少一条快速入口命令能够原样运行。
 
 ### 9.3 模型验证
 
-- [ ] 所有 KEEP 模型文件存在且 SHA-256 匹配。
-- [ ] selected 模型能够加载。
+- [x] 所有 KEEP 模型文件存在且 SHA-256 匹配。
+- [x] selected 模型能够加载。
 - [ ] 隔离 checkpoint 不再被配置或文档引用。
-- [ ] `models/registry.json` 能定位选定模型及其来源。
+- [x] `models/registry.json` 能定位选定模型及其来源。
 
 ## 10. 提交建议
 
@@ -365,15 +365,15 @@ checkpoint 的隔离或删除不应作为源码提交内容；Git 中只保存�
 
 ## 11. 完成标准
 
-- [ ] 只有一套 Git 管理源码。
-- [ ] 根目录只保留明确的项目入口和分类目录。
-- [ ] `1/`、`2/`、`new-images/` 等无语义名称已消失。
-- [ ] 数据、模型、实验产物和源码完全分区。
+- [x] 只有一套 Git 管理源码。
+- [x] 根目录只保留明确的项目入口和分类目录。
+- [x] `1/`、`2/`、`new-images/` 等无语义名称已消失。
+- [x] 数据、模型、实验产物和源码完全分区。
 - [ ] 每个保留模型都有用途、配置、指标、来源和 SHA-256。
 - [ ] 每个实验都能由 manifest 找到配置、指标和选中 checkpoint。
-- [ ] 关键 smoke test 通过。
+- [x] 关键 smoke test 通过。
 - [ ] 所有永久删除均有清单、有验证结果并经过人工确认。
-- [ ] `CHECKPOINT_RETENTION.md` 和 README 已反映新结构。
+- [x] `CHECKPOINT_RETENTION.md` 和 README 已反映新结构。
 
 ## 12. 推荐实际执行顺序
 
@@ -399,13 +399,16 @@ checkpoint 的隔离或删除不应作为源码提交内容；Git 中只保存�
 | 外层 Git 唯一所有权 | 已完成 | 工作区递归只剩根目录 `.git`；内层仓库均有 bundle 和 quarantine 备份 |
 | 源码/数据/模型/产物分区 | 已完成 | `src/`、`data/`、`models/`、`artifacts/`、`archive/` |
 | 旧路径兼容 | 已完成 | `src/Pet-ReID-IMAG/pet_id/workspace_paths.py`，含旧绝对路径和 SAM2 Hydra 路径转换 |
-| checkpoint 清单 | 已完成 | `artifacts/reports/checkpoint_inventory.json`（63 个文件、7 组重复） |
+| checkpoint 清单 | 已完成 | `artifacts/reports/checkpoint_inventory.json`（65 个文件、7 组重复；KEEP 46 / REVIEW 12 / QUARANTINE 候选 7） |
+| legacy 运行清单 | 已完成 | `artifacts/reports/legacy_run_inventory.json` 覆盖 160 个目录和全部 48 个 legacy checkpoint；28 个含 checkpoint 的目录均有选中项，验证错误 0；历史缺失字段明确标记而不伪造 |
+| Git bundle 恢复验证 | 已完成 | 5/5 bundle 通过 `git bundle verify`，包含补齐的 `archive/git/2026-08-28/nested/BIFOR-bundle-verify.txt` |
+| 可再生成缓存 | 已完成 | 删除 34 个 `__pycache__` / `.pytest_cache` / `.ruff_cache` 目录，共 290 个文件、2,996,424 字节；复核剩余 0，可由工具自动重建 |
 | 快速启动 | 已完成 | CPU ONNX + Java + 前端 3000 端口启动/停止闭环通过 |
-| Python 回归 | 已完成 | `97 tests, OK` |
+| Python 回归 | 已完成 | `100 tests, OK`（含 BIFOR 联合 ONNX 边界、动态 batch 和目标犬框选择） |
 | Java 回归 | 已完成 | `13 tests, 0 failures, 0 errors` |
 | 前端检查 | 已完成 | `npm run build`、`npx tsc --noEmit`、`npm run lint` 均通过 |
 | 真实 CPU ONNX 比对 | 已完成 | 临时图库双分支查询正确识别 `pet-a`，`CPUExecutionProvider` |
 | 真实 HTTP 全链路 | 已完成 | 独立图库经 Java 8080 → Python ONNX 8000 完成录入、识别、历史复核、4 图批量/CSV、难例、备份/幂等恢复；37 项语义断言通过，结束后 8000/8080/3000 均释放 |
 | 破坏性清理 | 保留待人工确认 | 本轮没有移动或删除 checkpoint、数据、图库、压缩包 |
 
-注意：第 5、6、8 阶段中涉及永久删除的勾选项保持未选中是有意的；需要人工确认后再执行。后续重复运行 `scripts/generate_workspace_metadata.py` 不会仅因时间戳改写 `models/registry.json`。
+注意：第 5、6、8 阶段中涉及隔离或永久删除的勾选项保持未选中是有意的；需要人工确认后再执行。旧实验无法可靠恢复的 command、seed、Git commit 或指标在集中清单中保持空值，不伪造 manifest。连续运行 `scripts/generate_workspace_metadata.py` 时，legacy 清单内容与 mtime 均保持幂等，`models/registry.json` 也不会仅因时间戳产生内容差异。

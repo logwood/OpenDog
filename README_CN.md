@@ -45,6 +45,9 @@ Phase B 的 `test_data.csv` 仍然没有隐藏标签，所以本地只能生成 
 .\scripts\test-live-stack.ps1 -Provider cpu
 # CUDA 版：.\scripts\test-live-stack.ps1 -Provider cuda
 
+# 非破坏性刷新模型、checkpoint、legacy 运行和 Git bundle 审计元数据
+D:\CondaData\envs\torch312\python.exe .\scripts\generate_workspace_metadata.py
+
 # 快速验证 AMP 训练、AUC、checkpoint（约 1 分钟）
 .\scripts\run_modern_pipeline.ps1 -Mode Smoke
 
@@ -83,6 +86,12 @@ FastReID 仍会在各自 `OUTPUT_DIR/log.txt` 保存框架日志；`-LogFile` �
 
 完整环境创建、配置矩阵和输出说明见 `docs/REPRO_GUIDE_CN.md`。作者代码疑点、当前复现偏离和复现完成后的消融顺序统一记录在 `docs/IMPROVEMENT_LEDGER_CN.md`，避免方法改进污染复现基线。
 
+默认应用仍使用 Semantic V3。另有经过锁定协议验证的
+`dogfacenet_semantic_v3_bifor_lowrank_v1` 研究候选，把 8% BIFOR 身体信息与
+Semantic V3 联合到一个 512 维 ONNX 描述符中；它不是默认部署，而且坐标空间
+不同，不能复用现有图库。原图推理、API 参数和验证证据见
+`models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/README.md`。
+
 ## 关键内容
 
 - `environment.repro.yml` / `requirements-modern.txt`：已验证的现代 CUDA 环境锁；
@@ -90,12 +99,14 @@ FastReID 仍会在各自 `OUTPUT_DIR/log.txt` 保存框架日志；`-LogFile` �
 - `scripts/run_modern_pipeline.ps1`：训练/恢复/最终训练/Phase B 一键入口；
 - `scripts/benchmark_latent_workspace.py`：baseline/latent 同机 batch-28 资源 A/B；
 - `scripts/test-live-stack.ps1`：隔离图库的 Java → Python ONNX → Web 全链路验收；
+- `scripts/generate_workspace_metadata.py`：非破坏性生成模型 registry、checkpoint 清单、legacy 运行清单并验证 Git bundle；
 - `scripts/fuse_and_score.py`：带自测的四分支融合与 pair 打分；
 - `scripts/make_pair_contact_sheet.py`：从无标签 Phase B 分数生成高/低相似 pair 定性对比图；
 - `docs/IMPROVEMENT_LEDGER_CN.md`：作者代码疑点、必要复现偏离和后续实验账本；
 - `src/Pet-ReID-IMAG/configs/modern_*.yaml`：8GB GPU 配置；
 - `src/Pet-ReID-IMAG/pet_id/`：完整数据集、验证器、特征导出和训练入口；
 - `docs/LATENT_WORKSPACE_DESIGN_CN.md`：第一版结构创新的冻结设计、实现边界和验收结果；
+- `docs/CHECKPOINT_RETENTION.md`：65 个模型/checkpoint 的保留状态、集中式 legacy 清单和人工隔离边界；
 - `models/pretrained/resnest101-22405ba7.pth`、`models/pretrained/resnest200-75117900.pth`：已下载并通过官方 SHA-256 前缀校验。
 
 已生成的定性样例位于 `artifacts/reports/phase_b_pair_examples.png`：最高分三对在视觉上高度一致，最低分三对明显不同；它是很好的 sanity check，但没有隐藏真值，不能换算为 accuracy/AUC。

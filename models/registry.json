@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-08-28T04:07:37.603909+00:00",
+  "generated_at_utc": "2026-08-28T15:30:54.546018+00:00",
   "default_deployment": {
     "model_package": "dogfacenet_semantic_v3_v1",
     "config": "models/selected/dogfacenet_semantic_v3_v1/config.yaml",
@@ -110,6 +110,72 @@
           "path": "models/selected/dogfacenet_joint800_v1/onnx/validation.json",
           "bytes": 4174,
           "sha256": "37cd54e6b414f32ae5ec296769c83c2f86c659778d3eaf1c2558701d922bf89a"
+        }
+      ]
+    },
+    {
+      "name": "dogfacenet_semantic_v3_bifor_lowrank_v1",
+      "role": "research-candidate",
+      "purpose": "Validated Semantic V3 plus 8% BIFOR body-fusion candidate; not the default deployment and requires a separately encoded gallery.",
+      "config": {
+        "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/config.yaml",
+        "sha256": "056adeca9bd94298a7d16e57fdfd499b1226a0d69486e9e4be0c8b20ffc6be63"
+      },
+      "source": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/model_lock.json",
+      "metrics": {
+        "pytorch_onnx_max_abs_error": 2.0116567611694336e-07,
+        "minimum_embedding_cosine": 1.0,
+        "nearest_neighbor_top1_consistent": true,
+        "protocol_20_identity_fp32": {
+          "gallery_rank1": 0.9666666666666667,
+          "leave_one_out_rank1": 0.98,
+          "auc": 0.9986549707602339,
+          "report": "artifacts/runs/bifor/onnx_protocol_validation_v1/evaluation.json",
+          "report_sha256": "48f8a46f5c3aaffe365773715ddcf21977d1399d8b7f37f7eed001887437be71"
+        },
+        "raw_image_runtime_20_identity": {
+          "gallery_rank1": 0.9666666666666667,
+          "leave_one_out_rank1": 0.97,
+          "auc": 0.9986111111111111,
+          "report": "artifacts/runs/bifor/onnx_raw_runtime_validation_v1/evaluation.json",
+          "report_sha256": "a275f277d208f297b98db0173ff5e9034ac3c0f593d5297b637647424d92b076"
+        },
+        "api_smoke": {
+          "passed": true,
+          "predicted_pet_id": "359936",
+          "expected_pet_id": "359936",
+          "report": "artifacts/runs/bifor/onnx_api_smoke_v1/report.json",
+          "report_sha256": "a199fbbd0e739948ba337e0adebd6132fda89bf54ae35d09e7c42c94e0bbb24a"
+        }
+      },
+      "evidence": [
+        "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/model_lock.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/config.yaml",
+          "bytes": 1654,
+          "sha256": "056adeca9bd94298a7d16e57fdfd499b1226a0d69486e9e4be0c8b20ffc6be63"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/model_lock.json",
+          "bytes": 2822,
+          "sha256": "640053c2707d20214befd2e918aaab4571f07a9b448633541c520f5d484a2ae7"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/metadata.json",
+          "bytes": 4609,
+          "sha256": "77b6fe3657da6e0ae231413541d07503998819006141a20840b5e8ecc6d8652b"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/pet_embedding.onnx",
+          "bytes": 500020674,
+          "sha256": "63f53f32e4c9ad0c26d8ab3d91cdbfb462e920b66424656a22ff62d02b209c22"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/validation.json",
+          "bytes": 4210,
+          "sha256": "3217663a68d5533e43e95f8fca7b577c47b970d8d0750eacfe90a80e94dc630b"
         }
       ]
     },
@@ -383,6 +449,13 @@
       "path": "models/pretrained/BIFOR/f2/bifor.pth",
       "bytes": 197942210,
       "sha256": "cceb7c464ab6fe7346a8627fabf3452fce1d3815a7d95f17fcb279036452b08c",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/body_detection/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth",
+      "bytes": 175221657,
+      "sha256": "dd69338a24b8d7381807e247652bdc356325bcbaf1cd3e092e00e0a1a58706bf",
       "purpose": "Required pretrained geometry or identity encoder weight.",
       "source": "SOURCES.md"
     },
