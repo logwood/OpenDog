@@ -137,6 +137,7 @@ class LiveStackSmoke:
             "python_url": args.python_url,
             "frontend_url": args.frontend_url,
             "expected_provider": args.expected_provider,
+            "expected_fusion": args.expected_fusion,
             "run_dir": str(args.run_dir),
             "gallery_dir": str(args.gallery_dir),
             "steps": self.steps,
@@ -307,8 +308,8 @@ class LiveStackSmoke:
             backend.get("provider"),
         )
         self.record_check(
-            "gateway reports Semantic V3 fusion",
-            backend.get("fusion_mode") == "semantic_residual_v3",
+            "gateway reports expected fusion",
+            backend.get("fusion_mode") == args.expected_fusion,
             {
                 "fusion_mode": backend.get("fusion_mode"),
                 "embedding_dim": backend.get("embedding_dim"),
@@ -319,6 +320,28 @@ class LiveStackSmoke:
             backend.get("embedding_dim") == 512,
             backend.get("embedding_dim"),
         )
+        if args.expected_agent:
+            agent = backend.get("agent") or {}
+            experts = backend.get("experts") or {}
+            self.record_check(
+                "gateway reports expected evidence Agent",
+                agent.get("version") == args.expected_agent
+                and "megadescriptor_b224" in experts
+                and experts["megadescriptor_b224"].get("feature_dim") == 1024,
+                {"agent": agent, "experts": experts},
+            )
+        if args.expected_fusion == "semantic_residual_v3+bifor_lowrank_v1":
+            self.record_check(
+                "gateway reports active BIFOR body runtime",
+                backend.get("backend") == "onnxruntime-bifor"
+                and float(backend.get("body_weight", 0.0)) > 0.0
+                and bool(backend.get("body_detector")),
+                {
+                    "backend": backend.get("backend"),
+                    "body_weight": backend.get("body_weight"),
+                    "body_detector": backend.get("body_detector"),
+                },
+            )
         self.report["health"] = {
             "python": python_health,
             "gateway": gateway_health,
@@ -789,6 +812,42 @@ class LiveStackSmoke:
                 "has_detection": isinstance(descriptor.get("detection"), dict),
             },
         )
+        if self.args.expected_fusion == "semantic_residual_v3+bifor_lowrank_v1":
+            body = (descriptor.get("runtime_diagnostics") or {}).get("body") or {}
+            body_score = body.get("score")
+            body_box = body.get("bbox_xyxy")
+            self.record_check(
+                "known query used a detected dog body",
+                body.get("detected") is True
+                and isinstance(body_score, (int, float))
+                and math.isfinite(float(body_score))
+                and isinstance(body_box, list)
+                and len(body_box) == 4
+                and all(
+                    isinstance(value, (int, float)) and math.isfinite(float(value))
+                    for value in body_box
+                ),
+                body,
+            )
+        if self.args.expected_agent:
+            agent = result.get("agent") or {}
+            expert_weights = agent.get("expert_weights") or {}
+            candidate_scores = (result.get("candidates") or [{}])[0].get(
+                "expert_scores"
+            ) or {}
+            self.record_check(
+                "known query includes independent Agent evidence",
+                result.get("decision") == "agent_evidence_v1"
+                and agent.get("decision") == "matched"
+                and agent.get("expert_agreement") is True
+                and set(expert_weights) == {"bifor", "megadescriptor_b224"}
+                and set(candidate_scores) == {"bifor", "megadescriptor_b224"},
+                {
+                    "decision": result.get("decision"),
+                    "agent": agent,
+                    "candidate_expert_scores": candidate_scores,
+                },
+            )
 
     def _wait_for_batch(self, batch_id: str, admin_key: str) -> dict[str, Any]:
         deadline = time.monotonic() + self.args.batch_timeout
@@ -902,6 +961,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("CPUExecutionProvider", "CUDAExecutionProvider"),
         default="CPUExecutionProvider",
     )
+    parser.add_argument(
+        "--expected-fusion",
+        choices=("semantic_residual_v3", "semantic_residual_v3+bifor_lowrank_v1"),
+        default="semantic_residual_v3",
+    )
+    parser.add_argument("--expected-agent", default="")
     parser.add_argument("--batch-name", default="live-stack smoke")
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--inference-timeout", type=float, default=180.0)

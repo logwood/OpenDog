@@ -9,6 +9,9 @@ param(
     [ValidateSet('cuda', 'cpu')]
     [string] $Provider = 'cuda',
 
+    [ValidateSet('semantic-v3', 'semantic-v3-bifor', 'agent-v1')]
+    [string] $Model = 'semantic-v3',
+
     [string] $PythonExe = $(
         if ($env:PET_REID_PYTHON) { $env:PET_REID_PYTHON }
         elseif (Test-Path -LiteralPath 'D:\CondaData\envs\torch312\python.exe') {
@@ -17,7 +20,7 @@ param(
         else { 'python' }
     ),
 
-    [string] $GalleryDir = 'data\gallery_store\pet_api_gallery_semantic_v3_v1',
+    [string] $GalleryDir = '',
 
     [int] $PythonPort = 8000,
     [int] $JavaPort = 8080,
@@ -98,6 +101,10 @@ function Get-StackStatus {
 
     $provider = if ($python) { [string] $python.backend.provider } else { '-' }
     $fusion = if ($python) { [string] $python.backend.fusion_mode } else { '-' }
+    $agent = if ($python -and $python.backend.agent) {
+        [string] $python.backend.agent.version
+    }
+    else { '-' }
     $pets = if ($java) { [string] $java.gallery.pets } else { '-' }
     $references = if ($java) { [string] $java.gallery.reference_images } else { '-' }
 
@@ -107,6 +114,7 @@ function Get-StackStatus {
         Frontend = if ($frontend) { 'ready' } else { 'offline' }
         Provider = $provider
         Fusion = $fusion
+        Agent = $agent
         Pets = $pets
         References = $references
         Ready = [bool] ($python -and $java -and $frontend)
@@ -123,6 +131,7 @@ function Show-Status {
     Write-Host ''
     Write-Host ('Provider     {0}' -f $status.Provider)
     Write-Host ('Fusion       {0}' -f $status.Fusion)
+    Write-Host ('Agent        {0}' -f $status.Agent)
     Write-Host ('Gallery      {0} pets / {1} references' -f $status.Pets, $status.References)
     Write-Host ('URL          {0}' -f $frontendUrl)
     return $status
@@ -297,19 +306,41 @@ function Start-Stack {
         'CUDAExecutionProvider'
     }
     $inferenceDevice = if ($Provider -eq 'cpu') { 'cpu' } else { 'cuda' }
+    $usesBifor = $Model -in @('semantic-v3-bifor', 'agent-v1')
+    $expectedAgent = if ($Model -eq 'agent-v1') {
+        'multi_expert_evidence_v1'
+    }
+    else { '-' }
+    $expectedFusion = if ($usesBifor) {
+        'semantic_residual_v3+bifor_lowrank_v1'
+    }
+    else {
+        'semantic_residual_v3'
+    }
+    $modelLabel = if ($Model -eq 'agent-v1') {
+        'BIFOR + MegaDescriptor Agent V1'
+    }
+    elseif ($Model -eq 'semantic-v3-bifor') {
+        'Semantic V3 + BIFOR'
+    }
+    else {
+        'Semantic V3'
+    }
 
     if ($existing.Ready) {
-        if ($existing.Provider -eq $expectedExecutionProvider) {
-            Write-Ok "All services are already ready at $frontendUrl ($expectedExecutionProvider)"
+        if ($existing.Provider -eq $expectedExecutionProvider -and
+            $existing.Fusion -eq $expectedFusion -and
+            $existing.Agent -eq $expectedAgent) {
+            Write-Ok "All services are already ready at $frontendUrl ($modelLabel / $expectedExecutionProvider)"
             if (-not $NoBrowser) { Start-Process $frontendUrl }
             return
         }
         if (Test-Path -LiteralPath $stateFile) {
-            Write-Step "Switching ONNX provider from $($existing.Provider) to $expectedExecutionProvider..."
+            Write-Step "Switching inference from $($existing.Fusion) / $($existing.Provider) to $expectedFusion / $expectedExecutionProvider..."
             Stop-Stack
         }
         else {
-            throw "Services are already running with $($existing.Provider). Stop them before selecting $Provider."
+            throw "Services are already running with $($existing.Fusion) / $($existing.Provider). Stop them before selecting $Model / $Provider."
         }
     }
     elseif (Test-Path -LiteralPath $stateFile) {
@@ -320,18 +351,48 @@ function Start-Stack {
     New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
     $resolvedPython = Resolve-Executable $PythonExe 'Python interpreter'
 
-    $config = Join-Path $workspaceRoot 'models\selected\dogfacenet_semantic_v3_v1\config.yaml'
     $weights = Join-Path $workspaceRoot 'models\selected\dogfacenet_semantic_v3_v1\model_final.pth'
-    $onnxModel = Join-Path $workspaceRoot 'models\selected\dogfacenet_semantic_v3_v1\onnx\pet_embedding.onnx'
-    $seedGallery = Join-Path $workspaceRoot 'models\selected\local_pet_gallery_semantic_v3_onnx_v1\gallery_model.json'
-    $resolvedGallery = Resolve-RepoPath $GalleryDir
+    $usingDefaultGallery = [string]::IsNullOrWhiteSpace($GalleryDir)
+    if ($usesBifor) {
+        $config = Join-Path $workspaceRoot 'models\selected\dogfacenet_semantic_v3_bifor_lowrank_v1\config.yaml'
+        $onnxModel = Join-Path $workspaceRoot 'models\selected\dogfacenet_semantic_v3_bifor_lowrank_v1\onnx\pet_embedding.onnx'
+        $bodyDetector = Join-Path $workspaceRoot 'models\pretrained\body_detection\fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth'
+        $identityBackend = 'onnx-bifor'
+        $seedGallery = $null
+        $selectedGalleryDir = if ($usingDefaultGallery) {
+            if ($Model -eq 'agent-v1') {
+                'data\gallery_store\pet_api_gallery_agent_v1'
+            }
+            else {
+                'data\gallery_store\pet_api_gallery_semantic_v3_bifor_lowrank_v1'
+            }
+        }
+        else { $GalleryDir }
+    }
+    else {
+        $config = Join-Path $workspaceRoot 'models\selected\dogfacenet_semantic_v3_v1\config.yaml'
+        $onnxModel = Join-Path $workspaceRoot 'models\selected\dogfacenet_semantic_v3_v1\onnx\pet_embedding.onnx'
+        $bodyDetector = $null
+        $identityBackend = 'onnx'
+        $seedGallery = Join-Path $workspaceRoot 'models\selected\local_pet_gallery_semantic_v3_onnx_v1\gallery_model.json'
+        $selectedGalleryDir = if ($usingDefaultGallery) {
+            'data\gallery_store\pet_api_gallery_semantic_v3_v1'
+        }
+        else { $GalleryDir }
+    }
+    $resolvedGallery = Resolve-RepoPath $selectedGalleryDir
     $javaDir = Join-Path $sourceRoot 'java\pet-reid-spring-client'
     $frontendDir = Join-Path $sourceRoot 'frontend\pet-reid-web'
 
-    Assert-File $config 'Semantic V3 config'
+    Assert-File $config "$modelLabel config"
     Assert-File $weights 'Semantic V3 weights'
-    Assert-File $onnxModel 'Semantic V3 ONNX model'
-    Assert-File $seedGallery 'Seed gallery model'
+    Assert-File $onnxModel "$modelLabel ONNX model"
+    if ($bodyDetector) { Assert-File $bodyDetector 'BIFOR body detector' }
+    if ($seedGallery) { Assert-File $seedGallery 'Seed gallery model' }
+    if ($usesBifor -and $usingDefaultGallery -and
+        -not (Test-Path -LiteralPath (Join-Path $resolvedGallery 'gallery.sqlite3'))) {
+        throw "The migrated $modelLabel Gallery is missing: $resolvedGallery."
+    }
     $javaJar = Ensure-JavaJar $javaDir
     $npm = Ensure-FrontendDependencies $frontendDir
     New-Item -ItemType Directory -Force -Path $resolvedGallery | Out-Null
@@ -368,14 +429,14 @@ function Start-Stack {
         $pythonHealth = Get-Json "$pythonUrl/health"
         if (-not $pythonHealth) {
             if (Test-TcpPort $PythonPort) { throw "Port $PythonPort is already occupied by another process." }
-            Write-Step "Starting $($Provider.ToUpperInvariant()) ONNX inference (model loading can take about one minute)..."
+            Write-Step "Starting $modelLabel on $($Provider.ToUpperInvariant()) (model loading can take about one minute)..."
             $pythonOut = Join-Path $runtimeDir 'python.stdout.log'
             $pythonErr = Join-Path $runtimeDir 'python.stderr.log'
             $pythonArgs = @(
                 'tools\serve_pet_api.py',
                 '--host', '127.0.0.1',
                 '--port', [string] $PythonPort,
-                '--backend', 'onnx',
+                '--backend', $identityBackend,
                 '--device', $inferenceDevice,
                 '--onnx-provider', $Provider,
                 '--config-file', $config,
@@ -383,7 +444,19 @@ function Start-Stack {
                 '--onnx-model', $onnxModel,
                 '--storage-dir', $resolvedGallery
             )
-            if (-not (Test-Path -LiteralPath (Join-Path $resolvedGallery 'gallery.sqlite3'))) {
+            if ($bodyDetector) {
+                $pythonArgs += @('--body-detector', $bodyDetector)
+            }
+            if ($Model -eq 'agent-v1') {
+                $megaDescriptor = Join-Path $workspaceRoot 'models\pretrained\megadescriptor\MegaDescriptor-B-224\pytorch_model.bin'
+                Assert-File $megaDescriptor 'MegaDescriptor-B-224 checkpoint'
+                $pythonArgs += @(
+                    '--agent',
+                    '--megadescriptor-checkpoint', $megaDescriptor,
+                    '--megadescriptor-device', $inferenceDevice
+                )
+            }
+            if ($seedGallery -and -not (Test-Path -LiteralPath (Join-Path $resolvedGallery 'gallery.sqlite3'))) {
                 $pythonArgs += @('--seed-gallery-model', $seedGallery)
             }
             $pythonProcess = Start-Process -FilePath $resolvedPython -ArgumentList $pythonArgs `
@@ -396,10 +469,17 @@ function Start-Stack {
             throw "Python API is not using $expectedExecutionProvider (reported: $($pythonHealth.backend.provider))."
         }
         if ([int] $pythonHealth.backend.embedding_dim -ne 512 -or
-            [string] $pythonHealth.backend.fusion_mode -ne 'semantic_residual_v3') {
-            throw 'Python API is not serving the expected 512d Semantic V3 model.'
+            [string] $pythonHealth.backend.fusion_mode -ne $expectedFusion) {
+            throw "Python API is not serving the expected 512d $modelLabel model."
         }
-        Write-Ok "$($Provider.ToUpperInvariant()) Semantic V3 is ready."
+        $actualAgent = if ($pythonHealth.backend.agent) {
+            [string] $pythonHealth.backend.agent.version
+        }
+        else { '-' }
+        if ($actualAgent -ne $expectedAgent) {
+            throw "Python API is not serving the expected Agent mode (reported: $actualAgent)."
+        }
+        Write-Ok "$($Provider.ToUpperInvariant()) $modelLabel is ready."
 
         $env:PET_REID_BASE_URL = $pythonUrl
         $env:PET_REID_ADMIN_KEY = $adminKey
@@ -445,6 +525,7 @@ function Start-Stack {
             frontend_url = $frontendUrl
             gallery_dir = $resolvedGallery
             provider = $Provider
+            model = $Model
             processes = @($owned)
         }
         $state | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $stateFile -Encoding UTF8

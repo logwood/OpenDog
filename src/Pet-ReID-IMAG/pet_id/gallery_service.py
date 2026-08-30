@@ -19,7 +19,7 @@ import time
 import uuid
 import zipfile
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -122,6 +122,8 @@ class EncodedPetImage:
     nose: np.ndarray
     face: np.ndarray
     metadata: dict[str, Any]
+    expert_features: dict[str, np.ndarray] = field(default_factory=dict)
+    expert_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -342,6 +344,24 @@ class PetGalleryStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_reference_images_pet
                     ON reference_images(pet_id);
+                CREATE TABLE IF NOT EXISTS expert_models (
+                    expert_id TEXT PRIMARY KEY,
+                    model_fingerprint TEXT NOT NULL,
+                    backend_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS expert_features (
+                    expert_id TEXT NOT NULL
+                        REFERENCES expert_models(expert_id) ON DELETE CASCADE,
+                    image_id TEXT NOT NULL
+                        REFERENCES reference_images(image_id) ON DELETE CASCADE,
+                    feature_dim INTEGER NOT NULL,
+                    feature BLOB NOT NULL,
+                    metadata_json TEXT NOT NULL,
+                    PRIMARY KEY(expert_id, image_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_expert_features_image
+                    ON expert_features(image_id);
                 """
             )
             row = connection.execute(
@@ -379,6 +399,62 @@ class PetGalleryStore:
                 "INSERT OR REPLACE INTO service_metadata(key, value) VALUES (?, ?)",
                 ("backend_info", payload),
             )
+
+    def bind_expert_models(self, experts: dict[str, dict[str, Any]]) -> None:
+        """Bind independent expert namespaces without changing the primary space."""
+
+        with self._lock, self._connect() as connection:
+            for expert_id, backend_info in sorted(experts.items()):
+                fingerprint = str(backend_info.get("model_sha256") or "")
+                if not expert_id or not fingerprint:
+                    raise GalleryModelMismatch(
+                        "every gallery expert needs an id and stable model fingerprint"
+                    )
+                current = connection.execute(
+                    "SELECT model_fingerprint FROM expert_models WHERE expert_id = ?",
+                    (expert_id,),
+                ).fetchone()
+                if current is not None and current["model_fingerprint"] != fingerprint:
+                    raise GalleryModelMismatch(
+                        f"expert {expert_id!r} was created by a different model",
+                        details={
+                            "expert_id": expert_id,
+                            "stored": current["model_fingerprint"],
+                            "requested": fingerprint,
+                        },
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO expert_models(
+                        expert_id, model_fingerprint, backend_json, created_at
+                    ) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(expert_id) DO UPDATE SET
+                        model_fingerprint = excluded.model_fingerprint,
+                        backend_json = excluded.backend_json
+                    """,
+                    (
+                        expert_id,
+                        fingerprint,
+                        json.dumps(backend_info, ensure_ascii=False, sort_keys=True),
+                        utc_now(),
+                    ),
+                )
+
+    def expert_models(self) -> dict[str, dict[str, Any]]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT expert_id, model_fingerprint, backend_json FROM expert_models "
+                "ORDER BY expert_id"
+            ).fetchall()
+        result: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            try:
+                backend = json.loads(row["backend_json"])
+            except json.JSONDecodeError:
+                backend = {}
+            backend["model_sha256"] = str(row["model_fingerprint"])
+            result[str(row["expert_id"])] = backend
+        return result
 
     def metadata(self) -> dict[str, str]:
         with self._lock, self._connect() as connection:
@@ -511,6 +587,35 @@ class PetGalleryStore:
                         raise GalleryModelMismatch(
                             "descriptor dimensions do not match the existing gallery"
                         )
+                    registered_experts = {
+                        str(row["expert_id"])
+                        for row in connection.execute(
+                            "SELECT expert_id FROM expert_models"
+                        )
+                    }
+                    if set(record.encoded.expert_features) != registered_experts:
+                        raise GalleryModelMismatch(
+                            "encoded expert features do not match the gallery namespaces",
+                            details={
+                                "registered": sorted(registered_experts),
+                                "encoded": sorted(record.encoded.expert_features),
+                            },
+                        )
+                    packed_experts: dict[str, tuple[int, bytes]] = {}
+                    for expert_id, feature in record.encoded.expert_features.items():
+                        expert_dim, expert_blob = self._pack_feature(
+                            feature, f"expert:{expert_id}"
+                        )
+                        existing_dim = connection.execute(
+                            "SELECT feature_dim FROM expert_features "
+                            "WHERE expert_id = ? LIMIT 1",
+                            (expert_id,),
+                        ).fetchone()
+                        if existing_dim is not None and int(existing_dim[0]) != expert_dim:
+                            raise GalleryModelMismatch(
+                                f"expert {expert_id!r} feature dimension changed"
+                            )
+                        packed_experts[expert_id] = (expert_dim, expert_blob)
                     relative_path, was_created = self._write_image(upload)
                     if was_created:
                         created_files.append(self.root / relative_path)
@@ -544,6 +649,24 @@ class PetGalleryStore:
                             now,
                         ),
                     )
+                    for expert_id, (expert_dim, expert_blob) in packed_experts.items():
+                        connection.execute(
+                            """
+                            INSERT INTO expert_features(
+                                expert_id, image_id, feature_dim, feature, metadata_json
+                            ) VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (
+                                expert_id,
+                                upload.sha256,
+                                expert_dim,
+                                expert_blob,
+                                json.dumps(
+                                    record.encoded.expert_metadata.get(expert_id, {}),
+                                    ensure_ascii=False,
+                                ),
+                            ),
+                        )
                     added.append(upload.sha256)
                 if added:
                     connection.execute(
@@ -706,6 +829,12 @@ class PetGalleryStore:
 
     def prototypes(self) -> list[dict[str, Any]]:
         with self._lock, self._connect() as connection:
+            expert_ids = [
+                str(row["expert_id"])
+                for row in connection.execute(
+                    "SELECT expert_id FROM expert_models ORDER BY expert_id"
+                )
+            ]
             pets = connection.execute(
                 """
                 SELECT p.pet_id, p.display_name, COUNT(r.image_id) AS reference_count
@@ -754,8 +883,42 @@ class PetGalleryStore:
                         "face_prototype": normalize_feature(
                             face_references.mean(axis=0), "face_prototype"
                         ),
+                        "expert_prototypes": {},
                     }
                 )
+                for expert_id in expert_ids:
+                    expert_rows = connection.execute(
+                        """
+                        SELECT ef.feature, ef.feature_dim
+                        FROM expert_features ef
+                        JOIN reference_images ri ON ri.image_id = ef.image_id
+                        WHERE ef.expert_id = ? AND ri.pet_id = ?
+                        ORDER BY ri.image_id
+                        """,
+                        (expert_id, pet["pet_id"]),
+                    ).fetchall()
+                    if len(expert_rows) != len(rows):
+                        raise GalleryModelMismatch(
+                            f"expert {expert_id!r} is incomplete for pet {pet['pet_id']!r}",
+                            details={
+                                "expert_id": expert_id,
+                                "pet_id": str(pet["pet_id"]),
+                                "expected": len(rows),
+                                "actual": len(expert_rows),
+                            },
+                        )
+                    expert_references = np.stack(
+                        [
+                            self._unpack_feature(
+                                row["feature"], int(row["feature_dim"])
+                            )
+                            for row in expert_rows
+                        ]
+                    )
+                    result[-1]["expert_prototypes"][expert_id] = normalize_feature(
+                        expert_references.mean(axis=0),
+                        f"expert_prototype:{expert_id}",
+                    )
         return result
 
     def summary(self) -> dict[str, Any]:
@@ -773,6 +936,7 @@ class PetGalleryStore:
             "database": str(self.database_path),
             "pets": pet_count,
             "reference_images": reference_count,
+            "experts": sorted(self.expert_models()),
         }
 
 
@@ -817,6 +981,9 @@ class PetIdentificationService:
             )
         self.model_fingerprint = str(fingerprint)
         self.store.bind_model(self.model_fingerprint, self._backend_info)
+        expert_models = self._backend_info.get("experts")
+        if isinstance(expert_models, dict):
+            self.store.bind_expert_models(expert_models)
         self.operations = WorkspaceStore(self.store.root)
         self._batch_executor = ThreadPoolExecutor(
             max_workers=1,
@@ -866,6 +1033,14 @@ class PetIdentificationService:
             nose=normalize_feature(encoded.nose, "nose"),
             face=normalize_feature(encoded.face, "face"),
             metadata=dict(encoded.metadata),
+            expert_features={
+                expert_id: normalize_feature(feature, f"expert:{expert_id}")
+                for expert_id, feature in encoded.expert_features.items()
+            },
+            expert_metadata={
+                expert_id: dict(metadata)
+                for expert_id, metadata in encoded.expert_metadata.items()
+            },
         )
 
     def enroll(
@@ -954,19 +1129,6 @@ class PetIdentificationService:
                 [float(query @ item["prototype"]) for item in prototypes],
                 dtype=np.float32,
             )
-            order = np.argsort(-scores)
-            candidates = [
-                {
-                    "pet_id": prototypes[int(index)]["pet_id"],
-                    "display_name": prototypes[int(index)]["display_name"],
-                    "score": float(scores[int(index)]),
-                    "reference_count": prototypes[int(index)]["reference_count"],
-                }
-                for index in order[: min(top_k, len(order))]
-            ]
-            best = candidates[0]
-            runner_up_score = candidates[1]["score"] if len(candidates) > 1 else None
-            margin = None if runner_up_score is None else best["score"] - runner_up_score
             threshold = (
                 self.default_match_threshold
                 if match_threshold is None
@@ -977,14 +1139,72 @@ class PetIdentificationService:
                 if minimum_margin is None
                 else float(minimum_margin)
             )
-            threshold_ok = threshold is None or best["score"] >= threshold
-            margin_ok = margin is None or margin >= required_margin
-            accepted = bool(threshold_ok and margin_ok)
-            decision_mode = (
-                "closed_set_top1"
-                if threshold is None and required_margin <= 0
-                else "thresholded"
-            )
+            agent_result = None
+            if encoded.expert_features:
+                from .recognition_agent import build_agent_decision
+
+                expert_scores: dict[str, np.ndarray] = {}
+                for expert_id, feature in sorted(encoded.expert_features.items()):
+                    expert_query = normalize_feature(feature, f"query:{expert_id}")
+                    try:
+                        expert_scores[expert_id] = np.asarray(
+                            [
+                                float(
+                                    expert_query
+                                    @ item["expert_prototypes"][expert_id]
+                                )
+                                for item in prototypes
+                            ],
+                            dtype=np.float32,
+                        )
+                    except KeyError as error:
+                        raise GalleryModelMismatch(
+                            f"gallery is missing expert features for {expert_id!r}"
+                        ) from error
+                agent_result = build_agent_decision(
+                    prototypes=prototypes,
+                    encoded=encoded,
+                    bifor_scores=scores,
+                    expert_scores=expert_scores,
+                    top_k=top_k,
+                    requested_threshold=threshold,
+                    requested_margin=required_margin,
+                )
+                candidates = agent_result["candidates"]
+                best = agent_result["best"]
+                margin = agent_result["margin"]
+                accepted = bool(agent_result["accepted"])
+                threshold = agent_result["agent"]["thresholds"]["match_score"]
+                required_margin = agent_result["agent"]["thresholds"]["minimum_margin"]
+                decision_mode = "agent_evidence_v1"
+            else:
+                order = np.argsort(-scores)
+                candidates = [
+                    {
+                        "pet_id": prototypes[int(index)]["pet_id"],
+                        "display_name": prototypes[int(index)]["display_name"],
+                        "score": float(scores[int(index)]),
+                        "reference_count": prototypes[int(index)]["reference_count"],
+                    }
+                    for index in order[: min(top_k, len(order))]
+                ]
+                best = candidates[0]
+                runner_up_score = (
+                    candidates[1]["score"] if len(candidates) > 1 else None
+                )
+                margin = (
+                    None
+                    if runner_up_score is None
+                    else best["score"] - runner_up_score
+                )
+                threshold_ok = threshold is None or best["score"] >= threshold
+                margin_ok = margin is None or margin >= required_margin
+                accepted = bool(threshold_ok and margin_ok)
+                decision_mode = (
+                    "closed_set_top1"
+                    if threshold is None and required_margin <= 0
+                    else "thresholded"
+                )
 
             descriptor = encoded.metadata.get("descriptor")
             descriptor = descriptor if isinstance(descriptor, dict) else {}
@@ -1042,6 +1262,8 @@ class PetIdentificationService:
                 hard_case_reasons.append("low_margin")
             if branch_conflict:
                 hard_case_reasons.append("branch_conflict")
+            if agent_result is not None:
+                hard_case_reasons.extend(agent_result["agent"]["reasons"])
             if not all(available):
                 hard_case_reasons.append("single_branch")
             if branch_quality is not None and any(
@@ -1079,6 +1301,8 @@ class PetIdentificationService:
                 "diagnostics": diagnostics,
                 "hard_case_reasons": list(dict.fromkeys(hard_case_reasons)),
             }
+            if agent_result is not None:
+                result["agent"] = agent_result["agent"]
             if record_history:
                 result["history_id"] = self.operations.record_success(
                     upload=upload,
@@ -1491,6 +1715,9 @@ class PetIdentificationService:
         public_backend = self.backend_info()
         for key in ("model", "metadata", "source_checkpoint"):
             public_backend.pop(key, None)
+        for expert in (public_backend.get("experts") or {}).values():
+            if isinstance(expert, dict):
+                expert.pop("checkpoint", None)
         gallery = self.store.summary()
         operations = self.operations.summary()
         return {

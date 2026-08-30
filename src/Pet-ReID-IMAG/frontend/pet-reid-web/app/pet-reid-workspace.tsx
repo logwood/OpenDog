@@ -64,6 +64,13 @@ function backendValue(health: HealthResponse | null, key: string): string {
 }
 
 function modelLabel(health: HealthResponse | null): string {
+  const agent = health?.backend?.agent;
+  if (
+    agent &&
+    typeof agent === "object" &&
+    "version" in agent &&
+    agent.version === "multi_expert_evidence_v1"
+  ) return "多专家 Agent V1";
   return backendValue(health, "fusion_mode") === "semantic_residual_v3"
     ? "Semantic V3"
     : "Semantic V3";
@@ -98,13 +105,19 @@ function ResultPanel({ result, preview, onReset }: {
   const identity = result.accepted
     ? result.predicted_display_name || result.predicted_pet_id
     : "未确认身份";
+  const agent = result.agent;
+  const verdict = agent?.decision === "possible_unknown"
+    ? "可能是库外身份"
+    : agent?.decision === "needs_more_evidence"
+      ? "需要更多证据"
+      : result.accepted ? "已匹配" : "未通过阈值";
 
   return (
     <section className="result-panel panel" aria-live="polite">
       <div className="result-visual">
         {preview ? <img src={preview} alt="本次比对的宠物照片" /> : null}
         <span className={"result-verdict " + (result.accepted ? "accepted" : "rejected")}>
-          {result.accepted ? "已匹配" : "未通过阈值"}
+          {verdict}
         </span>
       </div>
       <div className="result-main">
@@ -135,6 +148,28 @@ function ResultPanel({ result, preview, onReset }: {
         {fusion === "fallback" ? (
           <div className="notice warning"><span>!</span><p><strong>单分支结果</strong>没有同时取得鼻子和脸部特征，建议更换图片。</p></div>
         ) : null}
+        {agent && !agent.expert_agreement ? (
+          <div className="notice warning"><span>!</span><p><strong>专家意见不一致</strong>BIFOR 与身形专家指向不同身份，本次不做硬判。</p></div>
+        ) : null}
+        {agent?.capture_recommendations.map((recommendation) => (
+          <div className="notice warning" key={recommendation}><span>↻</span><p>{recommendation}</p></div>
+        ))}
+
+        {agent ? (
+          <div className="fusion-readout">
+            <div className="fusion-title">
+              <span>专家证据权重</span>
+              <small>无训练单调融合 · 不是概率</small>
+            </div>
+            {Object.entries(agent.expert_weights).map(([expertId, weight]) => (
+              <div className={"weight-row " + (expertId === "bifor" ? "" : "face")} key={expertId}>
+                <span>{expertId === "bifor" ? "BIFOR 鼻脸身体" : "MegaDescriptor 身形"}</span>
+                <div><i style={{ width: Math.max(2, weight * 100) + "%" }} /></div>
+                <strong>{(weight * 100).toFixed(1)}%</strong>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="fusion-readout">
           <div className="fusion-title">
@@ -156,7 +191,12 @@ function ResultPanel({ result, preview, onReset }: {
           {result.candidates.map((candidate, index) => (
             <div className="candidate-row" key={candidate.pet_id}>
               <span className="candidate-rank">{String(index + 1).padStart(2, "0")}</span>
-              <div><strong>{candidate.display_name || candidate.pet_id}</strong><small>{candidate.pet_id} · {candidate.reference_count} 张参考图</small></div>
+              <div>
+                <strong>{candidate.display_name || candidate.pet_id}</strong>
+                <small>{candidate.pet_id} · {candidate.reference_count} 张参考图
+                  {candidate.expert_scores ? " · BIFOR " + score(candidate.expert_scores.bifor) + " / 身形 " + score(candidate.expert_scores.megadescriptor_b224) : ""}
+                </small>
+              </div>
               <div className="candidate-score"><strong>{score(candidate.score)}</strong><span><i style={{ width: Math.max(3, Math.min(100, Math.max(0, candidate.score) * 100)) + "%" }} /></span></div>
             </div>
           ))}

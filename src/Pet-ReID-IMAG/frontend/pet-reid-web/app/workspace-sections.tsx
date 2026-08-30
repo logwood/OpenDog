@@ -58,6 +58,13 @@ const HARD_LABEL: Record<string, string> = {
   low_quality: "质量较低",
   incorrect_top1: "Top-1 错误",
   processing_error: "处理失败",
+  expert_conflict: "专家冲突",
+  insufficient_identity_evidence: "身份证据不足",
+  low_fused_margin: "融合差值较小",
+  nose_face_quality_limited: "鼻脸质量受限",
+  body_not_detected: "未检测到完整身体",
+  motion_or_focus_blur: "图像模糊",
+  uneven_or_extreme_lighting: "光照不佳",
 };
 
 function historyIdentity(item: HistoryItem): string {
@@ -163,6 +170,13 @@ function HistoryDialog({ item, onClose, onChanged }: {
             <strong>分支诊断</strong>
             <span>鼻子：{result.diagnostics.branch_top1.nose?.display_name || result.diagnostics.branch_top1.nose?.pet_id || "不可用"} · {metric(result.diagnostics.branch_top1.nose?.score)}</span>
             <span>脸部：{result.diagnostics.branch_top1.face?.display_name || result.diagnostics.branch_top1.face?.pet_id || "不可用"} · {metric(result.diagnostics.branch_top1.face?.score)}</span>
+          </div>
+        ) : null}
+        {result?.agent ? (
+          <div className="branch-diagnostics">
+            <strong>Agent 诊断</strong>
+            <span>结论：{result.agent.decision} · 专家{result.agent.expert_agreement ? "一致" : "冲突"}</span>
+            <span>{result.agent.capture_recommendations.join("；") || "无需补拍"}</span>
           </div>
         ) : null}
         {result?.candidates?.length ? (

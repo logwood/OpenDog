@@ -67,6 +67,7 @@ class PetDescriptor:
     identity_scores: tuple[tuple[str, float], ...] = ()
     inference_size: tuple[int, int] | None = None
     viewpoint: tuple[float, ...] = ()
+    runtime_diagnostics: dict | None = None
 
     def __post_init__(self):
         for name in ("fused_feature", "nose_feature", "face_feature"):
@@ -95,6 +96,7 @@ class PetDescriptor:
             ],
             "inference_size": list(self.inference_size) if self.inference_size else None,
             "viewpoint": list(self.viewpoint),
+            "runtime_diagnostics": self.runtime_diagnostics,
         }
 
 
@@ -1275,6 +1277,19 @@ class MultimodalPetIDPipeline:
                 for probability, label in zip(values, indices)
                 if int(label) in label_to_identity
             )
+        runtime_diagnostics = None
+        if "body_detected" in output:
+            body = {
+                "detected": bool(output["body_detected"][index].item()),
+            }
+            if "body_detection_scores" in output:
+                body["score"] = float(
+                    output["body_detection_scores"][index].item()
+                )
+            if "body_rois" in output:
+                body_roi = output["body_rois"][index].detach().cpu().tolist()
+                body["bbox_xyxy"] = [float(value) for value in body_roi[-4:]]
+            runtime_diagnostics = {"body": body}
         return PetDescriptor(
             fused_feature=output["features"][index].detach().cpu(),
             nose_feature=output["nose_features"][index].detach().cpu(),
@@ -1287,6 +1302,7 @@ class MultimodalPetIDPipeline:
             identity_scores=identity_scores,
             inference_size=inference_size,
             viewpoint=viewpoint,
+            runtime_diagnostics=runtime_diagnostics,
         )
 
     def encode_image(self, image) -> list[PetDescriptor]:
@@ -1461,6 +1477,7 @@ class DescriptorCache:
                         else None
                     ),
                     viewpoint=tuple(float(value) for value in item.get("viewpoint", ())),
+                    runtime_diagnostics=item.get("runtime_diagnostics"),
                 )
             )
         return descriptors

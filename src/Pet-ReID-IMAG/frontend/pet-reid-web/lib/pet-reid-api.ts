@@ -1,6 +1,7 @@
 export type GalleryHealth = {
   pets: number;
   reference_images: number;
+  experts?: string[];
 };
 
 export type HealthResponse = {
@@ -60,6 +61,30 @@ export type Candidate = {
   display_name: string;
   score: number;
   reference_count: number;
+  expert_scores?: Record<string, number>;
+};
+
+export type AgentDecision = {
+  decision: "matched" | "needs_more_evidence" | "possible_unknown";
+  expert_agreement: boolean;
+  calibration: string;
+  score_semantics: string;
+  expert_weights: Record<string, number>;
+  expert_results: Record<string, {
+    pet_id: string;
+    display_name: string;
+    score: number;
+    evidence: number;
+    margin: number | null;
+  }>;
+  quality: Record<string, unknown>;
+  thresholds: {
+    match_score: number;
+    minimum_margin: number;
+    source: string;
+  };
+  reasons: string[];
+  capture_recommendations: string[];
 };
 
 export type DescriptorMetadata = {
@@ -107,6 +132,7 @@ export type IdentificationResponse = {
   };
   hard_case_reasons?: string[];
   history_id?: string;
+  agent?: AgentDecision;
 };
 
 export type ReviewStatus = "unreviewed" | "correct" | "incorrect" | "uncertain";

@@ -3,6 +3,9 @@ param(
     [ValidateSet('cpu', 'cuda')]
     [string] $Provider = 'cpu',
 
+    [ValidateSet('semantic-v3', 'semantic-v3-bifor', 'agent-v1')]
+    [string] $Model = 'semantic-v3',
+
     [string] $PythonExe = $(
         if ($env:PET_REID_PYTHON) { $env:PET_REID_PYTHON }
         elseif (Test-Path -LiteralPath 'D:\CondaData\envs\torch312\python.exe') {
@@ -122,7 +125,7 @@ try {
     New-Item -ItemType Directory -Path $runDir | Out-Null
 
     Write-Host "[E2E] Run directory: $runDir" -ForegroundColor Cyan
-    & $stackScript start -Provider $Provider -NoBrowser -PythonExe $resolvedPython `
+    & $stackScript start -Provider $Provider -Model $Model -NoBrowser -PythonExe $resolvedPython `
         -GalleryDir $galleryDir -PythonPort $PythonPort -JavaPort $JavaPort `
         -FrontendPort $FrontendPort
     Assert-ManagedGallery
@@ -134,9 +137,21 @@ try {
     else {
         'CUDAExecutionProvider'
     }
+    $expectedFusion = if ($Model -in @('semantic-v3-bifor', 'agent-v1')) {
+        'semantic_residual_v3+bifor_lowrank_v1'
+    }
+    else {
+        'semantic_residual_v3'
+    }
+    $expectedAgent = if ($Model -eq 'agent-v1') {
+        'multi_expert_evidence_v1'
+    }
+    else { '' }
     & $resolvedPython $smokeScript `
         --run-dir $runDir `
         --expected-provider $expectedProvider `
+        --expected-fusion $expectedFusion `
+        --expected-agent $expectedAgent `
         --base-url "http://127.0.0.1:$JavaPort" `
         --python-url "http://127.0.0.1:$PythonPort" `
         --frontend-url "http://localhost:$FrontendPort"

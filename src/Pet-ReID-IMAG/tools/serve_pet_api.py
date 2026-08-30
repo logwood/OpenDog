@@ -21,6 +21,10 @@ from pet_id.gallery_service import (  # noqa: E402
     PetIdentificationService,
 )
 from pet_id.onnx_runtime import parse_warmup_batches  # noqa: E402
+from pet_id.recognition_agent import (  # noqa: E402
+    AgentFeatureEncoder,
+    MegaDescriptorEncoder,
+)
 from pet_id.workspace_paths import (  # noqa: E402
     GALLERY_STORE_ROOT,
     SELECTED_MODELS_ROOT,
@@ -87,6 +91,26 @@ def build_parser() -> argparse.ArgumentParser:
             / "fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth"
         ),
         help="frozen target-dog detector used only by --backend onnx-bifor",
+    )
+    parser.add_argument(
+        "--agent",
+        action="store_true",
+        help="enable score-level evidence fusion with frozen independent experts",
+    )
+    parser.add_argument(
+        "--megadescriptor-checkpoint",
+        type=Path,
+        default=(
+            SELECTED_MODELS_ROOT.parent
+            / "pretrained"
+            / "megadescriptor"
+            / "MegaDescriptor-B-224"
+            / "pytorch_model.bin"
+        ),
+    )
+    parser.add_argument(
+        "--megadescriptor-device",
+        help="defaults to --device; use cpu to keep the expert off GPU",
     )
     parser.add_argument("--onnx-warmup-batches", default="1,4,8")
     parser.add_argument("--maximum-upload-mb", type=float, default=15.0)
@@ -155,6 +179,18 @@ def main() -> None:
         body_detector=args.body_detector if args.backend == "onnx-bifor" else None,
     )
     encoder = MultimodalPipelineEncoder(pipeline)
+    if args.agent:
+        if args.backend != "onnx-bifor":
+            raise ValueError("--agent currently requires --backend onnx-bifor")
+        encoder = AgentFeatureEncoder(
+            encoder,
+            [
+                MegaDescriptorEncoder(
+                    resolve_legacy_path(args.megadescriptor_checkpoint),
+                    device=args.megadescriptor_device or args.device,
+                )
+            ],
+        )
     backend_info = encoder.backend_info()
     model_fingerprint = backend_info.get("model_sha256")
     if not model_fingerprint and args.backend == "pytorch":

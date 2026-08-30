@@ -50,7 +50,8 @@ public final class PetReidDtos {
             String petId,
             String displayName,
             double score,
-            int referenceCount) {
+            int referenceCount,
+            Map<String, Double> expertScores) {
     }
 
     public record IdentificationResponse(
@@ -69,10 +70,11 @@ public final class PetReidDtos {
             GalleryHealth gallerySnapshot,
             Map<String, Object> diagnostics,
             List<String> hardCaseReasons,
-            String historyId) {
+            String historyId,
+            Map<String, Object> agent) {
     }
 
-    public record GalleryHealth(int pets, int referenceImages) {
+    public record GalleryHealth(int pets, int referenceImages, List<String> experts) {
     }
 
     public record HealthResponse(

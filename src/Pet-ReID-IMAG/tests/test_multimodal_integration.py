@@ -423,6 +423,13 @@ class MultimodalIntegrationTest(unittest.TestCase):
             (True, True),
             detection,
             segmentation,
+            runtime_diagnostics={
+                "body": {
+                    "detected": True,
+                    "score": 0.91,
+                    "bbox_xyxy": [1.0, 2.0, 30.0, 40.0],
+                }
+            },
         )
         score = compare_descriptors(descriptor, descriptor)
         self.assertAlmostEqual(score.fused, 1.0, places=6)
@@ -438,6 +445,10 @@ class MultimodalIntegrationTest(unittest.TestCase):
             self.assertEqual(
                 loaded[0].metadata_dict()["segmentation"],
                 descriptor.metadata_dict()["segmentation"],
+            )
+            self.assertEqual(
+                loaded[0].metadata_dict()["runtime_diagnostics"],
+                descriptor.metadata_dict()["runtime_diagnostics"],
             )
 
 

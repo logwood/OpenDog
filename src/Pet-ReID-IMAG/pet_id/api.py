@@ -48,8 +48,8 @@ def create_app(
         title="Pet ReID API",
         version="1.0.0",
         description=(
-            "Enroll pet reference images and identify query images with the locked "
-            "joint800 embedding model. OpenAPI documentation is available at /docs."
+            "Enroll pet reference images and identify query images with a locked "
+            "model-bound gallery. OpenAPI documentation is available at /docs."
         ),
     )
     app.state.pet_service = service

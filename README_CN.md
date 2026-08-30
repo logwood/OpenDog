@@ -37,6 +37,14 @@ Phase B 的 `test_data.csv` 仍然没有隐藏标签，所以本地只能生成 
 .\start-pet-reid.cmd
 .\start-pet-reid-cpu.cmd
 
+# 启动已迁移独立图库的 Semantic V3 + BIFOR：CUDA / CPU（二选一）
+.\start-pet-reid-bifor.cmd
+.\start-pet-reid-bifor-cpu.cmd
+
+# 启动多专家 Agent V1：BIFOR + 冻结 MegaDescriptor，CUDA / CPU
+.\start-pet-reid-agent.cmd
+.\start-pet-reid-agent-cpu.cmd
+
 # 查看状态或停止
 .\scripts\pet-reid-stack.ps1 status
 .\stop-pet-reid.cmd
@@ -44,6 +52,8 @@ Phase B 的 `test_data.csv` 仍然没有隐藏标签，所以本地只能生成 
 # 真实 HTTP 全链路验收：独立临时图库，结束后自动停服
 .\scripts\test-live-stack.ps1 -Provider cpu
 # CUDA 版：.\scripts\test-live-stack.ps1 -Provider cuda
+# BIFOR CUDA 版：.\scripts\test-live-stack.ps1 -Provider cuda -Model semantic-v3-bifor
+# Agent CUDA 版：.\scripts\test-live-stack.ps1 -Provider cuda -Model agent-v1
 
 # 非破坏性刷新模型、checkpoint、legacy 运行和 Git bundle 审计元数据
 D:\CondaData\envs\torch312\python.exe .\scripts\generate_workspace_metadata.py
@@ -89,8 +99,33 @@ FastReID 仍会在各自 `OUTPUT_DIR/log.txt` 保存框架日志；`-LogFile` �
 默认应用仍使用 Semantic V3。另有经过锁定协议验证的
 `dogfacenet_semantic_v3_bifor_lowrank_v1` 研究候选，把 8% BIFOR 身体信息与
 Semantic V3 联合到一个 512 维 ONNX 描述符中；它不是默认部署，而且坐标空间
-不同，不能复用现有图库。原图推理、API 参数和验证证据见
+不同，不能直接复用旧特征。现有持久图库的 2 个身份、4 张原图已经原子重编码到
+`data/gallery_store/pet_api_gallery_semantic_v3_bifor_lowrank_v1`，并用 4 张未入库
+同身份图片和完整 Java → Python → Web HTTP 流程验收。迁移、原图推理、API 参数
+和验证证据见
 `models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/README.md`。
+
+## 多专家识别 Agent V1
+
+Agent V1 保留 BIFOR 的 512 维主空间，同时加入冻结的
+`MegaDescriptor-B-224` 1024 维身形专家。两个空间分别存储、分别计算 cosine，
+只在分数层进行无训练、单调证据融合；不会拼接、压缩或污染原有 BIFOR Gallery。
+
+- 独立 Gallery：`data/gallery_store/pet_api_gallery_agent_v1`；
+- 2 个身份、4 张参考图均同时具有 512-D 主特征和 1024-D 专家特征；
+- 4 张未入库查询融合 Top-1 4/4、接受 4/4、专家一致 4/4；
+- 输出新增专家权重、逐专家结果、冲突判断、三态决策和补拍建议；
+- 没有拟合 Platt/Isotonic 参数，`zero_shot_monotonic_v1` 分数明确不是概率。
+
+迁移和查询报告位于
+`artifacts/runs/agent_v1/gallery_migration/report.json` 与
+`artifacts/runs/agent_v1/gallery_api/report.json`；Java → Python → Web 全栈
+验收报告位于
+`artifacts/runs/live-stack-e2e/20260829-agent-v1-full-01/live-stack-smoke.json`。
+
+注意：MegaDescriptor 权重采用 **CC BY-NC 4.0**，只能用于非商业用途，除非另行
+获得权利人的授权。详细模型记录见
+`docs/AGENT_V1_MODEL_RECORD.md`。
 
 ## 关键内容
 
