@@ -9,6 +9,51 @@
 
 The upstream repository is Apache-2.0. See `UPSTREAM_LICENSE_APACHE_2.txt`.
 
+## Repository identities preserved during workspace consolidation
+
+The workspace was consolidated under the outer `logwood/OpenDog` repository on
+2026-08-28. The original repositories and baselines are:
+
+- Pet-ReID-IMAG: `https://github.com/muzishen/Pet-ReID-IMAG.git`, commit
+  `7a131552ccea575a70ef4f9d4dc8948687798485`.
+- AnyFace: `https://github.com/IS2AI/AnyFace.git`, commit
+  `bed844d23be03334f7fc12b2c4fb3ba2ac530bab`.
+- PetFace: `https://github.com/mapooon/PetFace.git`, commit
+  `69e7be7a82bece98dfaf832ad79d3c80f1a844f9`.
+- SAM 2: `https://github.com/facebookresearch/sam2.git`, commit
+  `2b90b9f5ceec907a1c18123530e92e794ad901a4`.
+- BIFOR: `https://github.com/eugeniodias5/BIFOR.git`, commit
+  `47b27892e0062a31e7ba0c894fa9cae7928172c`.
+- Torchvision Faster R-CNN ResNet-50 FPN v2 COCO weights:
+  `https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth`,
+  SHA-256 `dd69338a24b8d7381807e247652bdc356325bcbaf1cd3e092e00e0a1a58706bf`.
+- MegaDescriptor-B-224 weights:
+  `https://huggingface.co/BVRA/MegaDescriptor-B-224`, SHA-256
+  `655791158167f07773a890368f7db2fced85d569b9bccbbe7e5194e5051e2459`.
+  The weights are CC BY-NC 4.0 and therefore non-commercial; see
+  `docs/AGENT_V1_MODEL_RECORD.md`.
+- Wildlife Tools reference implementation and preprocessing:
+  `https://github.com/WildlifeDatasets/wildlife-tools`.
+- MegaDescriptor-B-224 weights:
+  `https://huggingface.co/BVRA/MegaDescriptor-B-224`, SHA-256
+  `655791158167f07773a890368f7db2fced85d569b9bccbbe7e5194e5051e2459`.
+  The weights are CC BY-NC 4.0 and therefore non-commercial; see the local
+  `MODEL_RECORD.md` next to the checkpoint.
+- Wildlife Tools reference implementation and preprocessing:
+  `https://github.com/WildlifeDatasets/wildlife-tools`.
+
+Complete verified bundles, working-tree patches, staged patches and untracked
+file lists are stored under `archive/git/2026-08-28/`. The original nested Git
+metadata is recoverably quarantined under
+`archive/quarantine/2026-08-28/inner-git/`; it is not part of the source tree.
+The later-added BIFOR checkout is also owned by the outer repository; its
+original bundle and untracked-file snapshot are under
+`archive/git/2026-08-28/nested/BIFOR*`, and its nested Git metadata is under
+`archive/quarantine/2026-08-28/inner-git/BIFOR.git/`.
+The local source differs from the baselines through the compatibility,
+multimodal, joint-fusion, ONNX, gallery, API, Java and frontend work recorded in
+the outer repository and the snapshot inventories.
+
 Key upstream facts verified:
 - README reports a ResNeSt multi-scale solution, Phase A 91.7% / Phase B 86.27%, and provides data + weights through cloud-drive links.
 - Test entry point: `bash predict.sh`, which calls `pet_id/train_net.py --config-file ./configs/fusion_submit.yaml --eval-only --commit`.

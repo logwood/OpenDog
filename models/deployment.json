@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "packages": {
+    "unified_pet_reid_v4_v1": {"role": "validated-candidate", "purpose": "Validated spatial-detail candidate; not yet promoted to production and requires an independent Gallery.", "deployment_role": "current_development", "release_role": "candidate", "capability": "spatial-detail-embedding", "immutable_metadata": true},
+    "unified_pet_reid_v3_v1": {"role": "production", "purpose": "Frozen production baseline and rollback package used by the default API deployment.", "deployment_role": "production_baseline", "release_role": "production", "capability": "unified-embedding", "immutable_metadata": true},
+    "dogfacenet_semantic_v3_bifor_lowrank_v1": {"role": "research-candidate", "purpose": "Validated semantic and BIFOR body-fusion research package; not the default deployment and requires a separately encoded Gallery."},
+    "dogfacenet_semantic_v3_v1": {"role": "compatibility", "purpose": "Validated legacy semantic compatibility package; not part of the active unified deployment line."},
+    "dogfacenet_joint800_v1": {"role": "rollback", "purpose": "Locked 800-class joint-fusion rollback and comparison package."},
+    "dogfacenet_shared_v2_fixed5000": {"role": "research", "purpose": "Fixed-budget shared-projection comparison package."},
+    "dogfacenet_joint100_v1": {"role": "research", "purpose": "Locked 100-class joint-fusion protocol package."},
+    "dogfacenet_shared_v2_smoke_10": {"role": "smoke", "purpose": "Ten-class ONNX systems-check export; not a production model."},
+    "local_pet_gallery_semantic_v3_onnx_v1": {"role": "compatibility-gallery", "purpose": "Seed prototype Gallery encoded by the legacy semantic compatibility model."},
+    "local_pet_gallery_joint800_onnx_v1": {"role": "rollback-gallery", "purpose": "Seed prototype gallery encoded by the Joint800 ONNX rollback model."},
+    "local_pet_gallery_joint100_v1": {"role": "research-gallery", "purpose": "Prototype gallery encoded by the Joint100 model."},
+    "local_pet_gallery_v1": {"role": "legacy-gallery", "purpose": "Original local prototype-gallery package retained for comparison."}
+  },
+  "model_roles": {
+    "current_development": {"display_name": "高分辨率统一识别 · 当前候选", "capability": "spatial-detail-embedding", "model_package": "unified_pet_reid_v4_v1", "backend": "onnx-highres", "release_status": "validated_candidate"},
+    "production_baseline": {"display_name": "统一识别 · 生产基线", "capability": "unified-embedding", "model_package": "unified_pet_reid_v3_v1", "backend": "unified-onnx"},
+    "rollback": {"display_name": "统一识别 · 回滚点", "capability": "unified-embedding", "model_package": "unified_pet_reid_v3_v1", "backend": "unified-onnx"},
+    "legacy_semantic_compatibility": {"display_name": "语义识别 · 兼容模式", "capability": "semantic-compatibility", "model_package": "dogfacenet_semantic_v3_v1", "backend": "onnx"}
+  },
+  "default_deployment": {
+    "profile": "production",
+    "model_package": "unified_pet_reid_v3_v1",
+    "backend": "unified-onnx",
+    "onnx": "models/selected/unified_pet_reid_v3_v1/onnx/e2e/unified_pet_reid.onnx",
+    "runtime_required_files": ["models/selected/unified_pet_reid_v3_v1/onnx/e2e/unified_pet_reid.onnx"],
+    "runtime_external_models": [],
+    "persistent_gallery": "data/gallery_store/pet_api_gallery_unified_v3_v1"
+  },
+  "runtime_profiles": {
+    "production": {
+      "deployment_role": "production", "release_role": "production_baseline",
+      "display_name": "统一识别 · 生产基线", "summary": "固定输入联合模型 · RGB → 512D",
+      "capability": "unified-embedding", "backend": "unified-onnx", "runtime_backend": "onnxruntime-unified",
+      "model_package": "unified_pet_reid_v3_v1",
+      "onnx": "models/selected/unified_pet_reid_v3_v1/onnx/e2e/unified_pet_reid.onnx",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_unified_v3_v1",
+      "model_sha256": "2db41b25d770eb285cd313f4e81a1f77c2017e70d827c0b9a1e48cf74edaf8a5",
+      "single_graph": true, "warmup_batches": [1], "runtime_external_models": [], "requires_existing_gallery": false
+    },
+    "candidate": {
+      "deployment_role": "candidate", "release_role": "current_development",
+      "display_name": "高分辨率统一识别 · 当前候选", "summary": "动态空间细节模型 · RGB → 512D",
+      "capability": "spatial-detail-embedding", "backend": "onnx-highres", "runtime_backend": "onnxruntime-unified-highres",
+      "model_package": "unified_pet_reid_v4_v1",
+      "onnx": "models/selected/unified_pet_reid_v4_v1/onnx/unified_pet_reid_v4.onnx",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_unified_v4_v1",
+      "model_sha256": "dbd4448133efec28efb770a6ce77c749b4f8b0913c8f40273420be571fe7b000",
+      "single_graph": true, "warmup_batches": [1], "runtime_external_models": [], "requires_existing_gallery": false
+    },
+    "rollback": {
+      "deployment_role": "rollback", "release_role": "rollback",
+      "display_name": "统一识别 · 回滚点", "summary": "固定输入联合模型 · RGB → 512D",
+      "capability": "unified-embedding", "backend": "unified-onnx", "runtime_backend": "onnxruntime-unified",
+      "model_package": "unified_pet_reid_v3_v1",
+      "onnx": "models/selected/unified_pet_reid_v3_v1/onnx/e2e/unified_pet_reid.onnx",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_unified_v3_v1",
+      "model_sha256": "2db41b25d770eb285cd313f4e81a1f77c2017e70d827c0b9a1e48cf74edaf8a5",
+      "single_graph": true, "warmup_batches": [1], "runtime_external_models": [], "requires_existing_gallery": false
+    },
+    "legacy-semantic": {
+      "deployment_role": "legacy-semantic", "release_role": "legacy_semantic_compatibility",
+      "display_name": "语义识别 · 兼容模式", "summary": "鼻部与脸部语义融合 · 512D",
+      "capability": "semantic-compatibility", "backend": "onnx", "runtime_backend": "onnxruntime",
+      "model_package": "dogfacenet_semantic_v3_v1",
+      "config": "models/selected/dogfacenet_semantic_v3_v1/config.yaml",
+      "identity_weights": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+      "onnx": "models/selected/dogfacenet_semantic_v3_v1/onnx/pet_embedding.onnx",
+      "seed_gallery": "models/selected/local_pet_gallery_semantic_v3_onnx_v1/gallery_model.json",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_semantic_v3_v1",
+      "model_sha256": "21a2e2543b34ebd09426cba6bb1ff2c9dc0651b15d5186453e91ecbcf55d532a",
+      "single_graph": false, "warmup_batches": [1, 4, 8],
+      "fusion_mode": "semantic_residual", "requires_existing_gallery": false
+    },
+    "research-bifor": {
+      "deployment_role": "research-bifor", "release_role": "research",
+      "display_name": "语义与身体融合 · 研究实验", "summary": "语义分支与 BIFOR 身体特征融合 · 512D",
+      "capability": "semantic-body-fusion", "backend": "onnx-bifor", "runtime_backend": "onnxruntime-bifor",
+      "model_package": "dogfacenet_semantic_v3_bifor_lowrank_v1",
+      "config": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/config.yaml",
+      "identity_weights": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+      "onnx": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/pet_embedding.onnx",
+      "body_detector": "models/pretrained/body_detection/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_semantic_v3_bifor_lowrank_v1",
+      "model_sha256": "63f53f32e4c9ad0c26d8ab3d91cdbfb462e920b66424656a22ff62d02b209c22",
+      "single_graph": false, "warmup_batches": [1, 4, 8],
+      "fusion_mode": "semantic_residual+bifor_lowrank", "requires_existing_gallery": true
+    },
+    "research-agent": {
+      "deployment_role": "research-agent", "release_role": "research",
+      "display_name": "多专家证据融合 · 研究实验", "summary": "BIFOR 与 MegaDescriptor 分数级证据融合",
+      "capability": "multi-expert-evidence", "backend": "onnx-bifor", "runtime_backend": "onnxruntime-bifor",
+      "model_package": "dogfacenet_semantic_v3_bifor_lowrank_v1",
+      "config": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/config.yaml",
+      "identity_weights": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+      "onnx": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/pet_embedding.onnx",
+      "body_detector": "models/pretrained/body_detection/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth",
+      "expert_checkpoint": "models/pretrained/megadescriptor/MegaDescriptor-B-224/pytorch_model.bin",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_agent_v1",
+      "model_sha256": "63f53f32e4c9ad0c26d8ab3d91cdbfb462e920b66424656a22ff62d02b209c22",
+      "single_graph": false, "warmup_batches": [1, 4, 8],
+      "fusion_mode": "semantic_residual+bifor_lowrank",
+      "agent_mode": "multi_expert_evidence", "requires_existing_gallery": true
+    }
+  }
+}

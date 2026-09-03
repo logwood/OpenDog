@@ -1,0 +1,36 @@
+# Local evaluation configuration for this workspace.
+# Run from src/BIFOR:
+#   python main.py --config=config.workspace.yaml
+
+gpu_ids: "0"
+model_name: "bifor"
+
+dataset_name: "YT-BB-Dog"
+data_dir: "../../data/BIFOR/YT-BB-Dog"
+gt_labels_path: null
+
+num_instances: 8
+embedding_size: 768
+batch_size: 32
+num_classes: 2000
+num_epochs: 200
+num_workers: 0
+margin: 0.2
+lr: 0.0001
+test_every_n: 1
+warmup: 0.1
+early_stop: 20
+
+save_dir: "../../artifacts/BIFOR/results"
+resume: false
+load_resume_dir: "../../artifacts/BIFOR/results"
+
+load_model: true
+ckpt_path: "../../models/pretrained/BIFOR/f2/bifor.pth"
+
+online: true
+sampler: "bifor"
+sampler_path: "../../models/pretrained/BIFOR/f1/f(1)/background_net/background_net.ckpt"
+
+test_only: true
+save_closest_json: false

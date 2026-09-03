@@ -1,0 +1,363 @@
+"""Tests for the single-graph semantic pet ReID fusion and contract."""
+
+import unittest
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+from pet_id.unified import GeometryPrediction, NormalizedRotatedCropper
+from pet_id.unified_geometry_stability import (
+    StableGeometryDiscretizer,
+    choose_backend_stable_offset,
+)
+from pet_id.unified_semantic import (
+    ConfidenceGatedNoseFusion,
+    UnifiedSemanticPetReID,
+    UnifiedSemanticPetReIDExport,
+)
+
+
+class _GeometryStub(nn.Module):
+    descriptor_dim = 512
+    input_size = 32
+
+    def __init__(self):
+        super().__init__()
+        self.cropper = NormalizedRotatedCropper((16, 16))
+        self.projection = nn.Linear(3, self.descriptor_dim, bias=False)
+
+    def _validate_rgb(self, value):
+        if tuple(value.shape[-2:]) != (self.input_size, self.input_size):
+            raise ValueError("bad input")
+        return value.float()
+
+    def _normalize(self, value):
+        return value / 255.0
+
+    def _localize(self, value):
+        batch = value.shape[0]
+        boxes = (
+            torch.tensor(
+                [[0.5, 0.5, 0.8, 0.8], [0.5, 0.5, 0.4, 0.4]],
+                device=value.device,
+                dtype=value.dtype,
+            )
+            .unsqueeze(0)
+            .expand(batch, -1, -1)
+        )
+        prediction = GeometryPrediction(
+            boxes_cxcywh=boxes,
+            angle_radians=torch.zeros(batch, device=value.device, dtype=value.dtype),
+            attention=torch.zeros(
+                batch, 2, 1, 1, device=value.device, dtype=value.dtype
+            ),
+            pooled_queries=torch.zeros(
+                batch, 2, 1, device=value.device, dtype=value.dtype
+            ),
+            confidence=torch.tensor([0.35, 0.8], device=value.device, dtype=value.dtype)
+            .unsqueeze(0)
+            .expand(batch, -1),
+        )
+        return prediction, prediction.attention
+
+    def _backbone_descriptor(self, value):
+        pooled = value.mean(dim=(2, 3))
+        return F.normalize(self.projection(pooled), dim=1)
+
+
+class _NoseStub(nn.Module):
+    feature_dim = 8
+
+    def __init__(self):
+        super().__init__()
+        self.projection = nn.Linear(3, self.feature_dim, bias=False)
+        self.model = nn.Module()
+        self.model.register_buffer(
+            "pixel_mean",
+            torch.tensor([123.675, 116.28, 103.53]).view(1, 3, 1, 1),
+        )
+
+    def configure_trainable_parts(self, parts=()):
+        self.requires_grad_(bool(parts))
+        return self
+
+    def forward(self, value):
+        return F.normalize(self.projection(value.mean(dim=(2, 3)) / 255.0), dim=1)
+
+
+class StableGeometryDiscretizerTest(unittest.TestCase):
+    def test_backend_stable_offset_keeps_all_pairs_in_one_bin(self):
+        reference = torch.tensor([0.101, 0.204, 0.307]).numpy()
+        cpu = reference + torch.tensor([2e-5, -3e-5, 1e-5]).numpy()
+        cuda = reference + torch.tensor([-1e-5, 2e-5, -2e-5]).numpy()
+
+        selected = choose_backend_stable_offset(
+            reference,
+            [cpu, cuda],
+            step=1.0 / 300.0,
+        )
+
+        self.assertTrue(selected["all_match"])
+        self.assertEqual(selected["matching_pairs"], 6)
+        self.assertGreater(selected["minimum_boundary_margin"], 0.0)
+
+    def test_backend_stable_offset_rejects_unbridgeable_values(self):
+        with self.assertRaisesRegex(RuntimeError, "No quantization phase"):
+            choose_backend_stable_offset(
+                torch.tensor([0.1]).numpy(),
+                [torch.tensor([0.2]).numpy()],
+                step=0.01,
+            )
+
+    def test_backend_stable_offset_can_preserve_a_preferred_grid(self):
+        reference = torch.tensor([0.101, 0.204, 0.307]).numpy()
+        cpu = reference + torch.tensor([2e-5, -3e-5, 1e-5]).numpy()
+        selected = choose_backend_stable_offset(
+            reference,
+            [cpu],
+            step=1.0 / 300.0,
+            preferred_step=1.0 / 300.0,
+            preferred_offset=0.2,
+            minimum_boundary_margin=1e-7,
+        )
+        self.assertTrue(selected["all_match"])
+        self.assertIn("mean_abs_change_from_preferred", selected)
+
+    def test_disabled_is_an_exact_identity(self):
+        discretizer = StableGeometryDiscretizer().eval()
+        boxes = torch.rand(2, 2, 4)
+        angles = torch.rand(2)
+
+        stable_boxes, stable_angles = discretizer(boxes, angles)
+
+        self.assertIs(stable_boxes, boxes)
+        self.assertIs(stable_angles, angles)
+        self.assertFalse(discretizer.configuration()["enabled"])
+
+    def test_enabled_rounds_to_the_configured_offset_grid(self):
+        offsets = (
+            (0.0, 0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0, 0.0),
+        )
+        discretizer = StableGeometryDiscretizer(
+            box_step=0.1,
+            box_offsets=offsets,
+            angle_step=0.25,
+            angle_offset=0.0,
+        ).eval()
+        boxes = torch.tensor(
+            [[[0.14, 0.26, 0.34, 0.46], [0.55, 0.64, 0.75, 0.86]]]
+        )
+        angles = torch.tensor([0.37])
+
+        stable_boxes, stable_angles = discretizer(boxes, angles)
+
+        torch.testing.assert_close(
+            stable_boxes,
+            torch.tensor(
+                [[[0.1, 0.3, 0.3, 0.5], [0.6, 0.6, 0.8, 0.9]]]
+            ),
+        )
+        torch.testing.assert_close(stable_angles, torch.tensor([0.25]))
+
+    def test_per_coordinate_box_steps_are_supported(self):
+        discretizer = StableGeometryDiscretizer(
+            box_step=[
+                [0.1, 0.2, 0.25, 0.5],
+                [0.5, 0.25, 0.2, 0.1],
+            ],
+            box_offsets=((0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0)),
+        ).eval()
+        boxes = torch.tensor(
+            [[[0.14, 0.26, 0.34, 0.46], [0.55, 0.64, 0.75, 0.86]]]
+        )
+        stable, _ = discretizer(boxes, torch.zeros(1))
+        torch.testing.assert_close(
+            stable,
+            torch.tensor(
+                [[[0.1, 0.2, 0.25, 0.5], [0.5, 0.75, 0.8, 0.9]]]
+            ),
+        )
+        torch.testing.assert_close(
+            torch.tensor(discretizer.configuration()["box_step"]),
+            torch.tensor(
+                [
+                    [0.1, 0.2, 0.25, 0.5],
+                    [0.5, 0.25, 0.2, 0.1],
+                ]
+            ),
+            rtol=0,
+            atol=1e-7,
+        )
+
+    def test_piecewise_box_quantization_maps_all_coordinates(self):
+        piecewise = [
+            {
+                "part": index // 4,
+                "coordinate": index % 4,
+                "thresholds": [0.5],
+                "levels": [0.25, 0.75],
+            }
+            for index in range(8)
+        ]
+        discretizer = StableGeometryDiscretizer(
+            box_piecewise=piecewise
+        ).eval()
+        boxes = torch.tensor(
+            [[[0.1, 0.6, 0.2, 0.7], [0.8, 0.3, 0.9, 0.4]]]
+        )
+        stable, _ = discretizer(boxes, torch.zeros(1))
+        torch.testing.assert_close(
+            stable,
+            torch.tensor(
+                [[[0.25, 0.75, 0.25, 0.75], [0.75, 0.25, 0.75, 0.25]]]
+            ),
+        )
+        self.assertEqual(
+            len(discretizer.configuration()["box_piecewise"]),
+            8,
+        )
+
+    def test_training_uses_a_straight_through_gradient(self):
+        discretizer = StableGeometryDiscretizer(
+            box_step=0.1,
+            angle_step=0.25,
+        ).train()
+        boxes = torch.full((2, 2, 4), 0.5, requires_grad=True)
+        angles = torch.full((2,), 0.2, requires_grad=True)
+
+        stable_boxes, stable_angles = discretizer(boxes, angles)
+        (stable_boxes.sum() + stable_angles.sum()).backward()
+
+        torch.testing.assert_close(boxes.grad, torch.ones_like(boxes))
+        torch.testing.assert_close(angles.grad, torch.ones_like(angles))
+
+    def test_backend_sized_perturbations_share_one_bin(self):
+        discretizer = StableGeometryDiscretizer(
+            box_step=1.0 / 300.0,
+            angle_step=1.0 / 104.0,
+        ).eval()
+        boxes = torch.tensor(
+            [[[0.51, 0.47, 0.62, 0.58], [0.49, 0.53, 0.31, 0.29]]]
+        )
+        angles = torch.tensor([0.13])
+        perturbation = torch.tensor(
+            [[[5e-5, -5e-5, 5e-5, -5e-5], [-5e-5, 5e-5, -5e-5, 5e-5]]]
+        )
+
+        reference = discretizer(boxes, angles)
+        perturbed = discretizer(boxes + perturbation, angles + 5e-5)
+
+        torch.testing.assert_close(reference[0], perturbed[0], rtol=0, atol=0)
+        torch.testing.assert_close(reference[1], perturbed[1], rtol=0, atol=0)
+
+
+class UnifiedSemanticModelTest(unittest.TestCase):
+    def test_locked_policy_matches_direct_formula(self):
+        fusion = ConfidenceGatedNoseFusion()
+        face = F.normalize(torch.randn(4, 512), dim=1)
+        nose = F.normalize(torch.randn(4, 512), dim=1)
+        confidence = torch.tensor([0.1, 0.44, 0.7, 1.0])
+        actual = fusion(face, nose, confidence)
+        weight = 0.225 * torch.sigmoid((0.44 - confidence) / 0.02)
+        expected = F.normalize(
+            face * (1.0 - weight[:, None]) + nose * weight[:, None],
+            dim=1,
+        )
+        torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-7)
+        configuration = fusion.configuration()
+        self.assertAlmostEqual(configuration["maximum_nose_weight"], 0.225)
+        self.assertAlmostEqual(configuration["face_confidence_threshold"], 0.44)
+        self.assertAlmostEqual(configuration["temperature"], 0.02)
+
+    def test_gate_parameters_are_bounded_and_differentiable(self):
+        fusion = ConfidenceGatedNoseFusion(trainable=True)
+        with torch.no_grad():
+            fusion.maximum_weight_logit.fill_(100.0)
+            fusion.confidence_threshold_logit.fill_(-100.0)
+            fusion.temperature_logit.fill_(100.0)
+        self.assertLess(float(fusion.maximum_nose_weight.detach()), 0.5)
+        self.assertGreaterEqual(float(fusion.face_confidence_threshold.detach()), 0.0)
+        self.assertLessEqual(float(fusion.face_confidence_threshold.detach()), 1.0)
+        self.assertLessEqual(float(fusion.temperature.detach()), 0.100001)
+
+        with torch.no_grad():
+            fusion.maximum_weight_logit.zero_()
+            fusion.confidence_threshold_logit.zero_()
+            fusion.temperature_logit.zero_()
+        face = F.normalize(torch.randn(3, 16), dim=1)
+        nose = F.normalize(torch.randn(3, 16), dim=1)
+        confidence = torch.tensor([0.2, 0.5, 0.8])
+        loss = fusion(face, nose, confidence).square().sum(dim=0)[0]
+        loss.backward()
+        for parameter in fusion.parameters():
+            self.assertIsNotNone(parameter.grad)
+            self.assertTrue(torch.isfinite(parameter.grad))
+
+    def test_box_only_stabilization_keeps_angle_continuous(self):
+        discretizer = StableGeometryDiscretizer(
+            box_step=0.1,
+            box_offsets=((0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0)),
+            angle_step=None,
+        ).eval()
+        boxes = torch.tensor(
+            [[[0.14, 0.26, 0.34, 0.46], [0.55, 0.64, 0.75, 0.86]]]
+        )
+        angles = torch.tensor([0.37])
+
+        stable_boxes, stable_angles = discretizer(boxes, angles)
+
+        torch.testing.assert_close(
+            stable_boxes,
+            torch.tensor(
+                [[[0.1, 0.3, 0.3, 0.5], [0.6, 0.6, 0.8, 0.9]]]
+            ),
+        )
+        self.assertIs(stable_angles, angles)
+        self.assertTrue(discretizer.configuration()["enabled"])
+        self.assertIsNone(discretizer.configuration()["angle_step"])
+
+    def test_multiscale_face_crop_stays_inside_one_graph(self):
+        model = UnifiedSemanticPetReID(
+            _GeometryStub(),
+            _NoseStub(),
+            nn.Sequential(nn.Linear(8, 512, bias=False)),
+            nose_crop_size=12,
+            face_crop_scales=(1.0, 1.6),
+            face_crop_weights=(0.05, 0.95),
+        ).eval()
+        value = torch.rand(2, 3, 32, 32) * 255.0
+
+        auxiliary = model(value, return_aux=True)
+
+        self.assertEqual(tuple(auxiliary["embedding"].shape), (2, 512))
+        self.assertEqual(tuple(auxiliary["face_crops"].shape), (2, 2, 3, 16, 16))
+        self.assertEqual(model.face_crop_scales, (1.0, 1.6))
+        self.assertAlmostEqual(sum(model.face_crop_weights), 1.0)
+        torch.testing.assert_close(
+            auxiliary["embedding"].norm(dim=1),
+            torch.ones(2),
+            rtol=1e-5,
+            atol=1e-6,
+        )
+    def test_one_rgb_input_produces_one_normalized_embedding(self):
+        model = UnifiedSemanticPetReID(
+            _GeometryStub(),
+            _NoseStub(),
+            nn.Sequential(nn.Linear(8, 512, bias=False)),
+            nose_crop_size=12,
+        ).eval()
+        value = torch.rand(2, 3, 32, 32) * 255.0
+        output = UnifiedSemanticPetReIDExport(model)(value)
+        self.assertEqual(tuple(output.shape), (2, 512))
+        torch.testing.assert_close(
+            output.norm(dim=1), torch.ones(2), rtol=1e-5, atol=1e-6
+        )
+        auxiliary = model(value, return_aux=True)
+        self.assertEqual(tuple(auxiliary["nose_weight"].shape), (2,))
+        self.assertEqual(tuple(auxiliary["geometry_confidence"].shape), (2, 2))
+
+
+if __name__ == "__main__":
+    unittest.main()

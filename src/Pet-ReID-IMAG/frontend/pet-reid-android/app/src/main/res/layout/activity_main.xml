@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/toolbar_height"
+        android:background="@color/pawprint_ink"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/toolbar_horizontal_padding"
+        android:paddingEnd="6dp">
+
+        <ImageView
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:contentDescription="@string/accessibility_app_logo"
+            android:src="@drawable/ic_launcher_foreground" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/toolbar_title"
+                android:textColor="@color/pawprint_white"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:text="@string/toolbar_subtitle"
+                android:textColor="@color/pawprint_mint"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/global_progress"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_marginEnd="4dp"
+            android:indeterminateTint="@color/pawprint_mint"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/toolbar_connection_status"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:background="@drawable/soft_card_background"
+            android:gravity="center"
+            android:minWidth="62dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="@string/status_not_configured"
+            android:textColor="@color/pawprint_green"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/server_button"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="54dp"
+            android:layout_height="match_parent"
+            android:minHeight="48dp"
+            android:minWidth="48dp"
+            android:text="@string/action_server"
+            android:textAllCaps="false"
+            android:textColor="@color/pawprint_white"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <include layout="@layout/page_status" />
+        <include layout="@layout/page_identify" />
+        <include layout="@layout/page_gallery" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="66dp"
+        android:background="@color/pawprint_card"
+        android:elevation="12dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingTop="7dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="7dp">
+
+        <Button
+            android:id="@+id/nav_status"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/nav_item_background"
+            android:text="@string/tab_status"
+            android:textAllCaps="false"
+            android:textColor="@color/nav_item_text"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/nav_identify"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/nav_item_background"
+            android:text="@string/tab_identify"
+            android:textAllCaps="false"
+            android:textColor="@color/nav_item_text"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/nav_gallery"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/nav_item_background"
+            android:text="@string/tab_gallery"
+            android:textAllCaps="false"
+            android:textColor="@color/nav_item_text"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+</LinearLayout>

@@ -1,0 +1,63 @@
+_BASE_: modern_latent_role_anchored_s101_224.yaml
+
+# This spatial-query design keeps the controlled recipe and seed while replacing
+# feature injection with a competitive read/process/gated-write/query-decode
+# workspace. The equal seed makes the learning curves directly comparable.
+SEED: 20260823
+
+MODEL:
+  META_ARCHITECTURE: SpatialQueryLatentWorkspace
+  LATENT_WORKSPACE:
+    # Preserve the proven competitive multi-scale MESH read and bounded GRU.
+    READ_MODE: mesh
+    ROLE_ANCHOR_ENABLED: True
+    POSITION_ENCODING_ENABLED: True
+    UPDATE_MODE: residual
+    UPDATE_ALPHAS: [0.05, 0.10, 0.15, 0.20]
+
+    # A small role-conditioned mixer exchanges information but removes its
+    # common-mode component, the direction that collapsed the original slots.
+    MIX_ENABLED: True
+    MIX_GATE_INIT: 0.02
+    MIX_GATE_TRAINABLE: True
+    MIX_ROLE_CONDITIONED: True
+    MIX_CENTERED: True
+    FFN_LAYER_SCALE: 0.05
+
+    # C2-C4 receive token-wise gated corrections. C5 is read-only: neither the
+    # workspace writer nor the old global slot feature delta can perturb it.
+    GATE_MIN: 0.0
+    GATE_INIT: 0.05
+    WRITE_STAGES: ["c2", "c3", "c4"]
+    SPATIAL_WRITE_GATE_ENABLED: True
+    SLOT_SET_HEAD_ENABLED: False
+    SLOT_FEATURE_FUSION_SCALE: 0.0
+    SLOT_INFERENCE_FUSION_WEIGHT: 0.0
+
+    # Four learned queries decode complementary 128-D identity views. Their
+    # fusion weight is optimized by an additional fused metric objective.
+    IDENTITY_QUERY_HEAD_ENABLED: True
+    IDENTITY_QUERY_NUM: 4
+    IDENTITY_QUERY_DIM: 128
+    IDENTITY_QUERY_NUM_HEADS: 4
+    IDENTITY_QUERY_FFN_SCALE: 0.10
+    IDENTITY_QUERY_LOSS_WEIGHT: 0.20
+    IDENTITY_FUSION_LOSS_WEIGHT: 0.10
+    IDENTITY_FUSION_WEIGHT_MIN: 0.0
+    IDENTITY_FUSION_WEIGHT_MAX: 0.5
+    IDENTITY_FUSION_WEIGHT_INIT: 0.05
+
+    HEALTH_PERIOD: 50
+    EARLY_ABORT_ENABLED: True
+    EARLY_ABORT_WARMUP_ITERS: 100
+    EARLY_ABORT_PATIENCE: 2
+    EARLY_ABORT_SLOT_COSINE_MAX: 0.995
+    EARLY_ABORT_MIN_EFFECTIVE_RANK: 2.0
+    EARLY_ABORT_QUERY_COSINE_MAX: 0.995
+    EARLY_ABORT_MIN_QUERY_RANK: 1.5
+
+SOLVER:
+  CHECKPOINT_PERIOD: 2
+
+OUTPUT_DIR: artifacts/runs/legacy/modern_latent_spatial_query_s101_224_d192
+

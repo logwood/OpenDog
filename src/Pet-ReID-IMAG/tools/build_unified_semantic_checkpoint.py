@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+"""Build the locked single-graph UnifiedSemanticPetReID checkpoint."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE = ROOT.parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from pet_id.unified_semantic_checkpoint import (  # noqa: E402
+    build_unified_semantic_from_sources,
+    create_unified_semantic_checkpoint,
+    save_unified_semantic_checkpoint,
+)
+from pet_id.unified_geometry_stability import (  # noqa: E402
+    DEFAULT_GEOMETRY_ANGLE_OFFSET,
+    DEFAULT_GEOMETRY_BOX_OFFSETS,
+    LOCKED_GEOMETRY_ANGLE_STEP,
+    LOCKED_GEOMETRY_BOX_STEP,
+)
+from pet_id.unified_training import load_acceptance, sha256_file  # noqa: E402
+from pet_id.model_profiles import get_runtime_profile  # noqa: E402
+from pet_id.release_compatibility import (  # noqa: E402
+    acceptance_path,
+    historical_run_path,
+    source_weight_lock,
+)
+
+
+LOCKED_POLICY = {
+    "maximum_nose_weight": 0.225,
+    "face_confidence_threshold": 0.44,
+    "temperature": 0.02,
+}
+LOCKED_GEOMETRY_DISCRETIZATION = {
+    "geometry_box_step": LOCKED_GEOMETRY_BOX_STEP,
+    "geometry_box_offsets": DEFAULT_GEOMETRY_BOX_OFFSETS,
+    "geometry_angle_step": LOCKED_GEOMETRY_ANGLE_STEP,
+    "geometry_angle_offset": DEFAULT_GEOMETRY_ANGLE_OFFSET,
+}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--geometry-checkpoint",
+        type=Path,
+        default=historical_run_path(WORKSPACE, "geometry-round1")
+        / "geometry/model_best.pth",
+    )
+    parser.add_argument(
+        "--semantic-config",
+        type=Path,
+        default=get_runtime_profile("legacy-semantic").config,
+    )
+    parser.add_argument(
+        "--semantic-checkpoint",
+        type=Path,
+        default=get_runtime_profile("legacy-semantic").identity_weights,
+    )
+    parser.add_argument(
+        "--arcface-checkpoint",
+        type=Path,
+        default=WORKSPACE / "models/pretrained/dog.pt",
+    )
+    parser.add_argument(
+        "--policy-evidence",
+        type=Path,
+        default=historical_run_path(
+            WORKSPACE, "semantic-policy-sensitivity-summary"
+        ),
+    )
+    parser.add_argument(
+        "--acceptance",
+        type=Path,
+        default=acceptance_path(WORKSPACE, "baseline-training"),
+    )
+    parser.add_argument(
+        "--geometry-stability-report",
+        type=Path,
+        help="Optional locked-dev backend discretization evidence.",
+    )
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--report", type=Path)
+    parser.add_argument(
+        "--face-crop-scales",
+        type=float,
+        nargs="+",
+        default=(1.0,),
+        help="Static in-graph face crop scales.",
+    )
+    parser.add_argument(
+        "--face-crop-weights",
+        type=float,
+        nargs="+",
+        help="Normalized internally; one weight per face crop scale.",
+    )
+    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--overwrite", action="store_true")
+    return parser.parse_args()
+
+
+def _matches(value: float, expected: float) -> bool:
+    return abs(float(value) - float(expected)) <= 1e-8
+
+
+def validate_policy_evidence(path: Path) -> dict:
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(rows, list) or len(rows) != 27:
+        raise RuntimeError("Policy sensitivity evidence must contain 27 rows")
+    indexed = {
+        (
+            round(float(row["Weight"]), 6),
+            round(float(row["Threshold"]), 6),
+            round(float(row["Temperature"]), 6),
+        ): row
+        for row in rows
+    }
+    center_key = (0.225, 0.44, 0.02)
+    required = {
+        center_key,
+        (0.2, 0.44, 0.02),
+        (0.25, 0.44, 0.02),
+        (0.225, 0.42, 0.02),
+        (0.225, 0.46, 0.02),
+        (0.225, 0.44, 0.015),
+        (0.225, 0.44, 0.025),
+    }
+    missing = sorted(required.difference(indexed))
+    if missing:
+        raise RuntimeError(f"Policy sensitivity evidence is incomplete: {missing}")
+
+    def four_gate(row):
+        return (
+            int(row["Clean1"]) >= 193
+            and int(row["Clean5"]) >= 198
+            and int(row["Conflict1"]) >= 193
+            and int(row["Conflict5"]) >= 198
+        )
+
+    failed_required = sorted(key for key in required if not four_gate(indexed[key]))
+    if failed_required:
+        raise RuntimeError(
+            f"Locked policy is not inside the safe six-neighbour region: "
+            f"{failed_required}"
+        )
+    passed = sum(four_gate(row) for row in rows)
+    center = indexed[center_key]
+    return {
+        "rows": len(rows),
+        "four_gate_passed": passed,
+        "center": center,
+        "six_axis_neighbours_passed": 6,
+        "required_thresholds": {
+            "clean_top1_correct": 193,
+            "clean_top5_correct": 198,
+            "conflict_top1_correct": 193,
+            "conflict_top5_correct": 198,
+        },
+    }
+
+
+def main() -> None:
+    args = parse_args()
+    paths = (
+        args.geometry_checkpoint,
+        args.semantic_config,
+        args.semantic_checkpoint,
+        args.arcface_checkpoint,
+        args.policy_evidence,
+        args.acceptance,
+    )
+    resolved = [path.expanduser().resolve() for path in paths]
+    for path in resolved:
+        if not path.is_file():
+            raise FileNotFoundError(path)
+    (
+        geometry_checkpoint,
+        semantic_config,
+        semantic_checkpoint,
+        arcface_checkpoint,
+        policy_evidence,
+        acceptance_path,
+    ) = resolved
+    output = args.output.expanduser().resolve()
+    report_path = (
+        args.report.expanduser().resolve()
+        if args.report is not None
+        else output.with_name("build_report.json")
+    )
+    if output.exists() and not args.overwrite:
+        raise FileExistsError(output)
+
+    acceptance = load_acceptance(acceptance_path)
+    semantic_lock = source_weight_lock(acceptance, "semantic-checkpoint")
+    arcface_lock = source_weight_lock(acceptance, "arcface-checkpoint")
+    if sha256_file(semantic_checkpoint) != semantic_lock["sha256"]:
+        raise RuntimeError("Semantic identity checkpoint differs from acceptance lock")
+    if sha256_file(arcface_checkpoint) != arcface_lock["sha256"]:
+        raise RuntimeError("ArcFace checkpoint differs from acceptance lock")
+    sensitivity = validate_policy_evidence(policy_evidence)
+    geometry_discretization = dict(LOCKED_GEOMETRY_DISCRETIZATION)
+    geometry_stability = None
+    if args.geometry_stability_report is not None:
+        stability_path = args.geometry_stability_report.expanduser().resolve()
+        if not stability_path.is_file():
+            raise FileNotFoundError(stability_path)
+        geometry_stability = json.loads(
+            stability_path.read_text(encoding="utf-8")
+        )
+        if geometry_stability.get("passed") is not True:
+            raise RuntimeError("Geometry stability report did not pass")
+        if geometry_stability.get("blind_data_used") is not False:
+            raise RuntimeError("Geometry stability evidence must be dev-only")
+        development_lock = acceptance["development"]
+        if "validation_manifest" in development_lock:
+            development_lock = development_lock["validation_manifest"]
+        if geometry_stability.get("manifest_sha256") != development_lock["sha256"]:
+            raise RuntimeError("Geometry stability used a non-locked manifest")
+        if geometry_stability.get("geometry_checkpoint_sha256") != sha256_file(
+            geometry_checkpoint
+        ):
+            raise RuntimeError("Geometry stability report/checkpoint mismatch")
+        angle_step = geometry_stability.get("angle_step")
+        box_step = geometry_stability["box_step"]
+        geometry_discretization = {
+            "geometry_box_step": (
+                float(box_step) if isinstance(box_step, (int, float)) else box_step
+            ),
+            "geometry_box_offsets": geometry_stability["box_offsets"],
+            "geometry_angle_step": (
+                float(angle_step) if angle_step is not None else None
+            ),
+            "geometry_angle_offset": float(geometry_stability["angle_offset"]),
+            "geometry_box_piecewise": geometry_stability.get(
+                "box_piecewise"
+            ),
+        }
+
+    model, geometry_payload = build_unified_semantic_from_sources(
+        geometry_checkpoint,
+        semantic_config,
+        semantic_checkpoint,
+        arcface_checkpoint,
+        device=args.device,
+        face_crop_scales=args.face_crop_scales,
+        face_crop_weights=args.face_crop_weights,
+        **LOCKED_POLICY,
+        **geometry_discretization,
+    )
+    actual_policy = model.fusion.configuration()
+    for name, expected in LOCKED_POLICY.items():
+        if not _matches(actual_policy[name], expected):
+            raise RuntimeError(
+                f"Policy reparameterization changed {name}: "
+                f"{actual_policy[name]} != {expected}"
+            )
+    payload = create_unified_semantic_checkpoint(
+        model,
+        geometry_checkpoint=geometry_checkpoint,
+        semantic_config=semantic_config,
+        semantic_checkpoint=semantic_checkpoint,
+        arcface_checkpoint=arcface_checkpoint,
+        policy_evidence=policy_evidence,
+        extra={
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "geometry_stage": geometry_payload.get("stage"),
+            "development_sensitivity": sensitivity,
+            "geometry_stability_evidence": (
+                {
+                    "path": str(stability_path),
+                    "sha256": sha256_file(stability_path),
+                }
+                if geometry_stability is not None
+                else None
+            ),
+            "promotion_status": "experimental_until_all_acceptance_gates_pass",
+        },
+    )
+    save_unified_semantic_checkpoint(payload, output)
+    report = {
+        "schema_version": 1,
+        "model_type": payload["model_type"],
+        "created_at": payload["created_at"],
+        "checkpoint": str(output),
+        "checkpoint_sha256": sha256_file(output),
+        "checkpoint_bytes": output.stat().st_size,
+        "policy": actual_policy,
+        "face_multiscale": {
+            "scales": list(model.face_crop_scales),
+            "weights": list(model.face_crop_weights),
+        },
+        "geometry_discretization": model.geometry_discretizer.configuration(),
+        "geometry_stability_evidence": payload.get(
+            "geometry_stability_evidence"
+        ),
+        "policy_evidence": {
+            "path": str(policy_evidence),
+            "sha256": sha256_file(policy_evidence),
+            **sensitivity,
+        },
+        "runtime_contract": payload["runtime_contract"],
+        "sources": payload["sources"],
+        "promotion_status": payload["promotion_status"],
+        "default_backend_changed": False,
+        "torch_version": torch.__version__,
+    }
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()

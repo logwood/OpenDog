@@ -1,0 +1,16 @@
+_BASE_: modern_smoke.yaml
+
+MODEL:
+  META_ARCHITECTURE: LatentWorkspaceBaseline
+  LATENT_WORKSPACE:
+    DIM: 192
+    NUM_SLOTS: 8
+    NUM_HEADS: 8
+    MLP_RATIO: 4.0
+    GATE_MIN: 0.05
+    GATE_INIT: 0.10
+    ATTN_DROPOUT: 0.0
+    # The smoke subset has fewer than 200 iterations.
+    HEALTH_PERIOD: 1
+
+OUTPUT_DIR: artifacts/runs/legacy/modern_latent_workspace_smoke_d192

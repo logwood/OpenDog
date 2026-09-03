@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="pawprint_ink">#17201D</color>
+    <color name="pawprint_text">#20302A</color>
+    <color name="pawprint_muted">#65726D</color>
+    <color name="pawprint_surface">#F4F5F0</color>
+    <color name="pawprint_card">#FCFDF9</color>
+    <color name="pawprint_soft">#E9F2EC</color>
+    <color name="pawprint_mint">#CDEBDC</color>
+    <color name="pawprint_green">#1E6B52</color>
+    <color name="pawprint_green_dark">#15513E</color>
+    <color name="pawprint_border">#D8DFDA</color>
+    <color name="pawprint_warning">#A85C20</color>
+    <color name="pawprint_error">#A13B3B</color>
+    <color name="pawprint_white">#FCFDF9</color>
+    <color name="pawprint_disabled">#AEB8B2</color>
+    <color name="launcher_background">#17201D</color>
+</resources>

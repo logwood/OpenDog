@@ -1,0 +1,28 @@
+_BASE_: resnest101_224_baseline.yaml
+
+# Native Windows / PyTorch 2.11 profile for an 8 GB RTX 4060 Laptop GPU.
+SOLVER:
+  AMP:
+    ENABLED: True
+  # 7 identities x 4 images: substantially richer metric-learning negatives
+  # than the old minimum batch of 8, with safe headroom on an 8 GB GPU.
+  IMS_PER_BATCH: 28
+  # Keep warmup sample-count-equivalent to the author's batch-80/400-step
+  # schedule. Keep backbone freezing at the author's 1000 optimizer updates;
+  # scaling it to 2857 over-updates the randomly initialized head/workspace.
+  WARMUP_ITERS: 1143
+  FREEZE_ITERS: 1000
+  CHECKPOINT_PERIOD: 1
+
+DATALOADER:
+  NUM_WORKERS: 2
+
+TEST:
+  EVAL_PERIOD: 1
+  IMS_PER_BATCH: 64
+
+DATASETS:
+  NAMES: ("PetID",)
+  TESTS: ("PetIDValidation",)
+
+OUTPUT_DIR: artifacts/runs/legacy/modern_s101_224

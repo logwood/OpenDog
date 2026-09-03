@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.PawprintId" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">@color/pawprint_surface</item>
+        <item name="android:colorAccent">@color/pawprint_green</item>
+        <item name="android:statusBarColor">@color/pawprint_ink</item>
+        <item name="android:navigationBarColor">@color/pawprint_ink</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Pawprint.Button.Primary" parent="android:style/Widget.Material.Button">
+        <item name="android:background">@drawable/button_primary</item>
+        <item name="android:textColor">@color/pawprint_white</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:minHeight">50dp</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <style name="Pawprint.Button.Secondary" parent="android:style/Widget.Material.Button">
+        <item name="android:background">@drawable/button_secondary</item>
+        <item name="android:textColor">@color/pawprint_green</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <style name="Pawprint.Heading" parent="android:style/Widget.Material.TextView">
+        <item name="android:textColor">@color/pawprint_ink</item>
+        <item name="android:textSize">25sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Pawprint.SectionHeading" parent="android:style/Widget.Material.TextView">
+        <item name="android:textColor">@color/pawprint_ink</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Pawprint.Body" parent="android:style/Widget.Material.TextView">
+        <item name="android:textColor">@color/pawprint_muted</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:lineSpacingExtra">3dp</item>
+    </style>
+</resources>

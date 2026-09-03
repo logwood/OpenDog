@@ -1,0 +1,12 @@
+_BASE_: resnest101_224_baseline.yaml
+
+
+INPUT:
+  SIZE_TRAIN: [288, 288]
+  SIZE_TEST: [288, 288]
+
+  CROP:
+    ENABLED: True
+    SIZE: [288, 288] 
+
+OUTPUT_DIR: artifacts/runs/legacy/s101_288

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      The computer-hosted development UI normally uses a private-LAN HTTP URL.
+      MainActivity only accepts HTTP for local/private hosts and never bypasses
+      TLS certificate errors. Public deployments should use HTTPS.
+    -->
+    <!--suppress InsecureBaseConfiguration -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -1,0 +1,641 @@
+"""Face-anchored semantic fusion for the one-graph pet ReID model.
+
+The deployment model keeps the proven ArcFace descriptor as a hard anchor.
+The professional nose descriptor may only change it through a bounded,
+sample-dependent residual.  The residual direction starts at exactly zero,
+so loading this module before training cannot silently change retrieval
+results.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+from .multimodal import (
+    SEMANTIC_RESIDUAL_FUSION_V3,
+    CrossModalResidual,
+    FastReIDDescriptorEncoder,
+    LocalEndToEndPetIDModel,
+    ResidualProjectionAdapter,
+)
+from .unified_geometry_stability import (
+    DEFAULT_GEOMETRY_ANGLE_OFFSET,
+    DEFAULT_GEOMETRY_BOX_OFFSETS,
+    StableGeometryDiscretizer,
+)
+from .unified import NormalizedRotatedCropper, UnifiedPetReID
+
+
+class FaceAnchoredSemanticFusion(nn.Module):
+    """Fuse a specialist nose descriptor without replacing the face space.
+
+    The raw nose descriptor is first mapped into the 512-dimensional ArcFace
+    space.  A reliability network estimates a bounded per-image nose weight.
+    A separate global direction gain is initialized to zero; consequently the
+    initial output is bit-for-bit the normalized face descriptor while all
+    trainable paths still receive gradients after the first optimizer step.
+    """
+
+    def __init__(
+        self,
+        nose_dim: int = 2048,
+        descriptor_dim: int = 512,
+        *,
+        quality_dim: int = 6,
+        viewpoint_dim: int = 4,
+        confidence_dim: int = 2,
+        hidden_dim: int = 128,
+        bottleneck_dim: int = 128,
+        maximum_nose_weight: float = 0.35,
+        initial_nose_weight: float = 0.10,
+        semantic_residual_scale: float = 0.05,
+        viewpoint_nose_penalty: float = 0.35,
+        viewpoint_nose_floor: float = 0.50,
+    ) -> None:
+        super().__init__()
+        self.nose_dim = int(nose_dim)
+        self.descriptor_dim = int(descriptor_dim)
+        self.quality_dim = int(quality_dim)
+        self.viewpoint_dim = int(viewpoint_dim)
+        self.confidence_dim = int(confidence_dim)
+        self.hidden_dim = int(hidden_dim)
+        self.bottleneck_dim = int(bottleneck_dim)
+        self.maximum_nose_weight = float(maximum_nose_weight)
+        self.semantic_residual_scale = float(semantic_residual_scale)
+        self.viewpoint_nose_penalty = float(viewpoint_nose_penalty)
+        self.viewpoint_nose_floor = float(viewpoint_nose_floor)
+        if (
+            min(
+                self.nose_dim,
+                self.descriptor_dim,
+                self.quality_dim,
+                self.viewpoint_dim,
+                self.confidence_dim,
+                self.hidden_dim,
+                self.bottleneck_dim,
+            )
+            <= 0
+        ):
+            raise ValueError("All fusion dimensions must be positive")
+        if not 0.0 < self.maximum_nose_weight < 0.5:
+            raise ValueError("maximum_nose_weight must be in (0, 0.5)")
+        if not 0.0 < initial_nose_weight < self.maximum_nose_weight:
+            raise ValueError("initial_nose_weight must be positive and below the bound")
+        if self.semantic_residual_scale < 0:
+            raise ValueError("semantic_residual_scale must be non-negative")
+        if self.viewpoint_nose_penalty < 0:
+            raise ValueError("viewpoint_nose_penalty must be non-negative")
+        if not 0.0 <= self.viewpoint_nose_floor <= 1.0:
+            raise ValueError("viewpoint_nose_floor must be in [0, 1]")
+
+        self.nose_adapter = ResidualProjectionAdapter(
+            self.nose_dim,
+            self.descriptor_dim,
+            self.bottleneck_dim,
+        )
+        relation_dim = max(16, self.hidden_dim // 2)
+        self.relation_dim = int(relation_dim)
+        self.relation_encoder = nn.Sequential(
+            nn.LayerNorm(2 * self.descriptor_dim),
+            nn.Linear(2 * self.descriptor_dim, self.hidden_dim),
+            nn.GELU(),
+            nn.Linear(self.hidden_dim, self.relation_dim),
+            nn.GELU(),
+        )
+        signal_dim = self.quality_dim + self.viewpoint_dim
+        self.signal_norm = nn.LayerNorm(signal_dim)
+        self.confidence_norm = nn.LayerNorm(self.confidence_dim)
+        evidence_dim = signal_dim + self.confidence_dim + self.relation_dim + 2
+        self.reliability = nn.Sequential(
+            nn.Linear(evidence_dim, self.hidden_dim),
+            nn.GELU(),
+            nn.Linear(self.hidden_dim, 1),
+        )
+        probability = float(initial_nose_weight) / self.maximum_nose_weight
+        initial_logit = math.log(probability / (1.0 - probability))
+        nn.init.zeros_(self.reliability[-1].weight)
+        nn.init.constant_(self.reliability[-1].bias, initial_logit)
+
+        self.cross_modal_residual = CrossModalResidual(
+            self.descriptor_dim,
+            self.bottleneck_dim,
+        )
+        # tanh(0) is exactly zero and has unit derivative.  This is the hard
+        # face anchor at initialization and a bounded global safety control
+        # after training.
+        self.direction_gain_logit = nn.Parameter(torch.zeros(()))
+
+    def configuration(self) -> dict[str, Any]:
+        return {
+            "nose_dim": self.nose_dim,
+            "descriptor_dim": self.descriptor_dim,
+            "quality_dim": self.quality_dim,
+            "viewpoint_dim": self.viewpoint_dim,
+            "confidence_dim": self.confidence_dim,
+            "hidden_dim": self.hidden_dim,
+            "bottleneck_dim": self.bottleneck_dim,
+            "maximum_nose_weight": self.maximum_nose_weight,
+            "semantic_residual_scale": self.semantic_residual_scale,
+            "viewpoint_nose_penalty": self.viewpoint_nose_penalty,
+            "viewpoint_nose_floor": self.viewpoint_nose_floor,
+        }
+
+    @staticmethod
+    def _agreement(
+        nose: torch.Tensor,
+        face: torch.Tensor,
+    ) -> torch.Tensor:
+        cosine = F.cosine_similarity(nose.float(), face.float(), dim=1)
+        difference = (nose.float() - face.float()).abs().mean(dim=1)
+        return torch.stack((cosine, difference), dim=1)
+
+    def _validate_adapted_inputs(
+        self,
+        face_descriptor: torch.Tensor,
+        adapted_nose_descriptor: torch.Tensor,
+        quality_signals: torch.Tensor,
+        viewpoint_signals: torch.Tensor,
+        geometry_confidence: torch.Tensor,
+    ) -> None:
+        expected_descriptor = (face_descriptor.shape[0], self.descriptor_dim)
+        if (
+            face_descriptor.ndim != 2
+            or tuple(face_descriptor.shape) != expected_descriptor
+        ):
+            raise ValueError(
+                f"face_descriptor must have shape [batch, {self.descriptor_dim}]"
+            )
+        if tuple(adapted_nose_descriptor.shape) != expected_descriptor:
+            raise ValueError("adapted_nose_descriptor must match the face descriptor")
+        expected = {
+            "quality_signals": self.quality_dim,
+            "viewpoint_signals": self.viewpoint_dim,
+            "geometry_confidence": self.confidence_dim,
+        }
+        tensors = {
+            "quality_signals": quality_signals,
+            "viewpoint_signals": viewpoint_signals,
+            "geometry_confidence": geometry_confidence,
+        }
+        for name, width in expected.items():
+            if tuple(tensors[name].shape) != (face_descriptor.shape[0], width):
+                raise ValueError(f"{name} must have shape [batch, {width}]")
+
+    def adapt_nose(self, raw_nose_descriptor: torch.Tensor) -> torch.Tensor:
+        if (
+            raw_nose_descriptor.ndim != 2
+            or raw_nose_descriptor.shape[1] != self.nose_dim
+        ):
+            raise ValueError(
+                f"raw_nose_descriptor must have shape [batch, {self.nose_dim}]"
+            )
+        return self.nose_adapter(raw_nose_descriptor)
+
+    def forward_adapted(
+        self,
+        face_descriptor: torch.Tensor,
+        adapted_nose_descriptor: torch.Tensor,
+        quality_signals: torch.Tensor,
+        viewpoint_signals: torch.Tensor,
+        geometry_confidence: torch.Tensor,
+        *,
+        return_aux: bool = False,
+    ):
+        self._validate_adapted_inputs(
+            face_descriptor,
+            adapted_nose_descriptor,
+            quality_signals,
+            viewpoint_signals,
+            geometry_confidence,
+        )
+        dtype = face_descriptor.dtype
+        face = F.normalize(face_descriptor, dim=1)
+        nose = F.normalize(adapted_nose_descriptor, dim=1)
+        quality = quality_signals.to(dtype=dtype)
+        viewpoint = viewpoint_signals.to(dtype=dtype)
+        confidence = geometry_confidence.to(dtype=dtype).clamp(0.0, 1.0)
+
+        pose_magnitude = viewpoint[:, :3].float().norm(dim=1)
+        viewpoint_frontality = (
+            self.viewpoint_nose_floor
+            + (1.0 - self.viewpoint_nose_floor)
+            * torch.exp(-self.viewpoint_nose_penalty * pose_magnitude)
+        ).to(dtype=dtype)
+        adjusted_quality = torch.cat(
+            (
+                quality[:, 0:1] * viewpoint_frontality[:, None],
+                quality[:, 1:],
+            ),
+            dim=1,
+        )
+        joint_signals = torch.cat((adjusted_quality, viewpoint), dim=1)
+        relation = torch.cat(((nose - face).abs(), nose * face), dim=1)
+        encoded_relation = self.relation_encoder(relation.float()).to(dtype=dtype)
+        agreement = self._agreement(nose, face).to(dtype=dtype)
+        reliability_logit = self.reliability(
+            torch.cat(
+                (
+                    self.signal_norm(joint_signals.float()).to(dtype=dtype),
+                    self.confidence_norm(confidence.float()).to(dtype=dtype),
+                    encoded_relation,
+                    agreement,
+                ),
+                dim=1,
+            )
+        )
+        proposed_nose_weight = self.maximum_nose_weight * reliability_logit.sigmoid()
+        direction_gain = self.direction_gain_logit.tanh().to(dtype=dtype)
+        effective_nose_weight = proposed_nose_weight * direction_gain
+        direction = nose - face
+        interaction = self.cross_modal_residual(nose, face)
+        bounded_interaction = torch.tanh(interaction) / math.sqrt(self.descriptor_dim)
+        embedding = F.normalize(
+            face
+            + effective_nose_weight * direction
+            + self.semantic_residual_scale
+            * effective_nose_weight.abs()
+            * bounded_interaction,
+            dim=1,
+        )
+        if not return_aux:
+            return embedding
+        return {
+            "embedding": embedding,
+            "face_descriptor": face,
+            "adapted_nose_descriptor": nose,
+            "proposed_nose_weight": proposed_nose_weight,
+            "effective_nose_weight": effective_nose_weight,
+            "direction_gain": direction_gain,
+            "agreement": agreement,
+            "viewpoint_frontality": viewpoint_frontality,
+        }
+
+    def forward(
+        self,
+        face_descriptor: torch.Tensor,
+        raw_nose_descriptor: torch.Tensor,
+        quality_signals: torch.Tensor,
+        viewpoint_signals: torch.Tensor,
+        geometry_confidence: torch.Tensor,
+        *,
+        return_aux: bool = False,
+    ):
+        return self.forward_adapted(
+            face_descriptor,
+            self.adapt_nose(raw_nose_descriptor),
+            quality_signals,
+            viewpoint_signals,
+            geometry_confidence,
+            return_aux=return_aux,
+        )
+
+    def load_semantic_v3_initialization(self, wrapper: nn.Module) -> None:
+        """Copy compatible locked semantic-v3 fusion tensors.
+
+        Geometry confidence is a new input.  Its two first-layer columns are
+        initialized to zero, while the old quality, relation and agreement
+        columns retain their exact learned values.
+        """
+
+        source_gate = wrapper.gate
+        if not hasattr(source_gate, "relation_encoder"):
+            raise ValueError("Source wrapper does not use semantic residual v3")
+        self.nose_adapter.load_state_dict(wrapper.nose_adapter.state_dict())
+        self.relation_encoder.load_state_dict(source_gate.relation_encoder.state_dict())
+        self.signal_norm.load_state_dict(source_gate.quality_norm.state_dict())
+        self.cross_modal_residual.load_state_dict(
+            wrapper.cross_modal_residual.state_dict()
+        )
+
+        source_first = source_gate.reliability[0]
+        target_first = self.reliability[0]
+        signal_dim = self.quality_dim + self.viewpoint_dim
+        relation_start = signal_dim + self.confidence_dim
+        source_relation_start = signal_dim
+        with torch.no_grad():
+            target_first.weight.zero_()
+            target_first.bias.copy_(source_first.bias)
+            target_first.weight[:, :signal_dim].copy_(
+                source_first.weight[:, :signal_dim]
+            )
+            target_first.weight[
+                :, relation_start : relation_start + self.relation_dim
+            ].copy_(
+                source_first.weight[
+                    :,
+                    source_relation_start : source_relation_start + self.relation_dim,
+                ]
+            )
+            target_first.weight[:, relation_start + self.relation_dim :].copy_(
+                source_first.weight[:, source_relation_start + self.relation_dim :]
+            )
+        self.reliability[2].load_state_dict(source_gate.reliability[2].state_dict())
+
+
+def _bounded_logit(value: float, lower: float, upper: float) -> float:
+    """Return the unconstrained logit for one open bounded interval."""
+
+    value = float(value)
+    lower = float(lower)
+    upper = float(upper)
+    if not lower < value < upper:
+        raise ValueError(f"value must be in the open interval ({lower}, {upper})")
+    probability = (value - lower) / (upper - lower)
+    return math.log(probability / (1.0 - probability))
+
+
+class ConfidenceGatedNoseFusion(nn.Module):
+    """Face-anchored fusion selected by the locked development protocol.
+
+    The three policy quantities are differentiable but reparameterized into
+    conservative bounds. They are frozen for the locked deployment candidate;
+    a training run can explicitly enable them without ever allowing the nose
+    branch to contribute half or more of the final descriptor.
+    """
+
+    maximum_weight_bounds = (1e-4, 0.49)
+    confidence_threshold_bounds = (1e-4, 1.0 - 1e-4)
+    temperature_bounds = (0.005, 0.10)
+
+    def __init__(
+        self,
+        *,
+        maximum_nose_weight: float = 0.225,
+        face_confidence_threshold: float = 0.44,
+        temperature: float = 0.02,
+        trainable: bool = False,
+    ) -> None:
+        super().__init__()
+        self.maximum_weight_logit = nn.Parameter(
+            torch.tensor(
+                _bounded_logit(maximum_nose_weight, *self.maximum_weight_bounds),
+                dtype=torch.float64,
+            )
+        )
+        self.confidence_threshold_logit = nn.Parameter(
+            torch.tensor(
+                _bounded_logit(
+                    face_confidence_threshold,
+                    *self.confidence_threshold_bounds,
+                ),
+                dtype=torch.float64,
+            )
+        )
+        self.temperature_logit = nn.Parameter(
+            torch.tensor(
+                _bounded_logit(temperature, *self.temperature_bounds),
+                dtype=torch.float64,
+            )
+        )
+        self.configure_trainable(trainable)
+
+    @staticmethod
+    def _bounded_value(
+        logit: torch.Tensor, bounds: tuple[float, float]
+    ) -> torch.Tensor:
+        lower, upper = bounds
+        return lower + (upper - lower) * logit.sigmoid()
+
+    @property
+    def maximum_nose_weight(self) -> torch.Tensor:
+        return self._bounded_value(
+            self.maximum_weight_logit, self.maximum_weight_bounds
+        )
+
+    @property
+    def face_confidence_threshold(self) -> torch.Tensor:
+        return self._bounded_value(
+            self.confidence_threshold_logit,
+            self.confidence_threshold_bounds,
+        )
+
+    @property
+    def temperature(self) -> torch.Tensor:
+        return self._bounded_value(self.temperature_logit, self.temperature_bounds)
+
+    def configure_trainable(self, enabled: bool) -> None:
+        self.requires_grad_(bool(enabled))
+
+    def configuration(self) -> dict[str, float]:
+        return {
+            "maximum_nose_weight": float(self.maximum_nose_weight.detach().cpu()),
+            "face_confidence_threshold": float(
+                self.face_confidence_threshold.detach().cpu()
+            ),
+            "temperature": float(self.temperature.detach().cpu()),
+        }
+
+    def nose_weight(self, face_geometry_confidence: torch.Tensor) -> torch.Tensor:
+        confidence = face_geometry_confidence.reshape(-1).clamp(0.0, 1.0)
+        dtype = confidence.dtype
+        maximum = self.maximum_nose_weight.to(dtype=dtype)
+        threshold = self.face_confidence_threshold.to(dtype=dtype)
+        temperature = self.temperature.to(dtype=dtype)
+        return maximum * torch.sigmoid((threshold - confidence) / temperature)
+
+    def forward(
+        self,
+        face_descriptor: torch.Tensor,
+        adapted_nose_descriptor: torch.Tensor,
+        face_geometry_confidence: torch.Tensor,
+        *,
+        return_aux: bool = False,
+    ):
+        if face_descriptor.ndim != 2:
+            raise ValueError("face_descriptor must have shape [batch, dim]")
+        if adapted_nose_descriptor.shape != face_descriptor.shape:
+            raise ValueError("adapted_nose_descriptor must match face_descriptor")
+        if face_geometry_confidence.numel() != face_descriptor.shape[0]:
+            raise ValueError("one face confidence is required per descriptor")
+        face = F.normalize(face_descriptor, dim=1)
+        nose = F.normalize(adapted_nose_descriptor, dim=1)
+        weight = self.nose_weight(face_geometry_confidence).to(dtype=face.dtype)
+        embedding = F.normalize(
+            face * (1.0 - weight[:, None]) + nose * weight[:, None],
+            dim=1,
+        )
+        if not return_aux:
+            return embedding
+        return {
+            "embedding": embedding,
+            "face_descriptor": face,
+            "adapted_nose_descriptor": nose,
+            "nose_weight": weight,
+        }
+
+
+class UnifiedSemanticPetReID(nn.Module):
+    """One differentiable RGB graph with face and specialist nose identity.
+
+    Runtime geometry comes from UnifiedPetReID's learned FPN head. Its ArcFace
+    encoder supplies the protected face anchor, while the locked semantic-v3
+    ResNeSt encoder and nose adapter supply complementary evidence. No
+    detector, SAM model, crop API, or second inference session is required.
+    """
+
+    descriptor_dim = 512
+
+    def __init__(
+        self,
+        geometry_frontend: UnifiedPetReID,
+        nose_encoder: FastReIDDescriptorEncoder,
+        nose_adapter: nn.Module,
+        *,
+        nose_crop_size: int = 244,
+        maximum_nose_weight: float = 0.225,
+        face_confidence_threshold: float = 0.44,
+        temperature: float = 0.02,
+        gate_trainable: bool = False,
+        geometry_box_step: float | list[list[float]] | None = None,
+        geometry_box_offsets: tuple[
+            tuple[float, float, float, float],
+            tuple[float, float, float, float],
+        ] = DEFAULT_GEOMETRY_BOX_OFFSETS,
+        geometry_angle_step: float | None = None,
+        geometry_angle_offset: float = DEFAULT_GEOMETRY_ANGLE_OFFSET,
+        geometry_box_piecewise: list[dict[str, Any]] | None = None,
+    ) -> None:
+        super().__init__()
+        self.geometry_frontend = geometry_frontend
+        self.nose_encoder = nose_encoder
+        self.nose_adapter = nose_adapter
+        self.nose_crop_size = int(nose_crop_size)
+        if self.nose_crop_size <= 0:
+            raise ValueError("nose_crop_size must be positive")
+        if int(self.geometry_frontend.descriptor_dim) != self.descriptor_dim:
+            raise ValueError("geometry frontend must emit 512-D face features")
+        if int(self.nose_encoder.feature_dim) <= 0:
+            raise ValueError("nose encoder feature dimension must be positive")
+        self.nose_cropper = NormalizedRotatedCropper(
+            (self.nose_crop_size, self.nose_crop_size)
+        )
+        self.geometry_discretizer = StableGeometryDiscretizer(
+            box_step=geometry_box_step,
+            box_offsets=geometry_box_offsets,
+            angle_step=geometry_angle_step,
+            angle_offset=geometry_angle_offset,
+            box_piecewise=geometry_box_piecewise,
+        )
+        full_mask = torch.ones(1, 1, self.nose_crop_size, self.nose_crop_size)
+        self.register_buffer(
+            "nose_feather_mask",
+            F.avg_pool2d(full_mask, kernel_size=5, stride=1, padding=2),
+            persistent=False,
+        )
+        self.fusion = ConfidenceGatedNoseFusion(
+            maximum_nose_weight=maximum_nose_weight,
+            face_confidence_threshold=face_confidence_threshold,
+            temperature=temperature,
+            trainable=gate_trainable,
+        )
+
+    @classmethod
+    def from_semantic_v3(
+        cls,
+        geometry_frontend: UnifiedPetReID,
+        identity_model: LocalEndToEndPetIDModel,
+        **kwargs: Any,
+    ) -> "UnifiedSemanticPetReID":
+        if identity_model.fusion_mode != SEMANTIC_RESIDUAL_FUSION_V3:
+            raise ValueError("identity_model must use semantic_residual_v3 fusion")
+        if not identity_model.joint_enabled:
+            raise ValueError("semantic-v3 identity model has no joint adapter")
+        return cls(
+            geometry_frontend,
+            identity_model.nose_encoder,
+            identity_model.nose_adapter,
+            nose_crop_size=int(identity_model.nose_size[0]),
+            **kwargs,
+        )
+
+    @property
+    def input_size(self) -> int:
+        return int(self.geometry_frontend.input_size)
+
+    def configure_trainable(
+        self,
+        *,
+        geometry: bool = False,
+        nose_encoder_parts: tuple[str, ...] = (),
+        nose_adapter: bool = False,
+        fusion: bool = False,
+    ) -> None:
+        """Select graph sections that receive gradients during joint fitting."""
+
+        self.geometry_frontend.requires_grad_(bool(geometry))
+        if not geometry:
+            self.geometry_frontend.eval()
+        self.nose_encoder.configure_trainable_parts(nose_encoder_parts)
+        self.nose_adapter.requires_grad_(bool(nose_adapter))
+        self.fusion.configure_trainable(fusion)
+
+    def forward(
+        self,
+        rgb_0_255: torch.Tensor,
+        *,
+        return_aux: bool = False,
+    ):
+        rgb_0_255 = self.geometry_frontend._validate_rgb(rgb_0_255)
+        geometry, _ = self.geometry_frontend._localize(rgb_0_255)
+        stable_boxes, stable_angles = self.geometry_discretizer(
+            geometry.boxes_cxcywh,
+            geometry.angle_radians,
+        )
+        face_crop = self.geometry_frontend.cropper(
+            rgb_0_255,
+            stable_boxes[:, 0],
+            stable_angles,
+        )
+        nose_crop = self.nose_cropper(
+            rgb_0_255,
+            stable_boxes[:, 1],
+            stable_angles,
+        )
+        face_descriptor = self.geometry_frontend._backbone_descriptor(
+            self.geometry_frontend._normalize(face_crop)
+        )
+        feather_mask = self.nose_feather_mask.to(dtype=nose_crop.dtype)
+        background = self.nose_encoder.model.pixel_mean.to(dtype=nose_crop.dtype)
+        feathered_nose_crop = nose_crop * feather_mask + background * (
+            1.0 - feather_mask
+        )
+        raw_nose_descriptor = F.normalize(
+            self.nose_encoder(nose_crop) + self.nose_encoder(feathered_nose_crop),
+            dim=1,
+        )
+        adapted_nose_descriptor = self.nose_adapter(raw_nose_descriptor)
+        fused = self.fusion(
+            face_descriptor,
+            adapted_nose_descriptor,
+            geometry.confidence[:, 0],
+            return_aux=return_aux,
+        )
+        if not return_aux:
+            return fused
+        return {
+            **fused,
+            "raw_nose_descriptor": raw_nose_descriptor,
+            "boxes_cxcywh": stable_boxes,
+            "angle_radians": stable_angles,
+            "raw_boxes_cxcywh": geometry.boxes_cxcywh,
+            "raw_angle_radians": geometry.angle_radians,
+            "geometry_confidence": geometry.confidence,
+            "face_crop": face_crop,
+            "nose_crop": nose_crop,
+        }
+
+
+class UnifiedSemanticPetReIDExport(nn.Module):
+    """Strict one-input/one-output deployment boundary."""
+
+    def __init__(self, model: UnifiedSemanticPetReID) -> None:
+        super().__init__()
+        self.model = model
+
+    def forward(self, rgb: torch.Tensor) -> torch.Tensor:
+        return self.model(rgb)

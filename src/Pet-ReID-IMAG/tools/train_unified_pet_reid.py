@@ -1,0 +1,1079 @@
+#!/usr/bin/env python3
+"""Train UnifiedPetReID without exposing protected evaluation labels."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import random
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch import nn
+from torch.utils.data import DataLoader
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE = ROOT.parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from pet_id.dogfacenet_alignment import PKBatchSampler
+from pet_id.unified import UnifiedPetReID
+from pet_id.unified_data import UnifiedManifestDataset, UnifiedTeacherCache
+from pet_id.unified_training import (
+    atomic_torch_save,
+    batch_hard_metric_violation,
+    build_model_from_checkpoint,
+    cosine_distillation,
+    cross_modal_supervised_contrastive_loss,
+    different_identity_permutation,
+    geometry_losses,
+    gradient_norm,
+    load_acceptance,
+    model_configuration,
+    relational_distillation,
+    retrieval_metrics,
+    sha256_file,
+    supervised_contrastive_loss,
+)
+from pet_id.release_compatibility import (
+    acceptance_path,
+    historical_run_path,
+)
+
+
+STAGES = ("geometry", "distill", "joint")
+
+
+class CosineIdentityClassifier(nn.Module):
+    """Training-only normalized identity proxies; never exported."""
+
+    def __init__(
+        self, num_classes: int, descriptor_dim: int, *, scale: float = 30.0
+    ) -> None:
+        super().__init__()
+        if num_classes < 2:
+            raise ValueError("Identity classification requires at least two classes")
+        if descriptor_dim < 1 or scale <= 0:
+            raise ValueError("Descriptor dimension and classifier scale must be positive")
+        self.scale = float(scale)
+        self.weight = nn.Parameter(torch.empty(num_classes, descriptor_dim))
+        nn.init.normal_(self.weight, std=0.01)
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        if features.ndim != 2 or features.shape[1] != self.weight.shape[1]:
+            raise ValueError(
+                "Classifier features must have shape "
+                f"[batch, {self.weight.shape[1]}]"
+            )
+        return self.scale * F.linear(
+            F.normalize(features.float(), dim=1),
+            F.normalize(self.weight.float(), dim=1),
+        )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--stage", choices=STAGES, required=True)
+    parser.add_argument(
+        "--train-manifest",
+        type=Path,
+        default=historical_run_path(WORKSPACE, "shared-fusion-baseline")
+        / "dev_train_manifest.json",
+    )
+    parser.add_argument(
+        "--validation-manifest",
+        type=Path,
+        default=historical_run_path(WORKSPACE, "shared-fusion-baseline")
+        / "dev_validation_manifest.json",
+    )
+    parser.add_argument(
+        "--acceptance",
+        type=Path,
+        default=acceptance_path(WORKSPACE, "legacy-training"),
+    )
+    parser.add_argument(
+        "--arcface-checkpoint",
+        type=Path,
+        default=WORKSPACE / "models/pretrained/dog.pt",
+    )
+    parser.add_argument("--teacher-cache", type=Path)
+    parser.add_argument("--resume", type=Path)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=WORKSPACE / "artifacts/runs/unified/training",
+    )
+    parser.add_argument("--device", default="cuda")
+    parser.add_argument("--input-size", type=int, default=1280)
+    letterbox = parser.add_mutually_exclusive_group()
+    letterbox.add_argument(
+        "--letterbox-upscale",
+        dest="letterbox_upscale",
+        action="store_true",
+    )
+    letterbox.add_argument(
+        "--no-letterbox-upscale",
+        dest="letterbox_upscale",
+        action="store_false",
+    )
+    parser.set_defaults(letterbox_upscale=False)
+    parser.add_argument("--localization-size", type=int, default=320)
+    parser.add_argument("--crop-size", type=int, default=224)
+    parser.add_argument("--geometry-hidden-channels", type=int, default=128)
+    parser.add_argument("--fusion-hidden-dim", type=int, default=256)
+    parser.add_argument(
+        "--geometry-feature-mode", choices=("layer3", "fpn"), default="layer3"
+    )
+    parser.add_argument("--maximum-residual-scale", type=float, default=0.35)
+    parser.add_argument("--geometry-minimum-size", type=float, default=0.04)
+    parser.add_argument("--geometry-nose-minimum-size", type=float, default=None)
+    parser.add_argument("--geometry-maximum-size", type=float, default=0.98)
+    parser.add_argument("--geometry-nose-maximum-size", type=float, default=None)
+    parser.add_argument("--epochs", type=int, default=8)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--validation-batch-size", type=int, default=8)
+    parser.add_argument(
+        "--deployment-exact-validation",
+        action="store_true",
+        help=(
+            "Select development checkpoints with FP32 batch-1 validation, "
+            "matching the deployment acceptance runtime."
+        ),
+    )
+
+    parser.add_argument("--identities-per-batch", type=int, default=4)
+    parser.add_argument("--images-per-identity", type=int, default=2)
+    parser.add_argument(
+        "--steps-per-epoch",
+        type=int,
+        default=0,
+        help="0 uses one dataset-sized epoch; positive values support smoke runs.",
+    )
+    parser.add_argument("--workers", type=int, default=0)
+    parser.add_argument("--geometry-lr", type=float, default=3e-4)
+    parser.add_argument("--fusion-lr", type=float, default=3e-4)
+    parser.add_argument("--identity-lr", type=float, default=1e-6)
+    parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--grad-clip", type=float, default=5.0)
+    parser.add_argument("--geometry-weight", type=float, default=1.0)
+    parser.add_argument("--embedding-distill-weight", type=float, default=2.0)
+    parser.add_argument("--face-distill-weight", type=float, default=1.0)
+    parser.add_argument("--relational-weight", type=float, default=0.5)
+    parser.add_argument("--metric-weight", type=float, default=0.10)
+    parser.add_argument("--face-metric-weight", type=float, default=0.05)
+    parser.add_argument("--nose-metric-weight", type=float, default=0.10)
+    parser.add_argument("--classification-weight", type=float, default=0.0)
+    parser.add_argument("--classification-scale", type=float, default=30.0)
+    parser.add_argument("--cross-modal-weight", type=float, default=0.05)
+    parser.add_argument("--conflict-weight", type=float, default=0.10)
+    parser.add_argument("--conflict-margin", type=float, default=0.05)
+    parser.add_argument("--dominance-weight", type=float, default=0.10)
+    parser.add_argument("--dominance-tolerance", type=float, default=0.02)
+    parser.add_argument("--temperature", type=float, default=0.10)
+    parser.add_argument("--flip-probability", type=float, default=0.5)
+    parser.add_argument("--color-jitter", type=float, default=0.08)
+    parser.add_argument("--seed", type=int, default=20260831)
+    parser.add_argument("--no-amp", action="store_true")
+    parser.add_argument("--freeze-geometry", action="store_true")
+    parser.add_argument(
+        "--freeze-geometry-calibration",
+        action="store_true",
+        help=(
+            "Keep the in-graph part geometry calibration fixed while training "
+            "the geometry adapter and head."
+        ),
+    )
+    parser.add_argument("--freeze-identity", action="store_true")
+    parser.add_argument(
+        "--final-fit-fixed-epochs",
+        action="store_true",
+        help=(
+            "Train on the locked 800-identity final-fit manifest for exactly "
+            "--epochs full epochs, without loading validation data or selecting "
+            "a checkpoint from validation metrics."
+        ),
+    )
+    parser.add_argument(
+        "--minimum-validation-top1-correct",
+        type=int,
+        default=0,
+        help="Do not promote a development checkpoint below this Top-1 count.",
+    )
+    parser.add_argument(
+        "--minimum-validation-top5-correct",
+        type=int,
+        default=0,
+        help="Do not promote a development checkpoint below this Top-5 count.",
+    )
+    return parser.parse_args()
+
+
+def geometry_size_configuration(args: argparse.Namespace) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Resolve explicit face/nose bounds while retaining legacy defaults."""
+    minimum_nose = (
+        args.geometry_minimum_size if args.geometry_nose_minimum_size is None
+        else args.geometry_nose_minimum_size
+    )
+    maximum_nose = (
+        args.geometry_maximum_size if args.geometry_nose_maximum_size is None
+        else args.geometry_nose_maximum_size
+    )
+    minimums = (float(args.geometry_minimum_size), float(minimum_nose))
+    maximums = (float(args.geometry_maximum_size), float(maximum_nose))
+    for minimum, maximum in zip(minimums, maximums):
+        if not 0.0 < minimum < maximum <= 1.0:
+            raise ValueError("geometry size bounds must satisfy 0 < minimum < maximum <= 1")
+    return minimums, maximums
+
+
+def resolve_and_verify_protocol(args: argparse.Namespace) -> dict[str, Any]:
+    acceptance_path = args.acceptance.expanduser().resolve()
+    acceptance = load_acceptance(acceptance_path)
+    train_path = args.train_manifest.expanduser().resolve()
+    validation_path = args.validation_manifest.expanduser().resolve()
+    train_hash = sha256_file(train_path)
+    validation_hash = sha256_file(validation_path)
+    if int(acceptance.get("schema_version", 1)) >= 2:
+        if train_hash != acceptance["training"]["sha256"]:
+            raise RuntimeError("Training manifest differs from the locked protected split")
+        if validation_hash != acceptance["development"]["sha256"]:
+            raise RuntimeError("Validation manifest differs from the locked protected split")
+        if args.final_fit_fixed_epochs:
+            raise RuntimeError(
+                "This acceptance contract has a protected development split; "
+                "final-fit mode is forbidden"
+            )
+        is_final_fit = False
+        training_split = "protected_development"
+    else:
+        development = acceptance["development"]
+        allowed_training = {
+            row["sha256"]: row
+            for row in (
+                development["train_manifest"],
+                development["final_fit_manifest"],
+            )
+        }
+        if train_hash not in allowed_training:
+            raise RuntimeError(
+                "Training manifest is not one of the locked "
+                "development/final-fit manifests"
+            )
+        if validation_hash != development["validation_manifest"]["sha256"]:
+            raise RuntimeError(
+                "Validation manifest does not match the locked development split"
+            )
+        final_fit_hash = development["final_fit_manifest"]["sha256"]
+        is_final_fit = train_hash == final_fit_hash
+        if is_final_fit != bool(args.final_fit_fixed_epochs):
+            raise RuntimeError(
+                "The locked final-fit manifest requires --final-fit-fixed-epochs, "
+                "and that flag is forbidden for development training"
+            )
+        training_split = "final_fit" if is_final_fit else "development"
+    if args.final_fit_fixed_epochs:
+        if args.steps_per_epoch:
+            raise RuntimeError(
+                "Final-fit must use complete dataset-sized epochs; "
+                "--steps-per-epoch must be 0"
+            )
+        if (
+            args.minimum_validation_top1_correct
+            or args.minimum_validation_top5_correct
+        ):
+            raise RuntimeError(
+                "Validation promotion thresholds are forbidden during final-fit"
+            )
+    if args.minimum_validation_top1_correct < 0:
+        raise ValueError("--minimum-validation-top1-correct must be non-negative")
+    if args.minimum_validation_top5_correct < 0:
+        raise ValueError("--minimum-validation-top5-correct must be non-negative")
+    expected_arcface = acceptance["source_weight_locks"][
+        "dog_arcface_checkpoint"
+    ]["sha256"]
+    arcface_path = args.arcface_checkpoint.expanduser().resolve()
+    if sha256_file(arcface_path) != expected_arcface:
+        raise RuntimeError("ArcFace source checkpoint does not match the acceptance lock")
+    return {
+        "acceptance": acceptance,
+        "acceptance_path": acceptance_path,
+        "acceptance_sha256": sha256_file(acceptance_path),
+        "train_manifest": train_path,
+        "train_manifest_sha256": train_hash,
+        "training_split": training_split,
+        "validation_manifest": validation_path,
+        "validation_manifest_sha256": validation_hash,
+        "arcface_checkpoint": arcface_path,
+        "arcface_checkpoint_sha256": expected_arcface,
+    }
+
+
+def verify_teacher_cache(
+    path: Path | None,
+    *,
+    train_manifest_sha256: str,
+    acceptance: dict[str, Any],
+) -> tuple[UnifiedTeacherCache, str]:
+    if path is None:
+        raise ValueError("--teacher-cache is required for distill and joint stages")
+    path = path.expanduser().resolve()
+    metadata_path = path.with_suffix(".metadata.json")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if not metadata.get("training_eligible", False):
+        raise RuntimeError("Teacher cache is marked evaluation-only")
+    if metadata.get("manifest_sha256") != train_manifest_sha256:
+        raise RuntimeError("Teacher cache and training manifest hashes differ")
+    if metadata.get("archive_sha256") != sha256_file(path):
+        raise RuntimeError("Teacher cache archive hash differs from its metadata")
+    teacher_name = None
+    for name, source in acceptance.get("teacher_sources", {}).items():
+        if (
+            metadata.get("checkpoint_sha256")
+            == source["checkpoint"]["sha256"]
+            and metadata.get("config_sha256") == source["config"]["sha256"]
+        ):
+            teacher_name = name
+            break
+    if teacher_name is None:
+        raise RuntimeError(
+            "Teacher cache checkpoint/config pair is not acceptance-locked"
+        )
+    declared_name = metadata.get("teacher_name")
+    if declared_name is not None and declared_name != teacher_name:
+        raise RuntimeError("Teacher cache name conflicts with its locked hashes")
+    return UnifiedTeacherCache(path), teacher_name
+
+
+def configure_trainable(
+    model: UnifiedPetReID,
+    stage: str,
+    *,
+    freeze_geometry: bool = False,
+    freeze_geometry_calibration: bool = False,
+    freeze_identity: bool = False,
+) -> None:
+    model.requires_grad_(False)
+    if not freeze_geometry:
+        model.geometry_adapter.requires_grad_(True)
+        model.geometry.requires_grad_(True)
+        if not freeze_geometry_calibration:
+            model.geometry_calibration.requires_grad_(True)
+    if stage in {"distill", "joint"}:
+        model.semantic_fusion.requires_grad_(True)
+    if stage == "joint" and not freeze_identity:
+        model.configure_identity_trainable(("layer4", "fc"))
+    else:
+        model.configure_identity_trainable(())
+
+
+def build_optimizer(
+    model: UnifiedPetReID,
+    args: argparse.Namespace,
+    *,
+    classification_head: nn.Module | None = None,
+) -> tuple[torch.optim.Optimizer, dict[str, int]]:
+    groups = []
+    counts = {}
+    for name, modules, learning_rate in (
+        (
+            "geometry",
+            (model.geometry_adapter, model.geometry, model.geometry_calibration),
+            args.geometry_lr,
+        ),
+        ("fusion", (model.semantic_fusion,), args.fusion_lr),
+        ("identity", (model.identity_encoder,), args.identity_lr),
+    ):
+        parameters = [
+            parameter
+            for module in modules
+            for parameter in module.parameters()
+            if parameter.requires_grad
+        ]
+        counts[name] = len(parameters)
+        if parameters:
+            groups.append(
+                {
+                    "params": parameters,
+                    "lr": learning_rate,
+                    "name": name,
+                }
+            )
+    classification_parameters = (
+        [
+            parameter
+            for parameter in classification_head.parameters()
+            if parameter.requires_grad
+        ]
+        if classification_head is not None
+        else []
+    )
+    counts["classification"] = len(classification_parameters)
+    if classification_parameters:
+        groups.append(
+            {
+                "params": classification_parameters,
+                "lr": args.fusion_lr,
+                "name": "classification",
+            }
+        )
+    if not groups:
+        raise RuntimeError("No trainable parameters were selected")
+    return (
+        torch.optim.AdamW(groups, weight_decay=args.weight_decay),
+        counts,
+    )
+
+
+def train_loader(
+    dataset: UnifiedManifestDataset,
+    args: argparse.Namespace,
+    *,
+    epoch: int,
+) -> DataLoader:
+    if args.stage == "geometry":
+        generator = torch.Generator()
+        generator.manual_seed(args.seed + epoch)
+        return DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            generator=generator,
+            num_workers=args.workers,
+            pin_memory=args.device.startswith("cuda"),
+        )
+    batch_size = args.identities_per_batch * args.images_per_identity
+    default_steps = math.ceil(len(dataset) / batch_size)
+    steps = args.steps_per_epoch or default_steps
+    sampler = PKBatchSampler(
+        dataset.targets,
+        identities_per_batch=args.identities_per_batch,
+        images_per_identity=args.images_per_identity,
+        steps=steps,
+        seed=args.seed + epoch,
+    )
+    return DataLoader(
+        dataset,
+        batch_sampler=sampler,
+        num_workers=args.workers,
+        pin_memory=args.device.startswith("cuda"),
+    )
+
+
+def move_batch(batch: dict[str, Any], device: torch.device) -> dict[str, Any]:
+    return {
+        key: value.to(device, non_blocking=True)
+        if torch.is_tensor(value)
+        else value
+        for key, value in batch.items()
+    }
+
+
+def compute_training_losses(
+    model: UnifiedPetReID,
+    batch: dict[str, Any],
+    args: argparse.Namespace,
+    *,
+    classification_head: nn.Module | None = None,
+) -> tuple[dict[str, torch.Tensor], dict[str, Any]]:
+    if args.stage == "geometry":
+        output = model.predict_geometry(batch["rgb"])
+    else:
+        output = model(batch["rgb"], return_aux=True)
+    geometry = geometry_losses(
+        output["boxes_cxcywh"].float(),
+        output["angle_radians"].float(),
+        batch["boxes_cxcywh"].float(),
+        batch["angle_radians"].float(),
+    )
+    losses: dict[str, torch.Tensor] = {
+        "loss_geometry": args.geometry_weight * geometry["geometry_total"]
+    }
+    if args.stage != "geometry":
+        teacher_embedding = batch["teacher_embedding"].float()
+        teacher_face = batch["teacher_face_embedding"].float()
+        if output["embedding"].shape[1] == teacher_embedding.shape[1]:
+            embedding_distill = cosine_distillation(
+                output["embedding"], teacher_embedding
+            )
+        else:
+            embedding_distill = output["embedding"].sum() * 0.0
+        losses.update(
+            {
+                "loss_embedding_distill": args.embedding_distill_weight
+                * embedding_distill,
+                "loss_face_distill": args.face_distill_weight
+                * cosine_distillation(
+                    output["face_descriptor"], teacher_face
+                ),
+                "loss_relational": args.relational_weight
+                * relational_distillation(
+                    output["embedding"], teacher_embedding
+                ),
+                "loss_metric": args.metric_weight
+                * supervised_contrastive_loss(
+                    output["embedding"],
+                    batch["target"],
+                    temperature=args.temperature,
+                ),
+            }
+        )
+        if classification_head is not None:
+            losses["loss_classification"] = (
+                args.classification_weight
+                * F.cross_entropy(
+                    classification_head(output["embedding"]), batch["target"]
+                )
+            )
+    if args.stage == "joint":
+        targets = batch["target"]
+        losses.update(
+            {
+                "loss_face_metric": args.face_metric_weight
+                * supervised_contrastive_loss(
+                    output["face_descriptor"],
+                    targets,
+                    temperature=args.temperature,
+                ),
+                "loss_nose_metric": args.nose_metric_weight
+                * supervised_contrastive_loss(
+                    output["nose_descriptor"],
+                    targets,
+                    temperature=args.temperature,
+                ),
+                "loss_cross_modal": args.cross_modal_weight
+                * cross_modal_supervised_contrastive_loss(
+                    output["nose_descriptor"],
+                    output["face_descriptor"],
+                    targets,
+                    temperature=args.temperature,
+                ),
+            }
+        )
+        fused_violation, fused_valid = batch_hard_metric_violation(
+            output["embedding"], targets
+        )
+        face_violation, face_valid = batch_hard_metric_violation(
+            output["face_descriptor"], targets
+        )
+        nose_violation, nose_valid = batch_hard_metric_violation(
+            output["nose_descriptor"], targets
+        )
+        dominance_valid = fused_valid & face_valid & nose_valid
+        if dominance_valid.any():
+            best_branch = torch.minimum(
+                face_violation.detach(), nose_violation.detach()
+            )
+            losses["loss_dominance"] = args.dominance_weight * F.relu(
+                fused_violation
+                - best_branch
+                - args.dominance_tolerance
+            )[dominance_valid].mean()
+        permutation, conflict_valid = different_identity_permutation(targets)
+        if conflict_valid.any():
+            corrupted, _, corrupted_scale = model.semantic_fusion(
+                output["face_descriptor"],
+                output["nose_descriptor"].index_select(0, permutation),
+                output["semantic_queries"],
+                output["geometry_confidence"],
+            )
+            clean_scale = output["residual_scale"]
+            conflict_loss = (
+                corrupted_scale[conflict_valid].mean()
+                + F.relu(
+                    args.conflict_margin
+                    - clean_scale[conflict_valid]
+                    + corrupted_scale[conflict_valid]
+                ).mean()
+                + cosine_distillation(
+                    corrupted[conflict_valid],
+                    output["face_descriptor"][conflict_valid].detach(),
+                )
+            )
+            losses["loss_conflict"] = args.conflict_weight * conflict_loss
+    return losses, {**output, **geometry}
+
+
+def evaluate_model(
+    model: UnifiedPetReID,
+    dataset: UnifiedManifestDataset,
+    *,
+    device: torch.device,
+    batch_size: int,
+    workers: int,
+    use_amp: bool,
+    amp_dtype: torch.dtype,
+) -> dict[str, Any]:
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=workers,
+        pin_memory=device.type == "cuda",
+    )
+    model.eval()
+    features = []
+    face_features = []
+    identities: list[str] = []
+    source_paths: list[str] = []
+    geometry_sums = {
+        "geometry_center": 0.0,
+        "geometry_size": 0.0,
+        "geometry_angle": 0.0,
+        "geometry_containment": 0.0,
+        "geometry_total": 0.0,
+    }
+    records = 0
+    with torch.inference_mode():
+        for raw_batch in loader:
+            batch = move_batch(raw_batch, device)
+            with torch.autocast(
+                device_type=device.type,
+                dtype=amp_dtype,
+                enabled=use_amp,
+            ):
+                output = model(batch["rgb"], return_aux=True)
+            losses = geometry_losses(
+                output["boxes_cxcywh"].float(),
+                output["angle_radians"].float(),
+                batch["boxes_cxcywh"].float(),
+                batch["angle_radians"].float(),
+            )
+            count = int(batch["rgb"].shape[0])
+            for name in geometry_sums:
+                geometry_sums[name] += float(losses[name]) * count
+            records += count
+            features.append(output["embedding"].float().cpu())
+            face_features.append(output["face_descriptor"].float().cpu())
+            identities.extend(
+                identity.casefold() for identity in raw_batch["identity"]
+            )
+            source_paths.extend(raw_batch["source_path"])
+    return {
+        "records": records,
+        "identities": len(set(identities)),
+        "geometry": {
+            name: value / records for name, value in geometry_sums.items()
+        },
+        "embedding": retrieval_metrics(
+            torch.cat(features),
+            identities,
+            source_paths,
+            gallery_images_per_identity=2,
+        ),
+        "face_descriptor": retrieval_metrics(
+            torch.cat(face_features),
+            identities,
+            source_paths,
+            gallery_images_per_identity=2,
+        ),
+    }
+
+
+def main() -> None:
+    args = parse_args()
+    if args.classification_weight < 0:
+        raise ValueError("--classification-weight must be non-negative")
+    if args.classification_scale <= 0:
+        raise ValueError("--classification-scale must be positive")
+    if args.stage == "geometry" and args.classification_weight:
+        raise ValueError(
+            "Identity classification is unavailable during geometry-only training"
+        )
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+    protocol = resolve_and_verify_protocol(args)
+    geometry_minimum_sizes, geometry_maximum_sizes = geometry_size_configuration(args)
+    device = torch.device(args.device)
+    output_dir = args.output_dir.expanduser().resolve() / args.stage
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    teacher_result = (
+        verify_teacher_cache(
+            args.teacher_cache,
+            train_manifest_sha256=protocol["train_manifest_sha256"],
+            acceptance=protocol["acceptance"],
+        )
+        if args.stage != "geometry"
+        else None
+    )
+    teacher_cache, teacher_name = teacher_result or (None, None)
+    train_dataset = UnifiedManifestDataset(
+        protocol["train_manifest"],
+        input_size=args.input_size,
+        training=True,
+        horizontal_flip_probability=args.flip_probability,
+        color_jitter=args.color_jitter,
+        min_images_per_identity=2 if args.stage != "geometry" else 1,
+        teacher_cache=teacher_cache,
+        allow_letterbox_upscale=args.letterbox_upscale,
+    )
+    validation_dataset = None
+    if not args.final_fit_fixed_epochs:
+        validation_dataset = UnifiedManifestDataset(
+            protocol["validation_manifest"],
+            input_size=args.input_size,
+            training=False,
+            allow_letterbox_upscale=args.letterbox_upscale,
+        )
+
+    if args.resume:
+        model, resume_payload = build_model_from_checkpoint(
+            args.resume.expanduser().resolve(),
+            protocol["arcface_checkpoint"],
+            device=device,
+        )
+        expected = {
+            "input_size": args.input_size,
+            "localization_size": args.localization_size,
+            "crop_size": args.crop_size,
+            "geometry_hidden_channels": args.geometry_hidden_channels,
+            "fusion_hidden_dim": args.fusion_hidden_dim,
+            "geometry_feature_mode": args.geometry_feature_mode,
+            "maximum_residual_scale": args.maximum_residual_scale,
+            "geometry_minimum_sizes": list(geometry_minimum_sizes),
+            "geometry_maximum_sizes": list(geometry_maximum_sizes),
+        }
+        if model_configuration(model) != expected:
+            raise RuntimeError(
+                f"Resume architecture differs from CLI: {model_configuration(model)} != {expected}"
+            )
+        resume_upscale = bool(
+            resume_payload.get("preprocessing", {}).get(
+                "letterbox_allow_upscale", True
+            )
+        )
+        if resume_upscale != args.letterbox_upscale:
+            raise RuntimeError(
+                "Resume checkpoint letterbox policy differs from CLI"
+            )
+    else:
+        if args.stage != "geometry":
+            raise ValueError("distill and joint stages require --resume")
+        resume_payload = None
+        model = UnifiedPetReID.from_arcface_checkpoint(
+            protocol["arcface_checkpoint"],
+            input_size=args.input_size,
+            localization_size=args.localization_size,
+            crop_size=args.crop_size,
+            geometry_hidden_channels=args.geometry_hidden_channels,
+            fusion_hidden_dim=args.fusion_hidden_dim,
+            geometry_feature_mode=args.geometry_feature_mode,
+            maximum_residual_scale=args.maximum_residual_scale,
+            geometry_minimum_sizes=geometry_minimum_sizes,
+            geometry_maximum_sizes=geometry_maximum_sizes,
+        ).to(device)
+    configure_trainable(
+        model,
+        args.stage,
+        freeze_geometry=args.freeze_geometry,
+        freeze_geometry_calibration=args.freeze_geometry_calibration,
+        freeze_identity=args.freeze_identity,
+    )
+    classification_head = (
+        CosineIdentityClassifier(
+            train_dataset.num_classes,
+            model.descriptor_dim,
+            scale=args.classification_scale,
+        ).to(device)
+        if args.classification_weight > 0
+        else None
+    )
+    optimizer, parameter_counts = build_optimizer(
+        model, args, classification_head=classification_head
+    )
+
+    use_amp = device.type == "cuda" and not args.no_amp
+    amp_dtype = (
+        torch.bfloat16
+        if use_amp and torch.cuda.is_bf16_supported()
+        else torch.float16
+    )
+    use_scaler = use_amp and amp_dtype == torch.float16
+    scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
+    history: list[dict[str, Any]] = []
+    best_key = None
+    started_at = time.time()
+
+    for epoch in range(1, args.epochs + 1):
+        model.train()
+        loader = train_loader(train_dataset, args, epoch=epoch)
+        epoch_sums: dict[str, float] = {}
+        samples = 0
+        epoch_started = time.perf_counter()
+        for step, raw_batch in enumerate(loader, start=1):
+            if (
+                args.stage == "geometry"
+                and args.steps_per_epoch
+                and step > args.steps_per_epoch
+            ):
+                break
+            batch = move_batch(raw_batch, device)
+            optimizer.zero_grad(set_to_none=True)
+            with torch.autocast(
+                device_type=device.type,
+                dtype=amp_dtype,
+                enabled=use_amp,
+            ):
+                losses, output = compute_training_losses(
+                    model,
+                    batch,
+                    args,
+                    classification_head=classification_head,
+                )
+                total_loss = sum(losses.values())
+            scaler.scale(total_loss).backward()
+            scaler.unscale_(optimizer)
+            branch_parameters = {
+                "geometry": [
+                    *model.geometry_adapter.parameters(),
+                    *model.geometry.parameters(),
+                    *model.geometry_calibration.parameters(),
+                ],
+                "fusion": list(model.semantic_fusion.parameters()),
+                "identity": list(model.identity_encoder.parameters()),
+                "classification": list(classification_head.parameters())
+                if classification_head is not None
+                else [],
+            }
+            norms = {
+                name: gradient_norm(parameters)
+                for name, parameters in branch_parameters.items()
+            }
+            gradient = math.sqrt(
+                sum(value * value for value in norms.values())
+            )
+            clip_scales = {}
+            for name, branch in branch_parameters.items():
+                parameters = [
+                    parameter
+                    for parameter in branch
+                    if parameter.requires_grad and parameter.grad is not None
+                ]
+                if parameters:
+                    torch.nn.utils.clip_grad_norm_(
+                        parameters, args.grad_clip
+                    )
+                clip_scales[name] = min(
+                    1.0, args.grad_clip / max(norms[name], 1e-12)
+                )
+            if not math.isfinite(float(total_loss.detach())) or not math.isfinite(
+                gradient
+            ):
+                raise FloatingPointError(
+                    f"Non-finite step: loss={float(total_loss.detach())}, grad={gradient}"
+                )
+            scaler.step(optimizer)
+            scaler.update()
+            count = int(batch["rgb"].shape[0])
+            samples += count
+            values = {
+                "loss": float(total_loss.detach()),
+                **{
+                    name: float(value.detach())
+                    for name, value in losses.items()
+                },
+                "geometry_total": float(output["geometry_total"].detach()),
+            }
+            for name, value in values.items():
+                epoch_sums[name] = epoch_sums.get(name, 0.0) + value * count
+            if step == 1 or step % 25 == 0:
+                print(
+                    json.dumps(
+                        {
+                            "stage": args.stage,
+                            "epoch": epoch,
+                            "step": step,
+                            "samples": samples,
+                            **values,
+                            "gradient_norm": gradient,
+                            "branch_gradient_norms": norms,
+                            "branch_clip_scales": clip_scales,
+                        }
+                    ),
+                    flush=True,
+                )
+
+        validation = None
+        if validation_dataset is not None:
+            validation = evaluate_model(
+                model,
+                validation_dataset,
+                device=device,
+                batch_size=(
+                    1 if args.deployment_exact_validation else args.validation_batch_size
+                ),
+                workers=args.workers,
+                use_amp=use_amp and not args.deployment_exact_validation,
+                amp_dtype=amp_dtype,
+            )
+        averages = {
+            name: value / samples for name, value in epoch_sums.items()
+        }
+        epoch_row = {
+            "epoch": epoch,
+            "samples": samples,
+            "wall_seconds": time.perf_counter() - epoch_started,
+            "training": averages,
+            "validation": validation,
+        }
+        history.append(epoch_row)
+        selection_key = None
+        promotion_eligible = False
+        if validation is not None:
+            retrieval = validation["embedding"]
+            selection_key = (
+                retrieval["top1_correct"],
+                retrieval["top5_correct"],
+                retrieval["mean_reciprocal_rank"],
+                -validation["geometry"]["geometry_total"],
+            )
+            promotion_eligible = (
+                retrieval["top1_correct"]
+                >= args.minimum_validation_top1_correct
+                and retrieval["top5_correct"]
+                >= args.minimum_validation_top5_correct
+            )
+        checkpoint_payload = {
+            "schema_version": 1,
+            "model_type": "unified_pet_reid",
+            "stage": args.stage,
+            "epoch": epoch,
+            "model_config": model_configuration(model),
+            "preprocessing": {
+                "letterbox_allow_upscale": args.letterbox_upscale,
+            },
+            "model": model.state_dict(),
+            "protocol": {
+                key: str(value) if isinstance(value, Path) else value
+                for key, value in protocol.items()
+                if key != "acceptance"
+            },
+            "teacher_cache": str(args.teacher_cache.resolve())
+            if args.teacher_cache
+            else None,
+            "teacher_name": teacher_name,
+            "resume": str(args.resume.resolve()) if args.resume else None,
+            "trainable_identity_parts": (
+                ["layer4", "fc"]
+                if args.stage == "joint" and not args.freeze_identity
+                else []
+            ),
+            "freeze_geometry": args.freeze_geometry,
+            "freeze_geometry_calibration": args.freeze_geometry_calibration,
+            "freeze_identity": args.freeze_identity,
+            "classification_weight": args.classification_weight,
+            "classification_scale": args.classification_scale,
+            "classification_head": classification_head.state_dict()
+            if classification_head is not None
+            else None,
+            "classification_num_classes": train_dataset.num_classes
+            if classification_head is not None
+            else 0,
+            "amp_dtype": str(amp_dtype).removeprefix("torch.")
+            if use_amp
+            else "float32",
+            "optimizer": optimizer.state_dict(),
+            "validation_runtime": {
+                "batch_size": (
+                    1 if args.deployment_exact_validation else args.validation_batch_size
+                ),
+                "amp_dtype": "float32"
+                if args.deployment_exact_validation
+                else (str(amp_dtype).removeprefix("torch.") if use_amp else "float32"),
+            },
+            "parameter_tensor_counts": parameter_counts,
+            "history": history,
+            "selection_policy": (
+                "fixed_last_epoch_no_validation"
+                if args.final_fit_fixed_epochs
+                else "locked_development_validation_noninferiority"
+            ),
+            "selection_key": list(selection_key)
+            if selection_key is not None
+            else None,
+            "promotion_eligible": promotion_eligible,
+            "minimum_validation_top1_correct": (
+                args.minimum_validation_top1_correct
+            ),
+            "minimum_validation_top5_correct": (
+                args.minimum_validation_top5_correct
+            ),
+            "elapsed_seconds": time.time() - started_at,
+        }
+        atomic_torch_save(checkpoint_payload, output_dir / "model_last.pth")
+        if (
+            selection_key is not None
+            and promotion_eligible
+            and (best_key is None or selection_key > best_key)
+        ):
+            best_key = selection_key
+            atomic_torch_save(checkpoint_payload, output_dir / "model_best.pth")
+        if args.final_fit_fixed_epochs and epoch == args.epochs:
+            atomic_torch_save(checkpoint_payload, output_dir / "model_final.pth")
+        summary = {
+            "stage": args.stage,
+            "epoch": epoch,
+            "selection_policy": checkpoint_payload["selection_policy"],
+            "promotion_eligible": promotion_eligible,
+            "best_selection_key": list(best_key) if best_key is not None else None,
+            "current_selection_key": list(selection_key)
+            if selection_key is not None
+            else None,
+            "training": averages,
+            "validation": validation,
+            "model_last": str(output_dir / "model_last.pth"),
+            "model_best": str(output_dir / "model_best.pth")
+            if best_key is not None
+            else None,
+            "model_final": str(output_dir / "model_final.pth")
+            if args.final_fit_fixed_epochs and epoch == args.epochs
+            else None,
+        }
+        (output_dir / "training_state.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
+
+    best_path = output_dir / "model_best.pth"
+    final_path = output_dir / "model_final.pth"
+    final = {
+        "schema_version": 1,
+        "stage": args.stage,
+        "epochs": args.epochs,
+        "best_selection_key": list(best_key) if best_key is not None else None,
+        "selection_policy": (
+            "fixed_last_epoch_no_validation"
+            if args.final_fit_fixed_epochs
+            else "locked_development_validation_noninferiority"
+        ),
+        "model_best": str(best_path.resolve()) if best_path.exists() else None,
+        "model_best_sha256": sha256_file(best_path) if best_path.exists() else None,
+        "model_final": str(final_path.resolve()) if final_path.exists() else None,
+        "model_final_sha256": sha256_file(final_path)
+        if final_path.exists()
+        else None,
+        "model_last": str((output_dir / "model_last.pth").resolve()),
+        "model_last_sha256": sha256_file(output_dir / "model_last.pth"),
+        "history": history,
+    }
+    (output_dir / "train_summary.json").write_text(
+        json.dumps(final, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(json.dumps(final, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
+

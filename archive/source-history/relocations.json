@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "purpose": "Map immutable evidence paths removed from active source to byte-identical source-history files.",
+  "relocations": [
+    {
+      "evidence": "models/selected/unified_pet_reid_v3_v1/candidate_lock_v3.json",
+      "recorded_source_suffix": "src/Pet-ReID-IMAG/pet_id/unified_v3_candidate.py",
+      "archived_source": "archive/source-history/unified-candidate-generations/pet_id/unified_v3_candidate.py",
+      "sha256": "59b1c1fcac1dd9ac5de0d6682214b5db010c505147bd1d8da4a394404296c537"
+    },
+    {
+      "evidence": "models/selected/unified_pet_reid_v3_v1/candidate_lock_v3.json",
+      "recorded_source_suffix": "src/Pet-ReID-IMAG/tools/evaluate_unified_v3_blind.py",
+      "archived_source": "archive/source-history/unified-candidate-generations/tools/evaluate_unified_v3_blind.py",
+      "sha256": "e7b980761111f37396741bbfbf965f41b08a4ed1ef115e185a6198856bea0ad9"
+    },
+    {
+      "evidence": "models/selected/unified_pet_reid_v3_v1/candidate_lock_v3.json",
+      "recorded_source_suffix": "src/Pet-ReID-IMAG/tools/lock_unified_v3_candidate.py",
+      "archived_source": "archive/source-history/unified-candidate-generations/tools/lock_unified_v3_candidate.py",
+      "sha256": "18b598bf0b85ea695e8e5c04b4ce97a1195ecf235dd6805eb4e6f65314720d66"
+    },
+    {
+      "evidence": "models/selected/unified_pet_reid_v4_v1/candidate_lock_v4.json",
+      "recorded_source_suffix": "src/Pet-ReID-IMAG/tools/evaluate_unified_highres_blind.py",
+      "archived_source": "archive/source-history/high-resolution-candidate-lifecycle/tools/evaluate_unified_highres_blind.py",
+      "sha256": "106639a5158836e13b1f1ccf3286937279ee9e3a88852615d548db47971caa3f"
+    },
+    {
+      "evidence": "models/selected/unified_pet_reid_v4_v1/candidate_lock_v4.json",
+      "recorded_source_suffix": "src/Pet-ReID-IMAG/tools/lock_unified_highres_candidate.py",
+      "archived_source": "archive/source-history/high-resolution-candidate-lifecycle/tools/lock_unified_highres_candidate.py",
+      "sha256": "b5284af663dc05473d196185ae3d4adf893b19573d6fe1a68a0b07bf88709f44"
+    }
+  ]
+}

@@ -1,14 +1,38 @@
-# Local datasets and dataset-derived artifacts: never commit these.
-/DogFaceNet_alignment/
+# Workspace layout: source is tracked; local inputs, runtime outputs, recovery
+# material and binary model payloads are not.
+/data/
+/artifacts/
+/archive/*
+!/archive/source-history/
+!/archive/source-history/**
+/models/pretrained/
+/models/acceptance/
+/models/selected/**/*.json
+
+# The registry, deployment routing, selected-model documentation, and configs
+# are source-controlled. Evaluation, blind/development, validation, lock, and
+# generated model metadata under selected models remain local.
+
+# Guard against accidentally recreating generated directories inside source.
+/src/Pet-ReID-IMAG/data/
+/src/Pet-ReID-IMAG/datasets/
+/src/Pet-ReID-IMAG/pretrain/
+/src/Pet-ReID-IMAG/logs/
+
+# Legacy locations stay guarded until and after their contents are migrated.
+/logs/
+/results/
 /upstream/Pet-ReID-IMAG/data/
 /upstream/Pet-ReID-IMAG/datasets/
 /upstream/Pet-ReID-IMAG/pretrain/
 /upstream/Pet-ReID-IMAG/logs/
-/upstream/Pet-ReID-IMAG/third_party/
+
+# Vendor training annotations are local data, not application source.
+/upstream/Pet-ReID-IMAG/third_party/AnyFace/yolov5-face/widerface/
+/src/Pet-ReID-IMAG/third_party/AnyFace/yolov5-face/widerface/
+/src/Pet-ReID-IMAG/third_party/sam2/sav_dataset/example/
 
 # Generated outputs.
-/logs/
-/results/
 **/outputs/
 **/checkpoints/
 **/weights/
@@ -29,6 +53,7 @@
 *.jpg
 *.jpeg
 *.png
+!src/Pet-ReID-IMAG/frontend/pet-reid-web/public/icons/*.png
 *.gif
 *.bmp
 *.webp
@@ -47,6 +72,17 @@
 *.safetensors
 *.pkl
 *.pickle
+*.jar
+*.ipynb
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
 *.zip
 *.7z
 *.rar
@@ -60,6 +96,7 @@ __pycache__/
 *.so
 *.dll
 *.o
+.tmp/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -68,6 +105,11 @@ htmlcov/
 .venv/
 venv/
 env/
+node_modules/
+.next/
+target/
+dist/
+build/
 .idea/
 .vscode/
 
@@ -81,4 +123,3 @@ env/
 *.pfx
 credentials*
 secrets*
-

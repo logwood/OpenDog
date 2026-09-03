@@ -29,10 +29,10 @@
     "batch-28 baseline versus latent workspace resource benchmark"
   ],
   "verified_outputs": {
-    "phase_b_submission": "upstream/Pet-ReID-IMAG/logs/fusion_submit/submit_modern.csv",
+    "phase_b_submission": "artifacts/runs/legacy/fusion_submit/submit_modern.csv",
     "rows": 2000,
     "feature_shape_per_side_per_model": [4000, 2048],
-    "latent_smoke_checkpoint": "upstream/Pet-ReID-IMAG/logs/modern_latent_workspace_smoke_d192/model_final.pth",
+    "latent_smoke_checkpoint": "artifacts/runs/legacy/modern_latent_workspace_smoke_d192/model_final.pth",
     "latent_batch28_peak_mib": 4215,
     "latent_step_time_overhead_percent": 11.5
   },

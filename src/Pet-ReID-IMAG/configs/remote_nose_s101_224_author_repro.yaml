@@ -1,0 +1,39 @@
+_BASE_: resnest101_224_baseline.yaml
+
+# Upstream single-GPU S101/224 recipe with identity-disjoint validation.
+SEED: 2022
+
+MODEL:
+  BACKBONE:
+    PRETRAIN: True
+    PRETRAIN_PATH: models/pretrained/resnest101-22405ba7.pth
+
+SOLVER:
+  AMP:
+    ENABLED: True
+  OPT: Adam
+  MAX_EPOCH: 35
+  DELAY_EPOCHS: 5
+  BASE_LR: 0.00035
+  HEADS_LR_FACTOR: 1.0
+  IMS_PER_BATCH: 80
+  WARMUP_FACTOR: 0.1
+  WARMUP_ITERS: 400
+  FREEZE_ITERS: 1000
+  CHECKPOINT_PERIOD: 1
+
+DATALOADER:
+  SAMPLER_TRAIN: NaiveIdentitySampler
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 8
+
+DATASETS:
+  NAMES: ("PetID",)
+  TESTS: ("PetIDValidation",)
+
+TEST:
+  EVAL_PERIOD: 1
+  IMS_PER_BATCH: 128
+  METRIC: cosine
+
+OUTPUT_DIR: artifacts/runs/remote_full/nose_s101_224_author_repro_seed2022

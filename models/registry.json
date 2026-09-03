@@ -1,0 +1,899 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-09-02T08:11:30.405760+00:00",
+  "model_roles": {
+    "current_development": {
+      "display_name": "高分辨率统一识别 · 当前候选",
+      "capability": "spatial-detail-embedding",
+      "model_package": "unified_pet_reid_v4_v1",
+      "backend": "onnx-highres",
+      "release_status": "validated_candidate"
+    },
+    "production_baseline": {
+      "display_name": "统一识别 · 生产基线",
+      "capability": "unified-embedding",
+      "model_package": "unified_pet_reid_v3_v1",
+      "backend": "unified-onnx"
+    },
+    "rollback": {
+      "display_name": "统一识别 · 回滚点",
+      "capability": "unified-embedding",
+      "model_package": "unified_pet_reid_v3_v1",
+      "backend": "unified-onnx"
+    },
+    "legacy_semantic_compatibility": {
+      "display_name": "语义识别 · 兼容模式",
+      "capability": "semantic-compatibility",
+      "model_package": "dogfacenet_semantic_v3_v1",
+      "backend": "onnx"
+    }
+  },
+  "runtime_profiles": {
+    "production": {
+      "deployment_role": "production",
+      "release_role": "production_baseline",
+      "display_name": "统一识别 · 生产基线",
+      "summary": "固定输入联合模型 · RGB → 512D",
+      "capability": "unified-embedding",
+      "backend": "unified-onnx",
+      "runtime_backend": "onnxruntime-unified",
+      "model_package": "unified_pet_reid_v3_v1",
+      "onnx": "models/selected/unified_pet_reid_v3_v1/onnx/e2e/unified_pet_reid.onnx",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_unified_v3_v1",
+      "model_sha256": "2db41b25d770eb285cd313f4e81a1f77c2017e70d827c0b9a1e48cf74edaf8a5",
+      "single_graph": true,
+      "warmup_batches": [
+        1
+      ],
+      "runtime_external_models": [],
+      "requires_existing_gallery": false
+    },
+    "candidate": {
+      "deployment_role": "candidate",
+      "release_role": "current_development",
+      "display_name": "高分辨率统一识别 · 当前候选",
+      "summary": "动态空间细节模型 · RGB → 512D",
+      "capability": "spatial-detail-embedding",
+      "backend": "onnx-highres",
+      "runtime_backend": "onnxruntime-unified-highres",
+      "model_package": "unified_pet_reid_v4_v1",
+      "onnx": "models/selected/unified_pet_reid_v4_v1/onnx/unified_pet_reid_v4.onnx",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_unified_v4_v1",
+      "model_sha256": "dbd4448133efec28efb770a6ce77c749b4f8b0913c8f40273420be571fe7b000",
+      "single_graph": true,
+      "warmup_batches": [
+        1
+      ],
+      "runtime_external_models": [],
+      "requires_existing_gallery": false
+    },
+    "rollback": {
+      "deployment_role": "rollback",
+      "release_role": "rollback",
+      "display_name": "统一识别 · 回滚点",
+      "summary": "固定输入联合模型 · RGB → 512D",
+      "capability": "unified-embedding",
+      "backend": "unified-onnx",
+      "runtime_backend": "onnxruntime-unified",
+      "model_package": "unified_pet_reid_v3_v1",
+      "onnx": "models/selected/unified_pet_reid_v3_v1/onnx/e2e/unified_pet_reid.onnx",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_unified_v3_v1",
+      "model_sha256": "2db41b25d770eb285cd313f4e81a1f77c2017e70d827c0b9a1e48cf74edaf8a5",
+      "single_graph": true,
+      "warmup_batches": [
+        1
+      ],
+      "runtime_external_models": [],
+      "requires_existing_gallery": false
+    },
+    "legacy-semantic": {
+      "deployment_role": "legacy-semantic",
+      "release_role": "legacy_semantic_compatibility",
+      "display_name": "语义识别 · 兼容模式",
+      "summary": "鼻部与脸部语义融合 · 512D",
+      "capability": "semantic-compatibility",
+      "backend": "onnx",
+      "runtime_backend": "onnxruntime",
+      "model_package": "dogfacenet_semantic_v3_v1",
+      "config": "models/selected/dogfacenet_semantic_v3_v1/config.yaml",
+      "identity_weights": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+      "onnx": "models/selected/dogfacenet_semantic_v3_v1/onnx/pet_embedding.onnx",
+      "seed_gallery": "models/selected/local_pet_gallery_semantic_v3_onnx_v1/gallery_model.json",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_semantic_v3_v1",
+      "model_sha256": "21a2e2543b34ebd09426cba6bb1ff2c9dc0651b15d5186453e91ecbcf55d532a",
+      "single_graph": false,
+      "warmup_batches": [
+        1,
+        4,
+        8
+      ],
+      "fusion_mode": "semantic_residual",
+      "requires_existing_gallery": false
+    },
+    "research-bifor": {
+      "deployment_role": "research-bifor",
+      "release_role": "research",
+      "display_name": "语义与身体融合 · 研究实验",
+      "summary": "语义分支与 BIFOR 身体特征融合 · 512D",
+      "capability": "semantic-body-fusion",
+      "backend": "onnx-bifor",
+      "runtime_backend": "onnxruntime-bifor",
+      "model_package": "dogfacenet_semantic_v3_bifor_lowrank_v1",
+      "config": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/config.yaml",
+      "identity_weights": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+      "onnx": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/pet_embedding.onnx",
+      "body_detector": "models/pretrained/body_detection/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_semantic_v3_bifor_lowrank_v1",
+      "model_sha256": "63f53f32e4c9ad0c26d8ab3d91cdbfb462e920b66424656a22ff62d02b209c22",
+      "single_graph": false,
+      "warmup_batches": [
+        1,
+        4,
+        8
+      ],
+      "fusion_mode": "semantic_residual+bifor_lowrank",
+      "requires_existing_gallery": true
+    },
+    "research-agent": {
+      "deployment_role": "research-agent",
+      "release_role": "research",
+      "display_name": "多专家证据融合 · 研究实验",
+      "summary": "BIFOR 与 MegaDescriptor 分数级证据融合",
+      "capability": "multi-expert-evidence",
+      "backend": "onnx-bifor",
+      "runtime_backend": "onnxruntime-bifor",
+      "model_package": "dogfacenet_semantic_v3_bifor_lowrank_v1",
+      "config": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/config.yaml",
+      "identity_weights": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+      "onnx": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/pet_embedding.onnx",
+      "body_detector": "models/pretrained/body_detection/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth",
+      "expert_checkpoint": "models/pretrained/megadescriptor/MegaDescriptor-B-224/pytorch_model.bin",
+      "persistent_gallery": "data/gallery_store/pet_api_gallery_agent_v1",
+      "model_sha256": "63f53f32e4c9ad0c26d8ab3d91cdbfb462e920b66424656a22ff62d02b209c22",
+      "single_graph": false,
+      "warmup_batches": [
+        1,
+        4,
+        8
+      ],
+      "fusion_mode": "semantic_residual+bifor_lowrank",
+      "agent_mode": "multi_expert_evidence",
+      "requires_existing_gallery": true
+    }
+  },
+  "default_deployment": {
+    "profile": "production",
+    "model_package": "unified_pet_reid_v3_v1",
+    "backend": "unified-onnx",
+    "onnx": "models/selected/unified_pet_reid_v3_v1/onnx/e2e/unified_pet_reid.onnx",
+    "runtime_required_files": [
+      "models/selected/unified_pet_reid_v3_v1/onnx/e2e/unified_pet_reid.onnx"
+    ],
+    "runtime_external_models": [],
+    "persistent_gallery": "data/gallery_store/pet_api_gallery_unified_v3_v1"
+  },
+  "packages": [
+    {
+      "name": "dogfacenet_joint100_v1",
+      "role": "research",
+      "purpose": "Locked 100-class joint-fusion protocol package.",
+      "config": {
+        "path": "models/selected/dogfacenet_joint100_v1/config.yaml",
+        "sha256": "c189d785f3e9464901dbe4cf31350f053aef90f953a7720aa65ca61ff4c12819"
+      },
+      "source": "artifacts/runs/legacy/dogfacenet_joint100_phase1_v1/checkpoint_0000800.pth",
+      "metrics": {},
+      "evidence": [
+        "models/selected/dogfacenet_joint100_v1/blind_completion.json",
+        "models/selected/dogfacenet_joint100_v1/lock_record.json",
+        "models/selected/dogfacenet_joint100_v1/validation_selection.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_joint100_v1/blind_completion.json",
+          "bytes": 1403,
+          "sha256": "bb7794b20d205e3d8059ccdd4f1bb39d8dd0b2b1821395c4f36435902b1cde4f"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint100_v1/config.yaml",
+          "bytes": 1043,
+          "sha256": "c189d785f3e9464901dbe4cf31350f053aef90f953a7720aa65ca61ff4c12819"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint100_v1/lock_record.json",
+          "bytes": 1477,
+          "sha256": "5ac842450d0c24bfbcc19d8352fe032bc243534c604b6a3908ab9401d96a7dc5"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint100_v1/model_final.pth",
+          "bytes": 316708703,
+          "sha256": "2b87dfad54f83912ac8a76cd30f006063496578dbd0a4b3c1c9c201a6efeeef3"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint100_v1/validation_selection.json",
+          "bytes": 9972,
+          "sha256": "b8a047d3f5846b0f4b7b6047710ec01ced4026ca9d572481da4537df1afffd78"
+        }
+      ]
+    },
+    {
+      "name": "dogfacenet_joint800_v1",
+      "role": "rollback",
+      "purpose": "Locked 800-class joint-fusion rollback and comparison package.",
+      "config": {
+        "path": "models/selected/dogfacenet_joint800_v1/config.yaml",
+        "sha256": "c189d785f3e9464901dbe4cf31350f053aef90f953a7720aa65ca61ff4c12819"
+      },
+      "source": "artifacts/runs/legacy/dogfacenet_joint800_train_v1/model_final.pth",
+      "metrics": {
+        "queries": 400
+      },
+      "evidence": [
+        "models/selected/dogfacenet_joint800_v1/blind_completion.json",
+        "models/selected/dogfacenet_joint800_v1/fixed_budget_selection.json",
+        "models/selected/dogfacenet_joint800_v1/lock_record.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/blind_completion.json",
+          "bytes": 2786,
+          "sha256": "058d2aca715d7e0ff8b24aa27905ebb52fb895fa475da33bb581ddeb9e0e1066"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/config.yaml",
+          "bytes": 1043,
+          "sha256": "c189d785f3e9464901dbe4cf31350f053aef90f953a7720aa65ca61ff4c12819"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/fixed_budget_selection.json",
+          "bytes": 462,
+          "sha256": "2480706d513458991c5fd0ca996cf500a744410865a850c7d2c735e3e521dd79"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/lock_record.json",
+          "bytes": 1495,
+          "sha256": "cc83401dd065767be677291a42779e3507ccd9b97c714b74bba70f53c50b6b52"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/model_final.pth",
+          "bytes": 365239780,
+          "sha256": "4f76e7f57bd9683193e3fdfa7d117f9f7663eac0a7d0ba9d3b02217fc74e3ffa"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/onnx/metadata.json",
+          "bytes": 3070,
+          "sha256": "53ede464325acb901603f1843a392ea6c6907bfa5963c5d6938aebd42eaa4cdb"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/onnx/pet_embedding.onnx",
+          "bytes": 297183553,
+          "sha256": "b2818dfe2af0d15c204eaabdea573d33257546d9bd01f74a38840e8442615a21"
+        },
+        {
+          "path": "models/selected/dogfacenet_joint800_v1/onnx/validation.json",
+          "bytes": 4174,
+          "sha256": "37cd54e6b414f32ae5ec296769c83c2f86c659778d3eaf1c2558701d922bf89a"
+        }
+      ]
+    },
+    {
+      "name": "dogfacenet_semantic_v3_bifor_lowrank_v1",
+      "role": "research-candidate",
+      "purpose": "Validated semantic and BIFOR body-fusion research package; not the default deployment and requires a separately encoded Gallery.",
+      "config": {
+        "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/config.yaml",
+        "sha256": "056adeca9bd94298a7d16e57fdfd499b1226a0d69486e9e4be0c8b20ffc6be63"
+      },
+      "source": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/model_lock.json",
+      "metrics": {
+        "pytorch_onnx_max_abs_error": 2.0116567611694336e-07,
+        "minimum_embedding_cosine": 1.0,
+        "nearest_neighbor_top1_consistent": true,
+        "protocol_20_identity_fp32": {
+          "gallery_rank1": 0.9666666666666667,
+          "leave_one_out_rank1": 0.98,
+          "auc": 0.9986549707602339,
+          "report": "artifacts/runs/bifor/onnx_protocol_validation_v1/evaluation.json",
+          "report_sha256": "48f8a46f5c3aaffe365773715ddcf21977d1399d8b7f37f7eed001887437be71"
+        },
+        "raw_image_runtime_20_identity": {
+          "gallery_rank1": 0.9666666666666667,
+          "leave_one_out_rank1": 0.97,
+          "auc": 0.9986111111111111,
+          "report": "artifacts/runs/bifor/onnx_raw_runtime_validation_v1/evaluation.json",
+          "report_sha256": "a275f277d208f297b98db0173ff5e9034ac3c0f593d5297b637647424d92b076"
+        },
+        "api_smoke": {
+          "passed": true,
+          "predicted_pet_id": "359936",
+          "expected_pet_id": "359936",
+          "report": "artifacts/runs/bifor/onnx_api_smoke_v1/report.json",
+          "report_sha256": "a199fbbd0e739948ba337e0adebd6132fda89bf54ae35d09e7c42c94e0bbb24a"
+        }
+      },
+      "evidence": [
+        "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/model_lock.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/config.yaml",
+          "bytes": 1654,
+          "sha256": "056adeca9bd94298a7d16e57fdfd499b1226a0d69486e9e4be0c8b20ffc6be63"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/model_lock.json",
+          "bytes": 2822,
+          "sha256": "640053c2707d20214befd2e918aaab4571f07a9b448633541c520f5d484a2ae7"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/metadata.json",
+          "bytes": 4609,
+          "sha256": "77b6fe3657da6e0ae231413541d07503998819006141a20840b5e8ecc6d8652b"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/pet_embedding.onnx",
+          "bytes": 500020674,
+          "sha256": "63f53f32e4c9ad0c26d8ab3d91cdbfb462e920b66424656a22ff62d02b209c22"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_bifor_lowrank_v1/onnx/validation.json",
+          "bytes": 4210,
+          "sha256": "3217663a68d5533e43e95f8fca7b577c47b970d8d0750eacfe90a80e94dc630b"
+        }
+      ]
+    },
+    {
+      "name": "dogfacenet_semantic_v3_v1",
+      "role": "compatibility",
+      "purpose": "Validated legacy semantic compatibility package; not part of the active unified deployment line.",
+      "config": {
+        "path": "models/selected/dogfacenet_semantic_v3_v1/config.yaml",
+        "sha256": "056adeca9bd94298a7d16e57fdfd499b1226a0d69486e9e4be0c8b20ffc6be63"
+      },
+      "source": "artifacts/runs/legacy/dogfacenet_semantic_v3_final800_0500/model_final.pth",
+      "metrics": {
+        "fresh_blind": {
+          "identities": 64,
+          "queries": 128,
+          "legacy_top1_accuracy": 0.96875,
+          "semantic_v3_top1_accuracy": 0.96875,
+          "legacy_top5_accuracy": 1.0,
+          "semantic_v3_top5_accuracy": 1.0
+        },
+        "development_conflict": {
+          "candidate_recipe": "semantic_residual_v3_v3b_500_steps",
+          "normal_dev_top1_old": 0.965,
+          "normal_dev_top1_candidate": 0.965,
+          "cross_identity_nose_conflict_top1_old": 0.915,
+          "cross_identity_nose_conflict_top1_candidate": 0.965,
+          "conflict_mean_nose_weight_old_clean": 0.38701156035065654,
+          "conflict_mean_nose_weight_old_corrupted": 0.3870097954571247,
+          "conflict_mean_nose_weight_candidate_clean": 0.2622216796875,
+          "conflict_mean_nose_weight_candidate_corrupted": 0.148004150390625,
+          "candidate_gate_decreased_rate": 0.83
+        },
+        "onnx_status": "validated"
+      },
+      "evidence": [
+        "models/selected/dogfacenet_semantic_v3_v1/blind_completion.json",
+        "models/selected/dogfacenet_semantic_v3_v1/deployment_record.json",
+        "models/selected/dogfacenet_semantic_v3_v1/model_lock.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/blind_completion.json",
+          "bytes": 2658,
+          "sha256": "3950949827bfd6a0e98659b075390408c4b3733130e7b3e2f7f5c08341c42d97"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/config.yaml",
+          "bytes": 1654,
+          "sha256": "056adeca9bd94298a7d16e57fdfd499b1226a0d69486e9e4be0c8b20ffc6be63"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/deployment_record.json",
+          "bytes": 5690,
+          "sha256": "69e7ebeeccbb1946a622fe7d25d37d29d2d90893ead84ef12cd6b071826f73a9"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/model_final.pth",
+          "bytes": 336478330,
+          "sha256": "abe38784b93655936156c86eabf4d89dd09e9d05fa6fa20d321110e3ecd878d6"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/model_lock.json",
+          "bytes": 3679,
+          "sha256": "d1484ac56ff2067a5ad51f33b3f1b185b25246bec3a5724e6b64a8a8e7602c70"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/onnx/metadata.json",
+          "bytes": 3119,
+          "sha256": "4ed9c234cd143fab9248449ff3887545ea9a7c08edacb8d9750d8328f986d3f0"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/onnx/pet_embedding.onnx",
+          "bytes": 296200048,
+          "sha256": "21a2e2543b34ebd09426cba6bb1ff2c9dc0651b15d5186453e91ecbcf55d532a"
+        },
+        {
+          "path": "models/selected/dogfacenet_semantic_v3_v1/onnx/validation.json",
+          "bytes": 4211,
+          "sha256": "4e17c84a8363597ad86703cdb5105b49cda75de43c0fe244b80426270439a046"
+        }
+      ]
+    },
+    {
+      "name": "dogfacenet_shared_v2_fixed5000",
+      "role": "research",
+      "purpose": "Fixed-budget shared-projection comparison package.",
+      "config": {
+        "path": "models/selected/dogfacenet_shared_v2_fixed5000/config.yaml",
+        "sha256": "5b48d2575f4679ba67b1da090e3817cd5e411f4b497b3d5da130ad8b0fd50943"
+      },
+      "source": "artifacts/runs/legacy/dogfacenet_shared_v2_fixed5000_joint_4000/model_final.pth",
+      "metrics": {
+        "queries": 400
+      },
+      "evidence": [
+        "models/selected/dogfacenet_shared_v2_fixed5000/blind_completion.json",
+        "models/selected/dogfacenet_shared_v2_fixed5000/fixed_budget_selection.json",
+        "models/selected/dogfacenet_shared_v2_fixed5000/lock_record.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/blind_completion.json",
+          "bytes": 3654,
+          "sha256": "0d6bbee988b2bcf879c0217548f6df39abb97ec801e0a2c4aa70a69d5d48af63"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/config.yaml",
+          "bytes": 1437,
+          "sha256": "5b48d2575f4679ba67b1da090e3817cd5e411f4b497b3d5da130ad8b0fd50943"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/fixed_budget_selection.json",
+          "bytes": 802,
+          "sha256": "3fef6cc8f98eb98c900f5f3a07c0c301c640b1364f03e368e83306e3e7f8bd13"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/lock_record.json",
+          "bytes": 1532,
+          "sha256": "c538fafc82b15b4a664a6c779554987d81997cadca731a2044102b2ecb672817"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/model_final.pth",
+          "bytes": 597819911,
+          "sha256": "94eec30fdff4af849818e41d0ab06a8c1777d12bb5d147d3425dc80f96d30ae8"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/onnx/metadata.json",
+          "bytes": 3129,
+          "sha256": "7f85e59492a6cc1263e7a6838c07f90f4d4015ead9df936fb5e2f6e09a89a7d3"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/onnx/pet_embedding.onnx",
+          "bytes": 297156393,
+          "sha256": "231d8c575af1638e458435c58b9b09246dab3cf0462d9eaedb2804dc632d9745"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_fixed5000/onnx/validation.json",
+          "bytes": 4188,
+          "sha256": "63ca95340b553bbdf29d51202409f372d374f08e1aa6cb81a91a0fe1664cd0e6"
+        }
+      ]
+    },
+    {
+      "name": "dogfacenet_shared_v2_smoke_10",
+      "role": "smoke",
+      "purpose": "Ten-class ONNX systems-check export; not a production model.",
+      "config": null,
+      "source": null,
+      "metrics": {},
+      "evidence": [],
+      "artifacts": [
+        {
+          "path": "models/selected/dogfacenet_shared_v2_smoke_10/onnx/metadata.json",
+          "bytes": 3137,
+          "sha256": "f595ad1897ff39f70089eefbc1a568ff7140fe3aee3c51f4dadcadccdac8eadc"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_smoke_10/onnx/pet_embedding.onnx",
+          "bytes": 297156393,
+          "sha256": "c94dad1eed05f25b4ea48dc307c6c3389b38821424f426027a591470f65c9584"
+        },
+        {
+          "path": "models/selected/dogfacenet_shared_v2_smoke_10/onnx/validation.json",
+          "bytes": 4102,
+          "sha256": "802acaaede595382c7d20afd096113e3c4cfcf565630af28cff5515513cf6bc5"
+        }
+      ]
+    },
+    {
+      "name": "local_pet_gallery_joint100_v1",
+      "role": "research-gallery",
+      "purpose": "Prototype gallery encoded by the Joint100 model.",
+      "config": null,
+      "source": null,
+      "metrics": {},
+      "evidence": [],
+      "artifacts": [
+        {
+          "path": "models/selected/local_pet_gallery_joint100_v1/gallery_features.npz",
+          "bytes": 236388,
+          "sha256": "e75fed4ff6ec1800984fbb9a44aa5cc4247a736ab4093e1051ba5a9dbf83c668"
+        },
+        {
+          "path": "models/selected/local_pet_gallery_joint100_v1/gallery_model.json",
+          "bytes": 15418,
+          "sha256": "53d502f9d9505b8178799975e0be27ef13ca752f6cb28a800bf1104014e33a1b"
+        }
+      ]
+    },
+    {
+      "name": "local_pet_gallery_joint800_onnx_v1",
+      "role": "rollback-gallery",
+      "purpose": "Seed prototype gallery encoded by the Joint800 ONNX rollback model.",
+      "config": null,
+      "source": null,
+      "metrics": {},
+      "evidence": [],
+      "artifacts": [
+        {
+          "path": "models/selected/local_pet_gallery_joint800_onnx_v1/gallery_features.npz",
+          "bytes": 124228,
+          "sha256": "8745da3fc68390fb02b4468839bf449fd4973c54dc54e2b8608cb6d26b5d2603"
+        },
+        {
+          "path": "models/selected/local_pet_gallery_joint800_onnx_v1/gallery_model.json",
+          "bytes": 8549,
+          "sha256": "80c919694b72790bbd6c2f69436fd3e17210b199bda017fc2b43e35e58f370eb"
+        }
+      ]
+    },
+    {
+      "name": "local_pet_gallery_semantic_v3_onnx_v1",
+      "role": "compatibility-gallery",
+      "purpose": "Seed prototype Gallery encoded by the legacy semantic compatibility model.",
+      "config": null,
+      "source": null,
+      "metrics": {},
+      "evidence": [],
+      "artifacts": [
+        {
+          "path": "models/selected/local_pet_gallery_semantic_v3_onnx_v1/gallery_features.npz",
+          "bytes": 70073,
+          "sha256": "3cc85ab75e0dd2b4749fa8883bb6449185d95e627c77af62595539e2af6c4515"
+        },
+        {
+          "path": "models/selected/local_pet_gallery_semantic_v3_onnx_v1/gallery_model.json",
+          "bytes": 8636,
+          "sha256": "d61b9626553bcee94f0a474203883cfaead5a5f73fb795f03c8e8c9438d3932a"
+        }
+      ]
+    },
+    {
+      "name": "local_pet_gallery_v1",
+      "role": "legacy-gallery",
+      "purpose": "Original local prototype-gallery package retained for comparison.",
+      "config": null,
+      "source": null,
+      "metrics": {},
+      "evidence": [],
+      "artifacts": [
+        {
+          "path": "models/selected/local_pet_gallery_v1/gallery_features.npz",
+          "bytes": 236374,
+          "sha256": "b6fa2bb17920244fae1f8528685ba7af87d84c2f81354c7a74672bf632ff691d"
+        },
+        {
+          "path": "models/selected/local_pet_gallery_v1/gallery_model.json",
+          "bytes": 15331,
+          "sha256": "b5378af8e0c65a5b8ddec0de7e017771082b720d6d1a4927f868fbe2bde3b82b"
+        }
+      ]
+    },
+    {
+      "name": "unified_pet_reid_v3_v1",
+      "role": "production",
+      "purpose": "Frozen production baseline and rollback package used by the default API deployment.",
+      "config": null,
+      "source": "artifacts/runs/unified/v3/joint_interaction_constant_b8_s128_n005/model.pth",
+      "metrics": {
+        "development": {
+          "candidate_top1_correct": 157,
+          "candidate_top5_correct": 211,
+          "parent_top1_correct": 156,
+          "parent_top5_correct": 210,
+          "noninferiority_passed": true
+        },
+        "blind": {
+          "single_attempt": true,
+          "queries": 256,
+          "candidate_top1_correct": 158,
+          "candidate_top5_correct": 204,
+          "minimum_top1_correct": 69,
+          "minimum_top5_correct": 104,
+          "passed": true,
+          "report": "models/selected/unified_pet_reid_v3_v1/blind_v3.json",
+          "report_sha256": "b7dbc6d2f1467d94e2f1e2ea32bacd893e13096c0f30ab3fd47d485ded16ac4b"
+        },
+        "legacy_regression": {
+          "clean_top1_correct": 70,
+          "clean_top5_correct": 72,
+          "nose_conflict_top1_correct": 70,
+          "nose_conflict_top5_correct": 72
+        },
+        "onnx_status": "validated"
+      },
+      "evidence": [
+        "models/selected/unified_pet_reid_v3_v1/blind_v3.attempt.json",
+        "models/selected/unified_pet_reid_v3_v1/blind_v3.json",
+        "models/selected/unified_pet_reid_v3_v1/candidate_lock_v3.json",
+        "models/selected/unified_pet_reid_v3_v1/deployment_record.json",
+        "models/selected/unified_pet_reid_v3_v1/onnx/e2e/metadata.json",
+        "models/selected/unified_pet_reid_v3_v1/onnx/e2e/validation.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/blind_v3.attempt.json",
+          "bytes": 520,
+          "sha256": "551d574d7cb0d59fa70c4464ae500033fcd084a78aec6f9c5f7feea40f1512fa"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/blind_v3.json",
+          "bytes": 3470,
+          "sha256": "b7dbc6d2f1467d94e2f1e2ea32bacd893e13096c0f30ab3fd47d485ded16ac4b"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/candidate_lock_v3.json",
+          "bytes": 6682,
+          "sha256": "e742167f9ce9f2f22a6e7fd9c79566af76ee9e2b164f5a12ff41ade59aacd17e"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/deployment_record.json",
+          "bytes": 3490,
+          "sha256": "7c011898ecd76becaaddfeaac5f9aca4409c99e99e32226ff8659249e188935e"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/model_final.pth",
+          "bytes": 297965394,
+          "sha256": "cf4833af56809b8ff898048b84b0e3de8cb15d246c99573b6a89f3ba5bed154e"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/onnx/benchmark.json",
+          "bytes": 3625,
+          "sha256": "edaabb041e2faa47293924d43cbaf4bc2ecdbe85408ccdd801204da3b0876b1e"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/onnx/development_cpu.json",
+          "bytes": 9540,
+          "sha256": "eedb9c957cbc1455f9eab7e433b458f3fb483ff28d64fa47d874e6286949f44d"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/onnx/development_cuda.json",
+          "bytes": 9576,
+          "sha256": "6c9f5f92d6575e3ecb5c7f7da30c22c4e5fa2af62c874f221ece35404dcb7bda"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/onnx/e2e/metadata.json",
+          "bytes": 4786,
+          "sha256": "ee9f860c6a937b61e74f8f214ed961c5b6df7238a965cfb705d583bd35581c2c"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/onnx/e2e/unified_pet_reid.onnx",
+          "bytes": 292943977,
+          "sha256": "2db41b25d770eb285cd313f4e81a1f77c2017e70d827c0b9a1e48cf74edaf8a5"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/onnx/e2e/validation.json",
+          "bytes": 9405,
+          "sha256": "0d18a5390f936b406564f1253d6fbde5366f7cd5dd363d150272f1af43379dde"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/onnx/metadata.json",
+          "bytes": 5623,
+          "sha256": "5ba25dd377772228494ff128cc371e1bfd4c51e7c525fe363b205fb11c8d14dd"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/onnx/unified_pet_reid.onnx",
+          "bytes": 301790417,
+          "sha256": "2e278f6e4a6ef4086accfbae34c71a74059daa7fa75ba982fec0bcf0be28eef1"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v3_v1/onnx/validation.json",
+          "bytes": 3510,
+          "sha256": "639a8d4ee341d9548b15fe77558042cadf16c381d842f159b19aca478b820075"
+        }
+      ],
+      "deployment_role": "production_baseline",
+      "release_role": "production",
+      "capability": "unified-embedding"
+    },
+    {
+      "name": "unified_pet_reid_v4_v1",
+      "role": "validated-candidate",
+      "purpose": "Validated spatial-detail candidate; not yet promoted to production and requires an independent Gallery.",
+      "config": null,
+      "source": "models/selected/unified_pet_reid_v4_v1/deployment_record.json",
+      "metrics": {
+        "development": {
+          "queries": 16,
+          "candidate_top1_correct": 16,
+          "candidate_top5_correct": 16,
+          "parent_top1_correct": 16,
+          "parent_top5_correct": 16,
+          "minimum_cross_resolution_cosine": 0.9719728231430054,
+          "noninferiority_passed": true
+        },
+        "blind": {
+          "single_attempt": true,
+          "queries": 16,
+          "candidate_top1_correct": 15,
+          "candidate_top5_correct": 16,
+          "parent_top1_correct": 15,
+          "parent_top5_correct": 16,
+          "candidate_auc": 0.9927455357142857,
+          "parent_auc": 0.9921875,
+          "passed": true,
+          "post_blind_tuning_permitted": false,
+          "report": "models/selected/unified_pet_reid_v4_v1/blind_v4.json",
+          "report_sha256": "9e2c00655a4f835a70c1a3c276d29304344e859c78742a8d26f65eb01bb0025d"
+        },
+        "legacy_regression": {
+          "v3_development_top1_correct": 157,
+          "v3_development_top5_correct": 211,
+          "legacy_clean_top1_correct": 70,
+          "legacy_clean_top5_correct": 72,
+          "legacy_conflict_top1_correct": 70,
+          "legacy_conflict_top5_correct": 72
+        },
+        "onnx_status": "validated"
+      },
+      "evidence": [
+        "models/selected/unified_pet_reid_v4_v1/blind_v4.attempt.json",
+        "models/selected/unified_pet_reid_v4_v1/blind_v4.json",
+        "models/selected/unified_pet_reid_v4_v1/candidate_lock_v4.json",
+        "models/selected/unified_pet_reid_v4_v1/deployment_record.json",
+        "models/selected/unified_pet_reid_v4_v1/runtime_validation.json"
+      ],
+      "artifacts": [
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/blind_v4.attempt.json",
+          "bytes": 655,
+          "sha256": "f0f2270297a17f6d1ffb3981fae28f1e6f850fd91260ed6cf49a5c190cf98027"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/blind_v4.json",
+          "bytes": 6000,
+          "sha256": "9e2c00655a4f835a70c1a3c276d29304344e859c78742a8d26f65eb01bb0025d"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/candidate_lock_v4.json",
+          "bytes": 6485,
+          "sha256": "36b3dd6a7e0140b13c41bc1f8275d4419ac81bec08afcc7342d7156a44e4e01f"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/deployment_record.json",
+          "bytes": 10605,
+          "sha256": "8f5f1994259f37d23e9aad4d114525f9c121ca995c5107e4261ca11cd6f5c2a7"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/development.json",
+          "bytes": 50023,
+          "sha256": "3a55ebd1fbe4f22a58dfb4d2e8827b2d1878f3276d0877173ca6922ec30c300e"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/development_v3_legacy_guard.json",
+          "bytes": 6659,
+          "sha256": "a5c52ac60eb12265aefa8a80fbda6252be047daa991ab59055dd7dfd7ed1cebe"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/model_final.pth",
+          "bytes": 298958979,
+          "sha256": "edb8287ccc93b043e6a8e99584df92f30e402ca61ddaeb209b198f8cc1aab72d"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/onnx/benchmark.json",
+          "bytes": 5789,
+          "sha256": "e899d133d7f9f58e7d42b745041cdafd3e60493698c103239f1fcbe805632591"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/onnx/development_cpu.json",
+          "bytes": 18735,
+          "sha256": "f94db748d4742ba56156a6b03d37ccebed5a8481b4c57f9abf7794a87a872eec"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/onnx/development_cuda.json",
+          "bytes": 18770,
+          "sha256": "9211c32b14b542bd5ef9c45be66a052788fb710959ba991265aca37be6f9f146"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/onnx/metadata.json",
+          "bytes": 4042,
+          "sha256": "9973894caa2d7076f2e5ac511f859b289dc1f50c2959fdcc78aceb37dbc58fbc"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/onnx/unified_pet_reid_v4.onnx",
+          "bytes": 296599539,
+          "sha256": "dbd4448133efec28efb770a6ce77c749b4f8b0913c8f40273420be571fe7b000"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/onnx/validation.json",
+          "bytes": 6008,
+          "sha256": "e63a65403d781c8bae8eb40f3fa79598bf0bba4347e2805b9e62a1d0ddbf839b"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/protocol_lock.json",
+          "bytes": 2215,
+          "sha256": "27c4c1ecfc093ec6edaed4dc5af8f4a11afd1c0c03b83835486fa6547c6d8d7e"
+        },
+        {
+          "path": "models/selected/unified_pet_reid_v4_v1/runtime_validation.json",
+          "bytes": 1687,
+          "sha256": "ce182e7088254ad0c405398c46e04d9fcaefc7eda0886f18abe27eaf4a97d48b"
+        }
+      ],
+      "deployment_role": "current_development",
+      "release_role": "candidate",
+      "capability": "spatial-detail-embedding"
+    }
+  ],
+  "pretrained": [
+    {
+      "path": "models/pretrained/anyface/yolov5l6_best.pt",
+      "bytes": 93733090,
+      "sha256": "b78a85f59b8a18dafd09d770550180f997330cdca3f74b0c6641ee0543ee8b14",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/BIFOR/f1/f(1)/background_net/background_net.ckpt",
+      "bytes": 593793301,
+      "sha256": "f75c00eada990ea4af15fb2299d7aeab0ed84d28a49a2e6870abc4e68113f5d3",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/BIFOR/f2/bifor.pth",
+      "bytes": 197942210,
+      "sha256": "cceb7c464ab6fe7346a8627fabf3452fce1d3815a7d95f17fcb279036452b08c",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/body_detection/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth",
+      "bytes": 175221657,
+      "sha256": "dd69338a24b8d7381807e247652bdc356325bcbaf1cd3e092e00e0a1a58706bf",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/dog.pt",
+      "bytes": 194309749,
+      "sha256": "512456ef50f0537b58a872059ec7028fab2387dcc3dcb258805d08331fe66bb1",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/resnest101-22405ba7.pth",
+      "bytes": 193782911,
+      "sha256": "22405ba7b72e11273cf7505b2ca983c40aeec3d40b81e7e61fda7cf45da9b23f",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/resnest200-75117900.pth",
+      "bytes": 281998154,
+      "sha256": "75117900eb834cc4c2bfbe8ba4d1f2c21e45909a7563b9fddd8605d55d35358d",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    },
+    {
+      "path": "models/pretrained/sam2/sam2.1_hiera_tiny.pt",
+      "bytes": 156008466,
+      "sha256": "7402e0d864fa82708a20fbd15bc84245c2f26dff0eb43a4b5b93452deb34be69",
+      "purpose": "Required pretrained geometry or identity encoder weight.",
+      "source": "SOURCES.md"
+    }
+  ]
+}

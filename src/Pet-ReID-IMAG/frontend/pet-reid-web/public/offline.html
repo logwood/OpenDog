@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#17201d" />
+  <title>Pawprint ID · 暂时离线</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, "Microsoft YaHei", system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { align-items: center; background: radial-gradient(circle at 80% 10%,#cdebdc 0,transparent 34rem),#f4f5f0; color: #17201d; display: flex; margin: 0; min-height: 100vh; padding: 24px; }
+    main { background: rgba(252,253,249,.94); border: 1px solid #dfe4df; border-radius: 24px; box-shadow: 0 24px 70px rgba(23,32,29,.1); margin: auto; max-width: 520px; padding: 42px; width: 100%; }
+    i { background: #17201d; border-radius: 50%; display: grid; height: 52px; margin-bottom: 28px; place-items: center; width: 52px; }
+    i::after { color: #fcfdf9; content: "P"; font-family: Georgia,serif; font-size: 25px; font-style: normal; }
+    h1 { font-size: 30px; letter-spacing: -.04em; margin: 0; }
+    p { color: #68706c; font-size: 14px; line-height: 1.75; margin: 13px 0 26px; }
+    button { background: #17201d; border: 0; border-radius: 11px; color: white; cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; min-height: 44px; padding: 11px 16px; }
+  </style>
+</head>
+<body>
+  <main>
+    <i aria-hidden="true"></i>
+    <h1>暂时无法连接</h1>
+    <p>前端界面已安装，但宠物识别仍需要连接运行模型的电脑。请确认手机与电脑在同一网络、电脑端服务仍在运行，然后重试。</p>
+    <button type="button" onclick="location.reload()">重新连接</button>
+  </main>
+</body>
+</html>

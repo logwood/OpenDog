@@ -1,0 +1,15 @@
+.idea
+*.pth
+*.pt
+*.DS_Store
+*.png
+*.jpg
+*.jpeg
+*.tar
+*.pyc
+
+data/
+checkpoints/
+.vscode/
+results/
+outputs/

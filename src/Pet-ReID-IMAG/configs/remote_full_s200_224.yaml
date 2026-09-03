@@ -1,0 +1,11 @@
+_BASE_: remote_full_s101_224.yaml
+
+MODEL:
+  BACKBONE:
+    DEPTH: 200x
+    PRETRAIN_PATH: models/pretrained/resnest200-75117900.pth
+
+SOLVER:
+  IMS_PER_BATCH: 64
+
+OUTPUT_DIR: artifacts/runs/remote_full/nose_s200_224_seed2022

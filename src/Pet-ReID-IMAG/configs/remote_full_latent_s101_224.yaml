@@ -1,0 +1,26 @@
+_BASE_: modern_latent_workspace_s101_224.yaml
+
+# Architecture ablation under the exact same split, seed, losses and schedule
+# as remote_full_s101_224.yaml.
+SEED: 2022
+
+SOLVER:
+  AMP:
+    ENABLED: True
+  IMS_PER_BATCH: 80
+  WARMUP_ITERS: 400
+  FREEZE_ITERS: 1000
+  CHECKPOINT_PERIOD: 1
+
+DATALOADER:
+  NUM_WORKERS: 8
+
+DATASETS:
+  NAMES: ("PetID",)
+  TESTS: ("PetIDValidation",)
+
+TEST:
+  EVAL_PERIOD: 1
+  IMS_PER_BATCH: 64
+
+OUTPUT_DIR: artifacts/runs/remote_full/nose_latent_s101_224_seed2022

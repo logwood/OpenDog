@@ -1,0 +1,74 @@
+schema_version: 1
+experiment:
+  name: unified_nose_detail_batch80
+  seed: 2022
+  output_dir: artifacts/runs/remote_full/unified_nose_detail_batch80
+
+model:
+  source_role: nose-author-reproduction-checkpoint
+  descriptor_dim: 512
+  training_size: 1600
+  degraded_detail_size: 1280
+  trainable_scope:
+    prefixes:
+      - parent_model.base_model.nose_adapter.
+      - parent_model.base_model.fusion.
+      - parent_model.refiner.
+      - refiner.
+    freeze_geometry: true
+    freeze_arcface: true
+    freeze_nose_backbone: true
+    freeze_batch_norm_statistics: true
+
+protocol:
+  role: full-resolution-standard-protocol
+  train_identities: 800
+  validation_identities: 200
+  images_per_identity: 4
+  gallery_images_per_identity: 2
+
+training:
+  epochs: 10
+  identities_per_microbatch: 20
+  images_per_identity: 4
+  gradient_accumulation_steps: 1
+  effective_batch_size: 80
+  amp: bf16
+  gradient_clip_norm: 1.0
+  checkpoint_period_epochs: 1
+  validation_period_epochs: 1
+  resume: true
+
+optimizer:
+  name: Adam
+  adapter_refiner_lr: 0.0001
+  classifier_lr: 0.00035
+  weight_decay: 0.0
+  warmup_epochs: 1
+  minimum_lr_ratio: 0.01
+
+loss:
+  cross_entropy:
+    weight: 1.0
+    label_smoothing: 0.1
+  triplet:
+    weight: 1.0
+    margin: 0.0
+  circle:
+    weight: 1.0
+    margin: 0.35
+    gamma: 64.0
+  parent_anchor:
+    weight: 0.5
+  highres_degraded_consistency:
+    weight: 0.5
+    every_microbatches: 4
+
+augmentation:
+  horizontal_flip: 0.5
+  color_jitter: 0.08
+
+selection:
+  primary: top1_accuracy
+  secondary: auc
+  save_best_only_after_epoch: 1
