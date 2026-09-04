@@ -42,11 +42,18 @@ gate 是 multi-reference、coverage strength、reliability 和 catalog confidenc
 
 训练默认从同一套三图参考集计算 1→2→3 的嵌套前缀损失。视角与质量 metadata
 直接监督 attention、novelty 和 reliability；验证则让每批 query 对完整开发身份目录
-打分，并按各前缀相对 centroid 的非劣性选择 checkpoint。若训练后的 epoch 都变差，
-`model_best.pth` 会保留训练前的零 residual 基线；相同指标不会反复覆盖。
+打分。checkpoint 先经过安全门槛：单参考必须与 centroid 逐元素完全一致，2/3 图的
+聚合 Top-1 不得下降；合格的 learned checkpoint 再依次按多图 Top-1、MRR 和平均
+正类 margin 排序。MRR 与 margin 使用浮点容差，逐 query 的 margin non-degradation
+只保留为诊断，不再一票否决。
 no-harm 损失会检查正身份与所有负身份的 pairwise correction，而不再只保护当前最强
 负身份；负身份在 centroid 基线中越接近 query，所占的 detached 权重越高。完整目录
 验证同时报告 catalog gate 的均值、完全关闭比例和实际启用比例。
+
+训练会分别保存三种语义明确的产物：`centroid_fallback.pth` 是训练前的安全回退，
+`best_learned_retrieval.pth` 是通过安全门槛后的最佳 learned epoch，
+`model_last.pth` 是每轮覆盖、可用于恢复训练的最新状态。若没有 learned epoch
+通过门槛，最佳 learned 文件会保持不存在，而不会伪装成 centroid。
 
 如果 encoder 没有可发现的四维 feature map，`ImageTokenAdapter` 会退回一个明确的
 descriptor-to-token 投影。这种 fallback 只用于保持接口完整；要获得真正的空间互补

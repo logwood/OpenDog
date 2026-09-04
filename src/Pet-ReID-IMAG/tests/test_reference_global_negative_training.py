@@ -20,6 +20,9 @@ from pet_id.reference_aware_training import (
     load_reference_spatial_feature_cache,
     materialize_cached_reference_episode,
     materialize_reference_image_episode,
+    reference_validation_checkpoint_eligible,
+    reference_validation_is_better,
+    reference_validation_selection_summary,
     save_reference_spatial_feature_cache,
     score_cached_reference_episode,
     score_reference_image_episode,
@@ -302,6 +305,7 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
         self.assertEqual(report["query_records"], 4)
         self.assertEqual(set(report["reference_counts"]), {"1", "2"})
         singleton = report["reference_counts"]["1"]
+        self.assertTrue(singleton["exact_centroid_match"])
         self.assertEqual(singleton["delta"]["top1_accuracy"], 0.0)
         self.assertEqual(singleton["delta"]["mean_reciprocal_rank"], 0.0)
         self.assertEqual(singleton["no_harm"]["harmed_margin_query_count"], 0)
@@ -316,10 +320,160 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
                 gate["closed_fraction"] + gate["active_fraction"],
                 1.0,
             )
-        self.assertTrue(report["selection"]["all_reference_counts_noninferior"])
+        self.assertTrue(report["selection"]["eligible_for_best_learned"])
+        self.assertTrue(report["selection"]["singleton_exact_centroid_match"])
+        self.assertTrue(report["selection"]["multi_reference_top1_noninferior"])
         self.assertEqual(
             report["selection"]["tie_policy"],
-            "keep_earliest",
+            "keep_earliest_within_tolerance",
+        )
+
+    def test_learned_selection_uses_aggregate_top1_and_float_tolerance(self):
+        def row(
+            count: int,
+            *,
+            learned_correct: int,
+            centroid_correct: int,
+            learned_reciprocal: float,
+            centroid_reciprocal: float,
+            learned_margin: float,
+            centroid_margin: float,
+            exact: bool = False,
+        ) -> dict:
+            query_records = 100
+            return {
+                "reference_count": count,
+                "exact_centroid_match": exact,
+                "learned": {
+                    "query_records": query_records,
+                    "top1_correct": learned_correct,
+                    "mean_reciprocal_rank": learned_reciprocal,
+                    "mean_positive_margin": learned_margin,
+                },
+                "centroid": {
+                    "query_records": query_records,
+                    "top1_correct": centroid_correct,
+                    "mean_reciprocal_rank": centroid_reciprocal,
+                    "mean_positive_margin": centroid_margin,
+                },
+            }
+
+        singleton = row(
+            1,
+            learned_correct=93,
+            centroid_correct=93,
+            learned_reciprocal=0.95,
+            centroid_reciprocal=0.95,
+            learned_margin=0.2,
+            centroid_margin=0.2,
+            exact=True,
+        )
+        incumbent_summary = reference_validation_selection_summary(
+            {
+                "1": singleton,
+                "2": row(
+                    2,
+                    learned_correct=96,
+                    centroid_correct=96,
+                    learned_reciprocal=0.97,
+                    centroid_reciprocal=0.97,
+                    learned_margin=0.20,
+                    centroid_margin=0.20,
+                ),
+                "3": row(
+                    3,
+                    learned_correct=96,
+                    centroid_correct=96,
+                    learned_reciprocal=0.97,
+                    centroid_reciprocal=0.97,
+                    learned_margin=0.20,
+                    centroid_margin=0.20,
+                ),
+            }
+        )
+        candidate_summary = reference_validation_selection_summary(
+            {
+                "1": singleton,
+                "2": row(
+                    2,
+                    learned_correct=95,
+                    centroid_correct=96,
+                    learned_reciprocal=0.9699995,
+                    centroid_reciprocal=0.97,
+                    learned_margin=0.22,
+                    centroid_margin=0.20,
+                ),
+                "3": row(
+                    3,
+                    learned_correct=97,
+                    centroid_correct=96,
+                    learned_reciprocal=0.9699995,
+                    centroid_reciprocal=0.97,
+                    learned_margin=0.22,
+                    centroid_margin=0.20,
+                ),
+            }
+        )
+        incumbent = {
+            "protocol": "full_identity_catalog_nested_references",
+            "selection": incumbent_summary,
+        }
+        candidate = {
+            "protocol": "full_identity_catalog_nested_references",
+            "selection": candidate_summary,
+        }
+
+        self.assertTrue(reference_validation_checkpoint_eligible(candidate))
+        self.assertFalse(
+            candidate_summary["all_multi_reference_counts_top1_noninferior"]
+        )
+        self.assertTrue(reference_validation_is_better(candidate, incumbent))
+        self.assertEqual(
+            candidate_summary["per_query_margin_non_degradation"],
+            "diagnostic_only",
+        )
+
+    def test_learned_selection_rejects_top1_regression_or_singleton_drift(self):
+        def validation(*, singleton_exact: bool, learned_correct: int) -> dict:
+            def summary_row(count: int, correct: int, exact: bool = False) -> dict:
+                return {
+                    "reference_count": count,
+                    "exact_centroid_match": exact,
+                    "learned": {
+                        "query_records": 100,
+                        "top1_correct": correct,
+                        "mean_reciprocal_rank": 0.98,
+                        "mean_positive_margin": 0.3,
+                    },
+                    "centroid": {
+                        "query_records": 100,
+                        "top1_correct": 96 if count > 1 else 93,
+                        "mean_reciprocal_rank": 0.97,
+                        "mean_positive_margin": 0.2,
+                    },
+                }
+
+            selection = reference_validation_selection_summary(
+                {
+                    "1": summary_row(1, 93, singleton_exact),
+                    "2": summary_row(2, learned_correct),
+                    "3": summary_row(3, learned_correct),
+                }
+            )
+            return {
+                "protocol": "full_identity_catalog_nested_references",
+                "selection": selection,
+            }
+
+        self.assertFalse(
+            reference_validation_checkpoint_eligible(
+                validation(singleton_exact=True, learned_correct=95)
+            )
+        )
+        self.assertFalse(
+            reference_validation_checkpoint_eligible(
+                validation(singleton_exact=False, learned_correct=97)
+            )
         )
 
     def test_hard_negative_sees_candidates_outside_small_query_episode(self):

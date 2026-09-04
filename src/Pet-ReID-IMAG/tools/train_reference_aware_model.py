@@ -45,6 +45,8 @@ from pet_id.reference_aware_training import (  # noqa: E402
     materialize_cached_reference_episode,
     materialize_reference_image_episode,
     reference_episode_loss,
+    reference_validation_checkpoint_eligible,
+    reference_validation_is_better,
     reference_validation_selection_key,
     save_reference_spatial_feature_cache,
     score_reference_image_episode,
@@ -814,29 +816,37 @@ def main() -> None:
         resumed_history = resume_training.get("history")
         if isinstance(resumed_history, list):
             history = [dict(item) for item in resumed_history if isinstance(item, dict)]
-    best_path = output_dir / "model_best.pth"
-    best_selection_key: tuple[float, ...] | None = None
-    stored_best_key = resume_training.get("best_selection_key")
-    if best_path.exists() and isinstance(stored_best_key, list):
+    centroid_fallback_path = output_dir / "centroid_fallback.pth"
+    best_learned_path = output_dir / "best_learned_retrieval.pth"
+    if not args.resume:
+        best_learned_path.unlink(missing_ok=True)
+    best_learned_validation: dict[str, Any] | None = None
+    stored_best_validation = resume_training.get("best_learned_validation")
+    if best_learned_path.exists() and isinstance(stored_best_validation, dict):
         try:
-            candidate_key = tuple(float(value) for value in stored_best_key)
-            if candidate_key and all(math.isfinite(value) for value in candidate_key):
-                best_selection_key = candidate_key
+            if reference_validation_checkpoint_eligible(stored_best_validation):
+                best_learned_validation = stored_best_validation
         except (TypeError, ValueError):
-            best_selection_key = None
-    if best_path.exists() and best_selection_key is None:
+            best_learned_validation = None
+    if best_learned_path.exists() and best_learned_validation is None:
         for item in history:
             validation_row = item.get("validation")
             if not isinstance(validation_row, dict):
                 continue
             try:
-                candidate_key = validation_selection_key(validation_row)
+                if reference_validation_is_better(
+                    validation_row, best_learned_validation
+                ):
+                    best_learned_validation = validation_row
             except (TypeError, ValueError):
                 continue
-            if best_selection_key is None or candidate_key > best_selection_key:
-                best_selection_key = candidate_key
-    initial_validation: dict[str, Any] | None = None
-    if validation_cache is not None and (not args.resume or not best_path.exists()):
+    stored_initial_validation = resume_training.get("initial_validation")
+    initial_validation: dict[str, Any] | None = (
+        stored_initial_validation
+        if isinstance(stored_initial_validation, dict)
+        else None
+    )
+    if validation_cache is not None and not args.resume:
         initial_validation = evaluate_cached_reference_catalog(
             model,
             validation_cache,
@@ -847,10 +857,10 @@ def main() -> None:
             seed=args.seed + 101,
             device=device,
         )
-        best_selection_key = validation_selection_key(initial_validation)
         initial_metadata = {
             "epoch": start_epoch - 1,
-            "stage": "untrained_centroid_baseline",
+            "stage": "centroid_fallback",
+            "checkpoint_role": "centroid_fallback",
             "base_checkpoint": str(base_checkpoint),
             "base_checkpoint_sha256": base_checkpoint_sha256,
             "train_manifest": str(train_manifest),
@@ -861,17 +871,18 @@ def main() -> None:
             "interaction_level": args.interaction_level,
             "reference_set_schedule": args.reference_set_schedule,
             "validation_protocol": initial_validation["protocol"],
-            "best_selection_key": list(best_selection_key),
+            "initial_validation": initial_validation,
+            "best_learned_validation": None,
+            "best_learned_selection_key": None,
             "checkpoint_selection": {
-                "key": list(best_selection_key),
-                "replaces_best": True,
-                "tie_policy": "keep_earliest",
-                "initial_centroid_baseline": True,
+                "candidate_kind": "centroid_fallback",
+                "eligible_for_best_learned": False,
+                "replaces_best_learned": False,
             },
         }
         save_model(
             model,
-            best_path,
+            centroid_fallback_path,
             base_encoder_checkpoint=base_checkpoint,
             encoder_fingerprint=base_checkpoint_sha256,
             training=initial_metadata,
@@ -880,8 +891,8 @@ def main() -> None:
         print(
             json.dumps(
                 {
-                    "stage": "initial_centroid_baseline_saved",
-                    "model_best": str(best_path),
+                    "stage": "centroid_fallback_saved",
+                    "centroid_fallback": str(centroid_fallback_path),
                     "validation": initial_validation,
                 }
             ),
@@ -948,17 +959,24 @@ def main() -> None:
                 steps=validation_steps,
             )
         current_selection_key = validation_selection_key(validation)
-        replaces_best = (
-            best_selection_key is None or current_selection_key > best_selection_key
+        selection_eligible = reference_validation_checkpoint_eligible(validation)
+        replaces_best_learned = reference_validation_is_better(
+            validation, best_learned_validation
         )
-        if replaces_best:
-            best_selection_key = current_selection_key
+        if replaces_best_learned:
+            best_learned_validation = validation
+        best_learned_selection_key = (
+            list(validation_selection_key(best_learned_validation))
+            if best_learned_validation is not None
+            else None
+        )
         row = {
             "epoch": epoch,
             "training": training,
             "validation": validation,
             "selection_key": list(current_selection_key),
-            "replaces_best": replaces_best,
+            "eligible_for_best_learned": selection_eligible,
+            "replaces_best_learned": replaces_best_learned,
         }
         history.append(row)
         metadata = {
@@ -985,11 +1003,14 @@ def main() -> None:
             "reference_set_schedule": args.reference_set_schedule,
             "validation_protocol": validation.get("protocol", "sampled_episodes"),
             "initial_validation": initial_validation,
-            "best_selection_key": list(best_selection_key),
+            "best_learned_validation": best_learned_validation,
+            "best_learned_selection_key": best_learned_selection_key,
             "checkpoint_selection": {
                 "key": list(current_selection_key),
-                "replaces_best": replaces_best,
-                "tie_policy": "keep_earliest",
+                "eligible_for_best_learned": selection_eligible,
+                "replaces_best_learned": replaces_best_learned,
+                "tie_policy": "keep_earliest_within_tolerance",
+                "per_query_margin_non_degradation": "diagnostic_only",
             },
             "view_supervision_available": _dataset_has_view_supervision(train_dataset),
             "data_mode": "highres" if highres_mode else "fixed",
@@ -1004,16 +1025,16 @@ def main() -> None:
             output_dir / "model_last.pth",
             base_encoder_checkpoint=base_checkpoint,
             encoder_fingerprint=base_checkpoint_sha256,
-            training=metadata,
+            training={**metadata, "checkpoint_role": "latest_training_state"},
             optimizer_state=optimizer.state_dict(),
         )
-        if replaces_best or not best_path.exists():
+        if replaces_best_learned:
             save_model(
                 model,
-                best_path,
+                best_learned_path,
                 base_encoder_checkpoint=base_checkpoint,
                 encoder_fingerprint=base_checkpoint_sha256,
-                training=metadata,
+                training={**metadata, "checkpoint_role": "best_learned_retrieval"},
                 optimizer_state=optimizer.state_dict(),
             )
         summary = {
@@ -1021,7 +1042,8 @@ def main() -> None:
             "training": training,
             "validation": validation,
             "selection_key": list(current_selection_key),
-            "replaces_best": replaces_best,
+            "eligible_for_best_learned": selection_eligible,
+            "replaces_best_learned": replaces_best_learned,
         }
         (output_dir / "training_state.json").write_text(
             json.dumps(_jsonable(summary), ensure_ascii=False, indent=2),
@@ -1034,13 +1056,23 @@ def main() -> None:
         "epochs": args.epochs,
         "start_epoch": start_epoch,
         "elapsed_seconds": time.time() - started,
-        "model_best": str((output_dir / "model_best.pth").resolve()),
+        "centroid_fallback": (
+            str(centroid_fallback_path.resolve())
+            if centroid_fallback_path.exists()
+            else None
+        ),
+        "best_learned_retrieval": (
+            str(best_learned_path.resolve()) if best_learned_path.exists() else None
+        ),
         "model_last": str((output_dir / "model_last.pth").resolve()),
         "history": history,
         "configuration": model.configuration(),
         "initial_validation": initial_validation,
-        "best_selection_key": (
-            list(best_selection_key) if best_selection_key is not None else None
+        "best_learned_validation": best_learned_validation,
+        "best_learned_selection_key": (
+            list(validation_selection_key(best_learned_validation))
+            if best_learned_validation is not None
+            else None
         ),
     }
     (output_dir / "train_summary.json").write_text(

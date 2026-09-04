@@ -41,6 +41,7 @@ QUALITY_FEATURE_KEY = "quality_signals"
 VIEW_FEATURE_DIM = 4
 QUALITY_FEATURE_DIM = 6
 SPATIAL_FEATURE_CACHE_FORMAT = "reference-spatial-feature-cache"
+REFERENCE_SELECTION_TOLERANCES = (1.0e-12, 1.0e-6, 1.0e-6)
 
 
 def validate_reference_image_manifest(
@@ -1761,47 +1762,82 @@ def _ranking_summary(
     }
 
 
-def _catalog_selection_summary(
+def reference_validation_selection_summary(
     reports: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     if not reports:
         raise ValueError("catalog validation has no reference-count reports")
-    ordered = [reports[key] for key in sorted(reports, key=int)]
-    top1_deltas = [float(row["delta"]["top1_accuracy"]) for row in ordered]
-    reciprocal_deltas = [float(row["delta"]["mean_reciprocal_rank"]) for row in ordered]
-    margin_rates = [
-        float(row["no_harm"]["margin_non_degradation_rate"]) for row in ordered
+    if "1" not in reports:
+        raise ValueError("catalog validation has no singleton reference report")
+    singleton_exact = bool(reports["1"].get("exact_centroid_match", False))
+    multi_reference = [
+        reports[key] for key in sorted(reports, key=int) if int(key) > 1
     ]
-    margin_deltas = [float(row["delta"]["mean_positive_margin"]) for row in ordered]
-    all_noninferior = all(
-        top1 >= -1.0e-12 and reciprocal >= -1.0e-12
-        for top1, reciprocal in zip(top1_deltas, reciprocal_deltas)
+    query_records = sum(int(row["learned"]["query_records"]) for row in multi_reference)
+    learned_top1_correct = sum(
+        int(row["learned"]["top1_correct"]) for row in multi_reference
     )
-    key = (
-        float(all_noninferior),
-        min(top1_deltas),
-        min(reciprocal_deltas),
-        min(margin_rates),
-        min(margin_deltas),
-        float(np.mean(top1_deltas)),
-        float(np.mean(reciprocal_deltas)),
-        float(np.mean(margin_deltas)),
-        float(np.mean([row["learned"]["top1_accuracy"] for row in ordered])),
-        float(np.mean([row["learned"]["mean_reciprocal_rank"] for row in ordered])),
+    centroid_top1_correct = sum(
+        int(row["centroid"]["top1_correct"]) for row in multi_reference
     )
+
+    def weighted_mean(section: str, metric: str) -> float:
+        if query_records < 1:
+            return 0.0
+        return float(
+            sum(
+                float(row[section][metric]) * int(row[section]["query_records"])
+                for row in multi_reference
+            )
+            / query_records
+        )
+
+    learned_top1 = learned_top1_correct / query_records if query_records else 0.0
+    centroid_top1 = centroid_top1_correct / query_records if query_records else 0.0
+    learned_reciprocal = weighted_mean("learned", "mean_reciprocal_rank")
+    centroid_reciprocal = weighted_mean("centroid", "mean_reciprocal_rank")
+    learned_margin = weighted_mean("learned", "mean_positive_margin")
+    centroid_margin = weighted_mean("centroid", "mean_positive_margin")
+    top1_noninferior = (
+        bool(multi_reference) and learned_top1_correct >= centroid_top1_correct
+    )
+    eligible = singleton_exact and top1_noninferior
+    key = (learned_top1, learned_reciprocal, learned_margin)
     return {
         "policy": (
-            "prefer centroid-noninferior checkpoints across every reference "
-            "prefix, then worst-case and mean retrieval deltas"
+            "require exact singleton centroid behavior and noninferior aggregate "
+            "multi-reference top1; rank learned checkpoints by multi-reference "
+            "top1, reciprocal rank, then positive margin"
         ),
-        "all_reference_counts_noninferior": bool(all_noninferior),
-        "worst_top1_delta": min(top1_deltas),
-        "worst_mean_reciprocal_rank_delta": min(reciprocal_deltas),
-        "worst_margin_non_degradation_rate": min(margin_rates),
-        "worst_mean_positive_margin_delta": min(margin_deltas),
-        "mean_positive_margin_delta": float(np.mean(margin_deltas)),
+        "eligible_for_best_learned": eligible,
+        "singleton_exact_centroid_match": singleton_exact,
+        "multi_reference_top1_noninferior": top1_noninferior,
+        "all_multi_reference_counts_top1_noninferior": bool(multi_reference)
+        and all(
+            int(row["learned"]["top1_correct"])
+            >= int(row["centroid"]["top1_correct"])
+            for row in multi_reference
+        ),
+        "multi_reference": {
+            "reference_counts": [
+                int(row["reference_count"]) for row in multi_reference
+            ],
+            "query_records": query_records,
+            "learned_top1_accuracy": learned_top1,
+            "centroid_top1_accuracy": centroid_top1,
+            "top1_accuracy_delta": learned_top1 - centroid_top1,
+            "learned_mean_reciprocal_rank": learned_reciprocal,
+            "centroid_mean_reciprocal_rank": centroid_reciprocal,
+            "mean_reciprocal_rank_delta": learned_reciprocal
+            - centroid_reciprocal,
+            "learned_mean_positive_margin": learned_margin,
+            "centroid_mean_positive_margin": centroid_margin,
+            "mean_positive_margin_delta": learned_margin - centroid_margin,
+        },
         "key": [round(float(value), 12) for value in key],
-        "tie_policy": "keep_earliest",
+        "comparison_tolerances": list(REFERENCE_SELECTION_TOLERANCES),
+        "tie_policy": "keep_earliest_within_tolerance",
+        "per_query_margin_non_degradation": "diagnostic_only",
     }
 
 
@@ -1822,6 +1858,51 @@ def reference_validation_selection_key(
     if not all(math.isfinite(value) for value in values):
         raise ValueError("validation selection key contains non-finite values")
     return values
+
+
+def reference_validation_checkpoint_eligible(validation: dict[str, Any]) -> bool:
+    """Return whether a full-catalog report may become the best learned model."""
+
+    if validation.get("protocol") != "full_identity_catalog_nested_references":
+        return True
+    selection = validation.get("selection")
+    if not isinstance(selection, dict):
+        raise ValueError("validation report has no selection summary")
+    eligible = selection.get("eligible_for_best_learned")
+    if not isinstance(eligible, bool):
+        raise ValueError("validation report has no learned-checkpoint eligibility")
+    return eligible
+
+
+def reference_validation_is_better(
+    candidate: dict[str, Any],
+    incumbent: dict[str, Any] | None,
+) -> bool:
+    """Compare retrieval reports while treating insignificant float drift as a tie."""
+
+    if not reference_validation_checkpoint_eligible(candidate):
+        return False
+    if incumbent is None:
+        return True
+    candidate_key = reference_validation_selection_key(candidate)
+    incumbent_key = reference_validation_selection_key(incumbent)
+    if len(candidate_key) != len(incumbent_key):
+        raise ValueError("validation selection keys have different lengths")
+    tolerances = (
+        REFERENCE_SELECTION_TOLERANCES
+        if candidate.get("protocol") == "full_identity_catalog_nested_references"
+        else (1.0e-12,) * len(candidate_key)
+    )
+    if len(tolerances) != len(candidate_key):
+        raise ValueError("validation selection key has an unsupported length")
+    for candidate_value, incumbent_value, tolerance in zip(
+        candidate_key, incumbent_key, tolerances
+    ):
+        if candidate_value > incumbent_value + tolerance:
+            return True
+        if candidate_value < incumbent_value - tolerance:
+            return False
+    return False
 
 
 def evaluate_cached_reference_catalog(
@@ -1937,6 +2018,7 @@ def evaluate_cached_reference_catalog(
             "reference_count": count,
             "learned": learned,
             "centroid": centroid,
+            "exact_centroid_match": bool(torch.equal(scores, baseline)),
             "delta": {
                 "top1_accuracy": float(
                     learned["top1_accuracy"] - centroid["top1_accuracy"]
@@ -1975,7 +2057,7 @@ def evaluate_cached_reference_catalog(
         "query_records": sum(len(episode.query_indices) for episode in episodes),
         "query_batches": len(episodes),
         "reference_counts": reports,
-        "selection": _catalog_selection_summary(reports),
+        "selection": reference_validation_selection_summary(reports),
     }
 
 
@@ -1998,7 +2080,10 @@ __all__ = [
     "materialize_cached_reference_episode",
     "materialize_reference_image_episode",
     "reference_episode_loss",
+    "reference_validation_checkpoint_eligible",
+    "reference_validation_is_better",
     "reference_validation_selection_key",
+    "reference_validation_selection_summary",
     "save_reference_spatial_feature_cache",
     "score_cached_reference_episode",
     "score_reference_image_episode",
