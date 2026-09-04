@@ -60,3 +60,15 @@ from .reference_token_model import (
     build_token_reference_aware_model_from_checkpoint,
     save_token_reference_aware_model,
 )
+from .identity_set_reranker import (
+    CandidateReferenceSelector,
+    IDENTITY_SET_RERANKING,
+    IdentityReferenceSet,
+    IdentitySetReranker,
+    IdentitySetRerankerRuntime,
+    ModelReferenceEvidenceEncoder,
+    QueryConditionedReferenceSelector,
+    QueryEvidence,
+    ReferenceEvidence,
+)
+from .gallery_service import ReferenceEvidenceEncoder

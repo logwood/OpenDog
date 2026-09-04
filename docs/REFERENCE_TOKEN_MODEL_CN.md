@@ -45,6 +45,44 @@ python src/Pet-ReID-IMAG/tools/train_reference_aware_model.py `
 token checkpoint 使用独立的 `reference-token-aware-pet-reid` 格式，可恢复训练；
 descriptor checkpoint 与 token checkpoint 不会被互相静默加载。
 
+## 在线图库接线
+
+在线图库已经支持显式启用 `identity_set_rerank`，但不会替换默认的 centroid
+路径。每张注册图会在 SQLite 的 `reference_evidence` 表中独立保存 descriptor
+和空间 token；识别时先用每张参考图的 descriptor 做粗召回，再只对候选身份做一次
+padded token batch。未进入 shortlist 的 token blob 不会从 SQLite 读入内存。
+身份均值不参与这条路径，返回结果会保留原始 reference ID、
+粗排支持图、每张图的贡献权重以及重复/视角覆盖诊断。
+
+Python 服务需要同时提供三个显式组件：
+
+```python
+selector = QueryConditionedReferenceSelector(token_model.matcher)
+reranker = IdentitySetReranker(selector, candidate_count=32)
+evidence_encoder = ModelReferenceEvidenceEncoder(
+    token_model,
+    preprocess,
+    model_fingerprint=evidence_runtime_fingerprint,
+)
+service = PetIdentificationService(
+    store,
+    primary_encoder,
+    default_scoring_mode="identity_set_rerank",
+    identity_set_reranker=reranker,
+    reference_evidence_encoder=evidence_encoder,
+)
+```
+
+`preprocess` 必须复现训练时的 RGB/letterbox 输入契约；
+`evidence_runtime_fingerprint` 应同时代表 token checkpoint 和该预处理契约。
+服务会校验 descriptor 宽度、token 数量和 token 宽度，并拒绝把不完整 evidence
+与旧图库静默混合。图库备份恢复和 seed gallery 导入会从原图重新生成 evidence。
+
+目前命令行服务尚未暴露这个模式：现有候选 checkpoint 还没有稳定优于基线，而且
+checkpoint、base encoder 与 preprocess 还未封装成一个可移植部署清单。在完成该
+清单及非劣性门槛前，只允许上述显式 Python 构造，避免一个看似可选但实际会加载错
+模型空间的 CLI 开关。
+
 ## 当前 smoke 结果
 
 在现有开发 manifest 上进行了 1 epoch / 1 step 的受限 smoke：
