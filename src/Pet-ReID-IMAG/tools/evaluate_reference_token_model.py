@@ -251,7 +251,6 @@ def _score_sets(
     with torch.inference_mode():
         centroids = F.normalize(reference_descriptors.mean(dim=1), dim=1)
         centroid_scores = torch.einsum("qd,id->qi", query_descriptor, centroids)
-        baseline = centroid_scores
         query_catalog_gate = catalog_confidence_gate_from_scores(centroid_scores)
         for start in range(0, identity_count, identity_chunk):
             stop = min(start + identity_chunk, identity_count)
@@ -291,18 +290,29 @@ def _score_sets(
             expanded_catalog_gate = (
                 query_catalog_gate[:, None].expand(batch, stop - start).reshape(-1)
             )
-            learned = model.forward_encoded(
+            output = model.forward_encoded(
                 expanded_query,
                 expanded_references,
                 mask,
                 query_tokens=expanded_query_tokens,
                 reference_tokens=expanded_reference_tokens,
                 catalog_confidence_gate=expanded_catalog_gate,
+                return_aux=True,
             )
-            if not isinstance(learned, torch.Tensor):
-                raise RuntimeError("token model returned auxiliary output unexpectedly")
+            if not isinstance(output, dict):
+                raise RuntimeError("token model returned no auxiliary output")
+            learned = output.get("score")
+            matcher_baseline = output.get("baseline_score")
+            if not isinstance(learned, torch.Tensor) or not isinstance(
+                matcher_baseline, torch.Tensor
+            ):
+                raise RuntimeError(
+                    "token model auxiliary output is missing score tensors"
+                )
             learned_chunks.append(learned.reshape(batch, stop - start).cpu())
-            baseline_chunks.append(baseline[:, start:stop].cpu())
+            baseline_chunks.append(
+                matcher_baseline.reshape(batch, stop - start).cpu()
+            )
     learned_matrix = torch.cat(learned_chunks, dim=1)
     baseline_matrix = torch.cat(baseline_chunks, dim=1)
     if reference_count == 1 and not torch.equal(learned_matrix, baseline_matrix):
