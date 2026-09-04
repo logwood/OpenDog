@@ -30,7 +30,7 @@ from .reference_aware_model import _embedding_from_encoder_output
 
 
 MODEL_FORMAT = "reference-token-aware-pet-reid"
-MATCHER_STRATEGY = "evidence_gated_spatial_delta"
+MATCHER_STRATEGY = "catalog_guarded_spatial_delta"
 DEFAULT_TOKEN_DIM = 128
 DEFAULT_TOKEN_GRID = 4
 DEFAULT_HIDDEN_DIM = 128
@@ -48,6 +48,45 @@ def _finite_unit(value: torch.Tensor, *, name: str, ndim: int) -> torch.Tensor:
     if not bool(torch.isfinite(value).all()):
         raise ValueError(f"{name} must contain finite values")
     return F.normalize(value, dim=-1, eps=1e-12)
+
+
+def catalog_confidence_gate_from_scores(
+    baseline_scores: torch.Tensor,
+) -> torch.Tensor:
+    """Return one detached ambiguity gate for each full-catalog score row.
+
+    The top-one/top-two separation is measured in units of that query's
+    population score standard deviation. A separation at least as large as
+    the catalog spread closes the learned residual exactly; tied or constant
+    catalogs remain fully open because the protected baseline is ambiguous.
+    """
+
+    if not isinstance(baseline_scores, torch.Tensor):
+        raise TypeError("baseline_scores must be a tensor")
+    if baseline_scores.ndim != 2 or baseline_scores.shape[1] < 1:
+        raise ValueError(
+            "baseline_scores must have shape [queries, identities] with at "
+            "least one identity"
+        )
+    scores = baseline_scores.detach().float()
+    if not bool(torch.isfinite(scores).all()):
+        raise ValueError("baseline_scores must contain finite values")
+    if scores.shape[1] == 1:
+        gate = torch.ones(scores.shape[0], dtype=scores.dtype, device=scores.device)
+    else:
+        top_two = torch.topk(scores, k=2, dim=1).values
+        gap = (top_two[:, 0] - top_two[:, 1]).clamp_min(0.0)
+        spread = scores.std(dim=1, unbiased=False)
+        epsilon = torch.finfo(scores.dtype).eps
+        normalized_gap = gap / spread.clamp_min(epsilon)
+        gate = (1.0 - normalized_gap).clamp(0.0, 1.0)
+        gate = torch.where(spread <= epsilon, torch.ones_like(gate), gate)
+    output_dtype = (
+        baseline_scores.dtype
+        if torch.is_floating_point(baseline_scores)
+        else torch.float32
+    )
+    return gate.to(dtype=output_dtype)
 
 
 def _first_feature_map(value: Any) -> torch.Tensor | None:
@@ -334,14 +373,16 @@ class ImageTokenAdapter(nn.Module):
 
 
 class TokenConditionedReferenceMatcher(nn.Module):
-    """Rerank a centroid anchor with evidence-gated spatial set matching.
+    """Rerank a centroid anchor with catalog-guarded spatial set matching.
 
     Descriptor similarity remains the stable identity-level baseline, but it
     is deliberately excluded from reference routing and from the learned
     residual head. This prevents the learned path from taking the trivial
-    shortcut of rescaling an already-good descriptor score. A singleton set
-    returns the centroid score exactly; a multi-reference correction is only
-    enabled when the spatial view representation finds non-duplicate evidence.
+    shortcut of rescaling an already-good descriptor score. The detached
+    catalog gate closes the learned path when the centroid winner is already
+    clear. A singleton set returns the centroid score exactly; a
+    multi-reference correction is only enabled when the spatial view
+    representation finds non-duplicate evidence.
     """
 
     def __init__(
@@ -453,7 +494,10 @@ class TokenConditionedReferenceMatcher(nn.Module):
             "baseline": "centroid",
             "reference_routing": "symmetric_centered_cross_token",
             "coverage": "directly_supervised_view_novelty",
-            "residual_gate": "multi_reference_coverage_reliability",
+            "catalog_guard": "detached_top_two_gap_over_catalog_spread",
+            "residual_gate": (
+                "multi_reference_coverage_reliability_catalog_confidence"
+            ),
             "singleton_behavior": "exact_centroid",
         }
 
@@ -520,6 +564,25 @@ class TokenConditionedReferenceMatcher(nn.Module):
         return query_descriptor, references, query_tokens, reference_tokens, mask
 
     @staticmethod
+    def _validate_catalog_confidence_gate(
+        value: torch.Tensor | None,
+        *,
+        batch_size: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        if value is None:
+            return torch.ones(batch_size, device=device, dtype=dtype)
+        if not isinstance(value, torch.Tensor):
+            raise TypeError("catalog_confidence_gate must be a tensor")
+        if value.ndim != 1 or value.shape[0] != batch_size:
+            raise ValueError("catalog_confidence_gate must have shape [batch]")
+        value = value.detach().to(device=device, dtype=dtype)
+        if not bool(torch.isfinite(value).all()):
+            raise ValueError("catalog_confidence_gate must contain finite values")
+        return value.clamp(0.0, 1.0)
+
+    @staticmethod
     def _masked_top_k_mean(
         similarities: torch.Tensor, mask: torch.Tensor, top_k: int
     ) -> torch.Tensor:
@@ -546,6 +609,7 @@ class TokenConditionedReferenceMatcher(nn.Module):
         query_tokens: torch.Tensor,
         reference_tokens: torch.Tensor,
         mask: torch.Tensor,
+        catalog_confidence_gate: torch.Tensor,
         *,
         return_aux: bool = False,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
@@ -702,7 +766,12 @@ class TokenConditionedReferenceMatcher(nn.Module):
         )
         multi_reference = (count > 1.0).to(dtype=raw_residual.dtype)
         coverage_strength = (coverage_score * count).clamp(0.0, 1.0)
-        residual_gate = multi_reference * coverage_strength * reliability_score
+        residual_gate = (
+            multi_reference
+            * coverage_strength
+            * reliability_score
+            * catalog_confidence_gate
+        )
         residual = residual_gate * raw_residual
         score = baseline_score + residual
         if not return_aux:
@@ -713,6 +782,7 @@ class TokenConditionedReferenceMatcher(nn.Module):
             "residual": residual,
             "raw_residual": raw_residual,
             "residual_gate": residual_gate,
+            "catalog_confidence_gate": catalog_confidence_gate,
             "attention": gated_attention,
             "raw_attention": attention,
             "coverage_gate": learned_coverage,
@@ -741,6 +811,7 @@ class TokenConditionedReferenceMatcher(nn.Module):
         reference_tokens: torch.Tensor,
         reference_mask: torch.Tensor | None = None,
         *,
+        catalog_confidence_gate: torch.Tensor | None = None,
         return_aux: bool = False,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
         values = self._validate_inputs(
@@ -750,7 +821,13 @@ class TokenConditionedReferenceMatcher(nn.Module):
             reference_tokens,
             reference_mask,
         )
-        return self._forward_impl(*values, return_aux=return_aux)
+        catalog_gate = self._validate_catalog_confidence_gate(
+            catalog_confidence_gate,
+            batch_size=int(values[0].shape[0]),
+            device=values[0].device,
+            dtype=values[0].dtype,
+        )
+        return self._forward_impl(*values, catalog_gate, return_aux=return_aux)
 
     def forward_export(
         self,
@@ -770,6 +847,7 @@ class TokenConditionedReferenceMatcher(nn.Module):
             query_tokens,
             reference_tokens,
             reference_mask != 0,
+            torch.ones_like(query_descriptor[:, 0]),
         )
         if not isinstance(output, torch.Tensor):
             raise RuntimeError("token matcher export path returned auxiliary output")
@@ -886,6 +964,7 @@ class TokenReferenceAwarePetReID(nn.Module):
         *,
         query_tokens: torch.Tensor | None = None,
         reference_tokens: torch.Tensor | None = None,
+        catalog_confidence_gate: torch.Tensor | None = None,
         return_aux: bool = False,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
         if query_tokens is None:
@@ -909,6 +988,7 @@ class TokenReferenceAwarePetReID(nn.Module):
             query_tokens,
             reference_tokens,
             reference_mask,
+            catalog_confidence_gate=catalog_confidence_gate,
             return_aux=return_aux,
         )
 
@@ -918,12 +998,14 @@ class TokenReferenceAwarePetReID(nn.Module):
         reference_descriptors: torch.Tensor,
         reference_mask: torch.Tensor | None = None,
         *,
+        catalog_confidence_gate: torch.Tensor | None = None,
         return_aux: bool = False,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
         return self.forward_encoded(
             query_descriptor,
             reference_descriptors,
             reference_mask,
+            catalog_confidence_gate=catalog_confidence_gate,
             return_aux=return_aux,
         )
 
@@ -960,6 +1042,7 @@ class TokenReferenceAwarePetReID(nn.Module):
         reference_rgb: torch.Tensor,
         reference_mask: torch.Tensor | None = None,
         *,
+        catalog_confidence_gate: torch.Tensor | None = None,
         return_aux: bool = False,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
         reference_mask = self._validate_set_inputs(
@@ -975,6 +1058,7 @@ class TokenReferenceAwarePetReID(nn.Module):
             reference_mask,
             query_tokens=query_tokens,
             reference_tokens=reference_tokens,
+            catalog_confidence_gate=catalog_confidence_gate,
             return_aux=return_aux,
         )
         if not return_aux:
@@ -1105,7 +1189,7 @@ def build_token_reference_aware_model_from_checkpoint(
     if strategy != MATCHER_STRATEGY:
         raise ValueError(
             "token reference-aware checkpoint uses the retired matcher strategy; "
-            "retrain it with the evidence-gated spatial matcher"
+            "retrain it with the catalog-guarded spatial matcher"
         )
     constructor_keys = {
         "descriptor_dim",
@@ -1145,6 +1229,7 @@ __all__ = [
     "TokenReferenceAwarePetReID",
     "TokenReferenceAwarePetReIDExport",
     "build_token_reference_aware_model_from_checkpoint",
+    "catalog_confidence_gate_from_scores",
     "create_token_reference_aware_checkpoint",
     "save_token_reference_aware_model",
 ]

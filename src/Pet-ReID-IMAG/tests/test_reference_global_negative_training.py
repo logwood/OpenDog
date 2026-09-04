@@ -308,6 +308,14 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
         multi_reference = report["reference_counts"]["2"]
         self.assertEqual(multi_reference["delta"]["top1_accuracy"], 0.0)
         self.assertEqual(multi_reference["delta"]["mean_positive_margin"], 0.0)
+        for row in report["reference_counts"].values():
+            gate = row["catalog_confidence_gate"]
+            self.assertGreaterEqual(gate["mean"], 0.0)
+            self.assertLessEqual(gate["mean"], 1.0)
+            self.assertAlmostEqual(
+                gate["closed_fraction"] + gate["active_fraction"],
+                1.0,
+            )
         self.assertTrue(report["selection"]["all_reference_counts_noninferior"])
         self.assertEqual(
             report["selection"]["tie_policy"],

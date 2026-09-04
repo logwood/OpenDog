@@ -20,7 +20,10 @@ from typing import Any, Mapping, Protocol, Sequence
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn
+
+from .reference_token_model import catalog_confidence_gate_from_scores
 
 
 IDENTITY_SET_RERANKING = "identity_set_rerank"
@@ -172,6 +175,7 @@ class QueryConditionedReferenceSelector:
         "baseline_score",
         "residual",
         "residual_gate",
+        "catalog_confidence_gate",
         "coverage_score",
         "duplicate_score",
         "reliability_score",
@@ -243,12 +247,42 @@ class QueryConditionedReferenceSelector:
         queries = np.repeat(query[None, :], batch, axis=0)
         query_grids = np.repeat(query_grid[None, :, :], batch, axis=0)
         with torch.inference_mode():
+            descriptor_tensor = torch.from_numpy(descriptors).to(self.device)
+            mask_tensor = torch.from_numpy(mask).to(self.device)
+            guard_references = F.normalize(
+                descriptor_tensor.detach().float(),
+                dim=-1,
+                eps=1.0e-12,
+            )
+            guard_centroids = F.normalize(
+                (
+                    guard_references
+                    * mask_tensor.to(dtype=guard_references.dtype).unsqueeze(-1)
+                ).sum(dim=1),
+                dim=-1,
+                eps=1.0e-12,
+            )
+            guard_query = F.normalize(
+                torch.from_numpy(query).to(self.device).detach().float(),
+                dim=-1,
+                eps=1.0e-12,
+            )
+            baseline_catalog_scores = torch.einsum(
+                "d,id->i",
+                guard_query,
+                guard_centroids,
+            ).unsqueeze(0)
+            query_catalog_gate = catalog_confidence_gate_from_scores(
+                baseline_catalog_scores
+            )
+            candidate_catalog_gate = query_catalog_gate.expand(batch)
             result = self.matcher(
                 torch.from_numpy(queries).to(self.device),
-                torch.from_numpy(descriptors).to(self.device),
+                descriptor_tensor,
                 torch.from_numpy(query_grids).to(self.device),
                 torch.from_numpy(tokens).to(self.device),
-                torch.from_numpy(mask).to(self.device),
+                mask_tensor,
+                catalog_confidence_gate=candidate_catalog_gate,
                 return_aux=True,
             )
         if not isinstance(result, Mapping):
@@ -364,6 +398,7 @@ class IdentitySetReranker:
         "baseline_score",
         "residual",
         "residual_gate",
+        "catalog_confidence_gate",
         "coverage_score",
         "duplicate_score",
         "reliability_score",

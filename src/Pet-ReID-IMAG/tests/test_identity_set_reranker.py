@@ -378,6 +378,12 @@ class IdentitySetRerankerTest(unittest.TestCase):
         self.assertAlmostEqual(
             sum(row["contribution_weight"] for row in contributions["b"]), 1.0
         )
+        catalog_gates = [
+            match["model_signals"]["catalog_confidence_gate"]
+            for match in result["matches"]
+        ]
+        self.assertTrue(all(0.0 <= value <= 1.0 for value in catalog_gates))
+        self.assertAlmostEqual(catalog_gates[0], catalog_gates[1])
 
     def test_runtime_selector_returns_only_compact_rerank_evidence(self):
         torch.manual_seed(17)
@@ -400,6 +406,7 @@ class IdentitySetRerankerTest(unittest.TestCase):
 
         self.assertIn("score", output)
         self.assertIn("token_scores", output)
+        self.assertIn("catalog_confidence_gate", output)
         self.assertNotIn("token_attention", output)
         self.assertNotIn("token_similarity", output)
 

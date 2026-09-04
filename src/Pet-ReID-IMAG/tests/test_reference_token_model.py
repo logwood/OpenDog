@@ -18,6 +18,7 @@ from pet_id.reference_token_model import (
     TokenReferenceAwarePetReID,
     TokenReferenceAwarePetReIDExport,
     build_token_reference_aware_model_from_checkpoint,
+    catalog_confidence_gate_from_scores,
     save_token_reference_aware_model,
 )
 
@@ -91,6 +92,26 @@ class ReferenceTokenModelTest(unittest.TestCase):
         self.assertTrue(torch.isfinite(output["novelty"]).all())
         self.assertTrue(torch.allclose(output["attention"][0, 2], torch.zeros(())))
 
+    def test_catalog_gate_is_detached_and_closes_only_clear_catalogs(self):
+        scores = torch.tensor(
+            [
+                [0.5, 0.5, 0.5],
+                [1.0, 0.99, 0.0],
+                [1.0, 0.0, 0.0],
+            ],
+            requires_grad=True,
+        )
+        gate = catalog_confidence_gate_from_scores(scores)
+        self.assertFalse(gate.requires_grad)
+        torch.testing.assert_close(gate[0], torch.tensor(1.0))
+        self.assertGreater(float(gate[1]), 0.0)
+        self.assertLess(float(gate[1]), 1.0)
+        torch.testing.assert_close(gate[2], torch.tensor(0.0))
+        torch.testing.assert_close(
+            catalog_confidence_gate_from_scores(torch.tensor([[0.2]])),
+            torch.tensor([1.0]),
+        )
+
     def test_descriptor_only_encoder_has_safe_token_fallback(self):
         model = make_model(TinyDescriptorEncoder())
         output = model(
@@ -132,7 +153,7 @@ class ReferenceTokenModelTest(unittest.TestCase):
             self.assertEqual(payload["format"], "reference-token-aware-pet-reid")
             self.assertEqual(
                 payload["model_config"]["matcher"]["strategy"],
-                "evidence_gated_spatial_delta",
+                "catalog_guarded_spatial_delta",
             )
 
     def test_single_reference_is_exact_centroid_for_arbitrary_score_head(self):
@@ -198,6 +219,43 @@ class ReferenceTokenModelTest(unittest.TestCase):
             atol=0.0,
         )
 
+    def test_catalog_gate_hard_closes_and_does_not_receive_gradients(self):
+        matcher = make_model().matcher
+        with torch.no_grad():
+            for parameter in matcher.score_head.parameters():
+                parameter.uniform_(-2.0, 2.0)
+        query, references, query_tokens, reference_tokens = self._matcher_inputs()
+        catalog_gate = torch.tensor([-1.0, 2.0], requires_grad=True)
+        output = matcher(
+            query,
+            references,
+            query_tokens,
+            reference_tokens,
+            torch.ones(2, 3, dtype=torch.bool),
+            catalog_confidence_gate=catalog_gate,
+            return_aux=True,
+        )
+        torch.testing.assert_close(
+            output["catalog_confidence_gate"],
+            torch.tensor([0.0, 1.0]),
+        )
+        torch.testing.assert_close(
+            output["score"][0],
+            output["baseline_score"][0],
+            rtol=0.0,
+            atol=0.0,
+        )
+        output["score"].sum().backward()
+        self.assertIsNone(catalog_gate.grad)
+        with self.assertRaisesRegex(ValueError, "shape"):
+            matcher(
+                query,
+                references,
+                query_tokens,
+                reference_tokens,
+                catalog_confidence_gate=torch.ones(2, 1),
+            )
+
     def test_descriptor_changes_do_not_route_reference_attention(self):
         matcher = make_model().matcher.eval()
         query, references, query_tokens, reference_tokens = self._matcher_inputs()
@@ -246,7 +304,9 @@ class ReferenceTokenModelTest(unittest.TestCase):
             path = Path(directory) / "old-token-model.pth"
             save_token_reference_aware_model(model, path)
             payload = torch.load(path, map_location="cpu", weights_only=False)
-            payload["model_config"]["matcher"].pop("strategy")
+            payload["model_config"]["matcher"]["strategy"] = (
+                "evidence_gated_spatial_delta"
+            )
             torch.save(payload, path)
             with self.assertRaisesRegex(ValueError, "retired matcher strategy"):
                 build_token_reference_aware_model_from_checkpoint(

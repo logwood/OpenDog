@@ -123,7 +123,7 @@ def test_view_coverage_supervision_reaches_token_gate() -> None:
     assert float(details["reliability_alignment_loss"].detach()) > 0.0
 
 
-def test_baseline_no_harm_penalizes_only_reduced_margin() -> None:
+def test_baseline_no_harm_penalizes_every_reduced_pairwise_margin() -> None:
     baseline = torch.tensor([[0.8, 0.4, 0.2], [0.1, 0.6, 0.5]])
     score = torch.tensor(
         [[0.7, 0.5, 0.2], [0.0, 0.8, 0.5]],
@@ -133,12 +133,28 @@ def test_baseline_no_harm_penalizes_only_reduced_margin() -> None:
         {"score": score, "baseline_score": baseline},
         torch.tensor([0, 1]),
     )
-    torch.testing.assert_close(loss, torch.tensor(0.1))
+    catalog_spread = baseline[0].std(unbiased=False)
+    neighbor_weights = torch.softmax(
+        torch.tensor([0.4, 0.2]) / catalog_spread,
+        dim=0,
+    )
+    expected_loss = 0.5 * (0.2 * neighbor_weights[0] + 0.1 * neighbor_weights[1])
+    torch.testing.assert_close(loss, expected_loss)
     loss.backward()
     torch.testing.assert_close(
         score.grad,
-        torch.tensor([[-0.5, 0.5, 0.0], [0.0, 0.0, 0.0]]),
+        torch.tensor(
+            [
+                [
+                    -0.5,
+                    0.5 * neighbor_weights[0],
+                    0.5 * neighbor_weights[1],
+                ],
+                [0.0, 0.0, 0.0],
+            ]
+        ),
     )
+    assert float(score.grad[0, 1]) > float(score.grad[0, 2]) > 0.0
 
 
 def test_baseline_no_harm_does_not_move_the_protected_baseline() -> None:
@@ -210,6 +226,7 @@ def test_nested_training_evaluates_one_two_and_three_reference_prefixes() -> Non
         identity_names=("a", "b"),
     )
     seen_counts: list[int] = []
+    seen_catalog_gates: list[torch.Tensor] = []
     original_forward = model.forward_encoded
 
     def recording_forward(
@@ -222,6 +239,14 @@ def test_nested_training_evaluates_one_two_and_three_reference_prefixes() -> Non
         counts = reference_mask.sum(dim=1).unique()
         assert counts.numel() == 1
         seen_counts.append(int(counts.item()))
+        catalog_gate = kwargs["catalog_confidence_gate"]
+        assert not catalog_gate.requires_grad
+        gate_matrix = catalog_gate.reshape(2, 2)
+        torch.testing.assert_close(
+            gate_matrix,
+            gate_matrix[:, :1].expand_as(gate_matrix),
+        )
+        seen_catalog_gates.append(catalog_gate)
         return original_forward(
             query_descriptor,
             reference_descriptors,
@@ -237,6 +262,7 @@ def test_nested_training_evaluates_one_two_and_three_reference_prefixes() -> Non
     )
     assert torch.isfinite(loss)
     assert seen_counts == [1, 2, 3]
+    assert len(seen_catalog_gates) == 3
     torch.testing.assert_close(
         details["nested_reference_counts"],
         torch.tensor([1, 2, 3]),

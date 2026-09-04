@@ -4,9 +4,9 @@
 `ReferenceAwarePetReID` 仍然保留为 descriptor-level 路径；新模型不会替换默认
 服务、生产模型或已有图库。
 
-> 当前 matcher 使用 `evidence_gated_spatial_delta` 策略。2026-09-03 的旧 token
-> checkpoint 属于已经退役的结构，不能加载到当前 matcher；下方旧实验数字只保留为
-> 历史证据，不能当作当前结构的结果。
+> 当前 matcher 使用 `catalog_guarded_spatial_delta` 策略。此前
+> `evidence_gated_spatial_delta` checkpoint 属于已经退役的结构，不能加载到当前
+> matcher；下方旧实验数字只保留为历史证据，不能当作当前结构的结果。
 
 ## 结构
 
@@ -14,26 +14,39 @@
 query/reference RGB
         │ 共享单图 encoder
         ├─ 512D descriptor（保留单图契约）
+        │           │
+        │           └─ 全候选 centroid 分数
+        │                       │ detach
+        │              top1/top2 gap ÷ 目录分数标准差
+        │                       │
+        │              catalog confidence gate
         └─ layer4 feature map → 固定 token 网格
                          │
              query ↔ reference cross-token matching
                          │
           view novelty / reliability（抑制重复视角）
                          │
-       纯 centroid 安全锚点 + evidence-gated spatial delta
+       纯 centroid 安全锚点 + catalog-guarded spatial delta
 ```
 
 每个 query token 都可以在每张参考图中选择最匹配的局部 token。这样正面、侧面、
 背面等互补视角不会在进入 512D descriptor 之前被强行平均。参考图之间还会计算
 独立 view representation 的相似度；与其他参考图过于相似的行会得到较低 novelty，
 reliability gate 会限制它对最终分数的重复贡献。descriptor 只构成 centroid 基线，
-不会进入参考图路由或 residual head。单参考严格退化为 centroid；完全重复的 token
-参考集会关闭 residual。
+不会进入参考图路由或 residual head。它产生的目录置信度也会立即 detach，只充当
+安全 guard。该 guard 用每个 query 在完整候选目录上的 top1/top2 差值除以该行分数
+标准差，再计算 `clamp(1 - normalized_gap, 0, 1)`；清晰 winner 会精确关闭
+residual，模糊目录才允许空间证据介入。这一规则没有新增可调阈值。最终 residual
+gate 是 multi-reference、coverage strength、reliability 和 catalog confidence
+四项的乘积。单参考严格退化为 centroid；完全重复的 token 参考集也会关闭 residual。
 
 训练默认从同一套三图参考集计算 1→2→3 的嵌套前缀损失。视角与质量 metadata
 直接监督 attention、novelty 和 reliability；验证则让每批 query 对完整开发身份目录
 打分，并按各前缀相对 centroid 的非劣性选择 checkpoint。若训练后的 epoch 都变差，
 `model_best.pth` 会保留训练前的零 residual 基线；相同指标不会反复覆盖。
+no-harm 损失会检查正身份与所有负身份的 pairwise correction，而不再只保护当前最强
+负身份；负身份在 centroid 基线中越接近 query，所占的 detached 权重越高。完整目录
+验证同时报告 catalog gate 的均值、完全关闭比例和实际启用比例。
 
 如果 encoder 没有可发现的四维 feature map，`ImageTokenAdapter` 会退回一个明确的
 descriptor-to-token 投影。这种 fallback 只用于保持接口完整；要获得真正的空间互补
@@ -66,7 +79,9 @@ checkpoint 也会被明确拒绝，必须重新训练。
 和空间 token；识别时先用每张参考图的 descriptor 做粗召回，再只对候选身份做一次
 padded token batch。未进入 shortlist 的 token blob 不会从 SQLite 读入内存。
 身份均值不参与这条路径，返回结果会保留原始 reference ID、
-粗排支持图、每张图的贡献权重以及重复/视角覆盖诊断。
+粗排支持图、每张图的贡献权重以及重复/视角覆盖诊断。shortlist 中全部候选的
+centroid 分数会共同产生一个 query-level catalog gate，并广播给所有候选，保证线上
+路径不会让单个候选在内部自行猜测目录置信度。
 
 Python 服务需要同时提供三个显式组件：
 
@@ -166,8 +181,6 @@ token 分数对最强误匹配的平均 margin 在 1/2/3 张参考时分别为 `
 本次产物：
 
 - `artifacts/runs/reference_aware_model/token_structural_smoke_20260903/`
-- `.tmp/reference_token_v4_smoke_20260903/`
-- `.tmp/reference_v4_fixed_token_20260903/`
-- `.tmp/reference_v4_fixed_descriptor_20260903/`
-- `.tmp/reference_fixed_canvas_large_token_20260903/`
-- `.tmp/reference_fixed_canvas_large_descriptor_20260903/`
+
+历史临时目录中的数字编号不再作为模型身份或策略名引用；后续源码、checkpoint
+策略和正式实验目录统一使用描述结构或实验目的的名称。

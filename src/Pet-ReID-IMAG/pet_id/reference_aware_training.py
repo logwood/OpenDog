@@ -21,6 +21,7 @@ import torch
 import torch.nn.functional as F
 
 from .reference_aware_model import ReferenceAwarePetReID
+from .reference_token_model import catalog_confidence_gate_from_scores
 
 
 REFERENCE_IMAGE_MANIFEST_FIELDS = (
@@ -952,6 +953,36 @@ def _score_encoded_reference_episode(
     )
     forward_kwargs: dict[str, Any] = {"return_aux": return_aux}
     if query_tokens is not None and reference_tokens is not None:
+        guard_queries = F.normalize(
+            query_descriptors.detach().float(),
+            dim=-1,
+            eps=1.0e-12,
+        )
+        guard_references = F.normalize(
+            reference_descriptors.detach().float(),
+            dim=-1,
+            eps=1.0e-12,
+        )
+        guard_mask = batch.reference_mask.to(
+            device=guard_references.device,
+            dtype=guard_references.dtype,
+        )
+        guard_centroids = F.normalize(
+            (guard_references * guard_mask.unsqueeze(-1)).sum(dim=1),
+            dim=-1,
+            eps=1.0e-12,
+        )
+        baseline_catalog_scores = torch.einsum(
+            "qd,id->qi",
+            guard_queries,
+            guard_centroids,
+        )
+        query_catalog_gate = catalog_confidence_gate_from_scores(
+            baseline_catalog_scores
+        )
+        forward_kwargs["catalog_confidence_gate"] = (
+            query_catalog_gate.repeat_interleave(identity_count, dim=0)
+        )
         forward_kwargs["query_tokens"] = query_tokens.repeat_interleave(
             identity_count, dim=0
         )
@@ -1118,7 +1149,7 @@ def baseline_no_harm_loss(
     output: dict[str, torch.Tensor],
     targets: torch.Tensor,
 ) -> torch.Tensor:
-    """Penalize a learned reranker only when it reduces its protected baseline margin."""
+    """Protect every baseline pairwise margin with near negatives weighted most."""
 
     scores = output["score"]
     baseline = output.get("baseline_score")
@@ -1133,28 +1164,35 @@ def baseline_no_harm_loss(
         raise ValueError("targets must have one entry per score row")
     if scores.shape[1] <= 1:
         return _zero_like_scores(scores)
+    if bool((targets < 0).any()) or bool((targets >= scores.shape[1]).any()):
+        raise ValueError("targets contain an identity index outside scores")
     rows = torch.arange(scores.shape[0], device=scores.device)
     negative_mask = torch.ones_like(scores, dtype=torch.bool)
     negative_mask[rows, targets] = False
-    # Compare the correction against a protected copy of the current baseline
-    # baseline. The score-minus-baseline expression preserves gradients through
-    # the learned residual while cancelling the direct baseline path, so this
-    # constraint cannot improve itself by moving the descriptor space it is
-    # meant to protect.
-    protected_scores = baseline.detach() + (scores - baseline)
-    learned_margin = (
-        protected_scores[rows, targets]
-        - protected_scores.masked_fill(~negative_mask, torch.finfo(scores.dtype).min)
-        .max(dim=1)
-        .values
+    # Every negative whose correction exceeds the positive correction reduces
+    # that pair's protected baseline margin. Baseline scores only determine a
+    # detached neighbor weighting, so the constraint cannot improve itself by
+    # moving the descriptor space it is meant to protect.
+    correction = scores - baseline
+    positive_correction = correction[rows, targets].unsqueeze(1)
+    violations = F.relu(correction - positive_correction) * negative_mask.to(
+        dtype=correction.dtype
     )
-    baseline_margin = (
-        baseline[rows, targets]
-        - baseline.masked_fill(~negative_mask, torch.finfo(baseline.dtype).min)
-        .max(dim=1)
-        .values
+    protected_baseline = baseline.detach().float()
+    neighbor_scale = protected_baseline.std(
+        dim=1,
+        unbiased=False,
+        keepdim=True,
+    ).clamp_min(torch.finfo(torch.float32).eps)
+    neighbor_logits = (
+        (protected_baseline - protected_baseline.mean(dim=1, keepdim=True))
+        / neighbor_scale
+    ).masked_fill(
+        ~negative_mask,
+        -float("inf"),
     )
-    return F.relu(baseline_margin.detach() - learned_margin).float().mean()
+    neighbor_weights = F.softmax(neighbor_logits, dim=1)
+    return (violations.float() * neighbor_weights).sum(dim=1).mean()
 
 
 def _normalise_distribution(
@@ -1809,7 +1847,13 @@ def evaluate_cached_reference_catalog(
     )
     counts = tuple(range(1, reference_count + 1))
     collected: dict[int, dict[str, list[torch.Tensor]]] = {
-        count: {"score": [], "baseline": [], "targets": []} for count in counts
+        count: {
+            "score": [],
+            "baseline": [],
+            "targets": [],
+            "catalog_gate": [],
+        }
+        for count in counts
     }
     was_training = bool(model.training)
     model.eval()
@@ -1835,6 +1879,7 @@ def evaluate_cached_reference_catalog(
                         )
                     scores = output.get("score")
                     baseline = output.get("baseline_score")
+                    catalog_gate = output.get("catalog_confidence_gate")
                     if not isinstance(scores, torch.Tensor) or not isinstance(
                         baseline, torch.Tensor
                     ):
@@ -1843,6 +1888,21 @@ def evaluate_cached_reference_catalog(
                         )
                     if tuple(scores.shape) != tuple(baseline.shape):
                         raise ValueError("catalog score and baseline shapes differ")
+                    if not isinstance(catalog_gate, torch.Tensor) or tuple(
+                        catalog_gate.shape
+                    ) != tuple(scores.shape):
+                        raise ValueError(
+                            "catalog diagnostics must contain a gate for every "
+                            "query/identity row"
+                        )
+                    if not torch.equal(
+                        catalog_gate,
+                        catalog_gate[:, :1].expand_as(catalog_gate),
+                    ):
+                        raise RuntimeError(
+                            "catalog confidence gate must be shared by every "
+                            "candidate for one query"
+                        )
                     if count == 1 and not torch.equal(scores, baseline):
                         raise RuntimeError(
                             "singleton token matching must equal the centroid "
@@ -1851,6 +1911,9 @@ def evaluate_cached_reference_catalog(
                     collected[count]["score"].append(scores.detach().cpu())
                     collected[count]["baseline"].append(baseline.detach().cpu())
                     collected[count]["targets"].append(prefix.targets.detach().cpu())
+                    collected[count]["catalog_gate"].append(
+                        catalog_gate[:, 0].detach().cpu()
+                    )
     finally:
         model.train(was_training)
 
@@ -1859,6 +1922,7 @@ def evaluate_cached_reference_catalog(
         scores = torch.cat(collected[count]["score"], dim=0)
         baseline = torch.cat(collected[count]["baseline"], dim=0)
         targets = torch.cat(collected[count]["targets"], dim=0)
+        catalog_gate = torch.cat(collected[count]["catalog_gate"], dim=0).float()
         learned_ranks, learned_margins = _ranking_observations(scores, targets)
         baseline_ranks, baseline_margins = _ranking_observations(
             baseline,
@@ -1896,6 +1960,11 @@ def evaluate_cached_reference_catalog(
                 "harmed_margin_query_count": int(
                     (~margin_non_degradation).sum().item()
                 ),
+            },
+            "catalog_confidence_gate": {
+                "mean": float(catalog_gate.mean().item()),
+                "closed_fraction": float((catalog_gate <= 0.0).float().mean().item()),
+                "active_fraction": float((catalog_gate > 0.0).float().mean().item()),
             },
         }
 

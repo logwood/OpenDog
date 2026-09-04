@@ -33,6 +33,7 @@ from pet_id.reference_aware_training import (  # noqa: E402
 from pet_id.reference_token_model import (  # noqa: E402
     MODEL_FORMAT,
     build_token_reference_aware_model_from_checkpoint,
+    catalog_confidence_gate_from_scores,
 )
 from pet_id.unified_data import UnifiedManifestDataset  # noqa: E402
 from pet_id.unified_highres_data import (  # noqa: E402
@@ -210,6 +211,21 @@ def _hard_negative_metrics(
     }
 
 
+def _catalog_confidence_gate_metrics(
+    gate: torch.Tensor,
+) -> dict[str, float]:
+    if gate.ndim != 1 or gate.numel() < 1:
+        raise ValueError("catalog confidence gate must be a non-empty vector")
+    gate = gate.detach().float()
+    if not bool(torch.isfinite(gate).all()):
+        raise ValueError("catalog confidence gate must contain finite values")
+    return {
+        "mean": float(gate.mean()),
+        "closed_fraction": float((gate <= 0.0).float().mean()),
+        "active_fraction": float((gate > 0.0).float().mean()),
+    }
+
+
 def _score_sets(
     model: torch.nn.Module,
     query_descriptor: torch.Tensor,
@@ -219,7 +235,7 @@ def _score_sets(
     *,
     device: torch.device,
     identity_chunk: int,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if identity_chunk < 1:
         raise ValueError("identity_chunk must be positive")
     identity_count, reference_count, descriptor_dim = reference_descriptors.shape
@@ -235,6 +251,7 @@ def _score_sets(
         centroids = F.normalize(reference_descriptors.mean(dim=1), dim=1)
         centroid_scores = torch.einsum("qd,id->qi", query_descriptor, centroids)
         baseline = centroid_scores
+        query_catalog_gate = catalog_confidence_gate_from_scores(centroid_scores)
         for start in range(0, identity_count, identity_chunk):
             stop = min(start + identity_chunk, identity_count)
             ref_descriptor_chunk = reference_descriptors[start:stop]
@@ -270,18 +287,26 @@ def _score_sets(
                 dtype=torch.bool,
                 device=device,
             )
+            expanded_catalog_gate = (
+                query_catalog_gate[:, None].expand(batch, stop - start).reshape(-1)
+            )
             learned = model.forward_encoded(
                 expanded_query,
                 expanded_references,
                 mask,
                 query_tokens=expanded_query_tokens,
                 reference_tokens=expanded_reference_tokens,
+                catalog_confidence_gate=expanded_catalog_gate,
             )
             if not isinstance(learned, torch.Tensor):
                 raise RuntimeError("token model returned auxiliary output unexpectedly")
             learned_chunks.append(learned.reshape(batch, stop - start).cpu())
             baseline_chunks.append(baseline[:, start:stop].cpu())
-    return torch.cat(learned_chunks, dim=1), torch.cat(baseline_chunks, dim=1)
+    return (
+        torch.cat(learned_chunks, dim=1),
+        torch.cat(baseline_chunks, dim=1),
+        query_catalog_gate.cpu(),
+    )
 
 
 def _evaluate_selected_reference_sets(
@@ -316,7 +341,7 @@ def _evaluate_selected_reference_sets(
         [descriptors[list(rows)] for rows in reference_rows]
     )
     reference_tokens = torch.stack([tokens[list(rows)] for rows in reference_rows])
-    learned, baseline = _score_sets(
+    learned, baseline, catalog_gate = _score_sets(
         model,
         descriptors[query_rows],
         tokens[query_rows],
@@ -334,6 +359,7 @@ def _evaluate_selected_reference_sets(
         "centroid_baseline": _rank_metrics(baseline, targets),
         "token_matcher_hard_negative": _hard_negative_metrics(learned, targets),
         "centroid_baseline_hard_negative": _hard_negative_metrics(baseline, targets),
+        "catalog_confidence_gate": _catalog_confidence_gate_metrics(catalog_gate),
         "reference_query_overlap": False,
     }
 
@@ -366,6 +392,7 @@ def evaluate_leave_one_view_out(
     rotations: list[dict[str, Any]] = []
     learned_matrices: list[torch.Tensor] = []
     baseline_matrices: list[torch.Tensor] = []
+    catalog_gates: list[torch.Tensor] = []
     for heldout_slot in range(reference_count + 1):
         selections = []
         for identity in eligible:
@@ -379,7 +406,7 @@ def evaluate_leave_one_view_out(
             [descriptors[list(rows)] for rows in ref_rows]
         )
         reference_tokens = torch.stack([tokens[list(rows)] for rows in ref_rows])
-        learned, baseline = _score_sets(
+        learned, baseline, catalog_gate = _score_sets(
             model,
             descriptors[query_rows],
             tokens[query_rows],
@@ -391,15 +418,20 @@ def evaluate_leave_one_view_out(
         targets = list(range(len(eligible)))
         learned_matrices.append(learned)
         baseline_matrices.append(baseline)
+        catalog_gates.append(catalog_gate)
         rotations.append(
             {
                 "heldout_slot": heldout_slot,
                 "token_matcher": _rank_metrics(learned, targets),
                 "centroid_baseline": _rank_metrics(baseline, targets),
+                "catalog_confidence_gate": _catalog_confidence_gate_metrics(
+                    catalog_gate
+                ),
             }
         )
     learned_all = torch.cat(learned_matrices, dim=0)
     baseline_all = torch.cat(baseline_matrices, dim=0)
+    catalog_gate_all = torch.cat(catalog_gates, dim=0)
     targets_all = list(range(len(eligible))) * (reference_count + 1)
     return {
         "status": "ok",
@@ -412,6 +444,7 @@ def evaluate_leave_one_view_out(
         "centroid_baseline_hard_negative": _hard_negative_metrics(
             baseline_all, targets_all
         ),
+        "catalog_confidence_gate": _catalog_confidence_gate_metrics(catalog_gate_all),
         "rotations": rotations,
         "reference_query_overlap": False,
     }
@@ -513,7 +546,7 @@ def evaluate_reference_count(
         rows = grouped[identity][reference_count:]
         query_rows.extend(rows)
         targets.extend([target] * len(rows))
-    learned, baseline = _score_sets(
+    learned, baseline, catalog_gate = _score_sets(
         model,
         descriptors[query_rows],
         tokens[query_rows],
@@ -530,6 +563,7 @@ def evaluate_reference_count(
         "centroid_baseline": _rank_metrics(baseline, targets),
         "token_matcher_hard_negative": _hard_negative_metrics(learned, targets),
         "centroid_baseline_hard_negative": _hard_negative_metrics(baseline, targets),
+        "catalog_confidence_gate": _catalog_confidence_gate_metrics(catalog_gate),
         "reference_query_overlap": False,
     }
 
@@ -571,7 +605,7 @@ def evaluate_open_set(
         known_rows.extend(rows)
         known_targets.extend([target] * len(rows))
     unknown_rows = [grouped[identity][reference_count] for identity in unknown]
-    known_scores, known_baseline = _score_sets(
+    known_scores, known_baseline, known_catalog_gate = _score_sets(
         model,
         descriptors[known_rows],
         tokens[known_rows],
@@ -580,7 +614,7 @@ def evaluate_open_set(
         device=device,
         identity_chunk=identity_chunk,
     )
-    unknown_scores, unknown_baseline = _score_sets(
+    unknown_scores, unknown_baseline, unknown_catalog_gate = _score_sets(
         model,
         descriptors[unknown_rows],
         tokens[unknown_rows],
@@ -595,6 +629,10 @@ def evaluate_open_set(
         "known_identities": len(known),
         "unknown_identities": len(unknown),
         "known_split_fraction": fraction,
+        "catalog_confidence_gate": {
+            "known": _catalog_confidence_gate_metrics(known_catalog_gate),
+            "unknown": _catalog_confidence_gate_metrics(unknown_catalog_gate),
+        },
     }
     for name, known_matrix, unknown_matrix in (
         ("token_matcher", known_scores, unknown_scores),

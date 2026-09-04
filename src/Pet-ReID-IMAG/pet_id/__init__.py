@@ -58,6 +58,7 @@ from .reference_token_model import (
     TokenReferenceAwarePetReID,
     TokenReferenceAwarePetReIDExport,
     build_token_reference_aware_model_from_checkpoint,
+    catalog_confidence_gate_from_scores,
     save_token_reference_aware_model,
 )
 from .identity_set_reranker import (
