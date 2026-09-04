@@ -28,6 +28,7 @@ from pet_id.reference_aware_model import (  # noqa: E402
     build_reference_aware_encoder_from_checkpoint,
 )
 from pet_id.reference_aware_training import (  # noqa: E402
+    paired_retrieval_error_summary,
     validate_reference_image_manifest,
 )
 from pet_id.reference_token_model import (  # noqa: E402
@@ -164,7 +165,7 @@ def _rank_metrics(scores: torch.Tensor, targets: Sequence[int]) -> dict[str, Any
     if scores.ndim != 2 or scores.shape[0] != len(targets):
         raise ValueError("scores and targets have incompatible shapes")
     target_tensor = torch.as_tensor(targets, dtype=torch.long)
-    ranking = scores.argsort(dim=1, descending=True)
+    ranking = scores.argsort(dim=1, descending=True, stable=True)
     ranks: list[int] = []
     for row, target in zip(ranking, target_tensor):
         matches = (row == target).nonzero(as_tuple=False)
@@ -302,11 +303,13 @@ def _score_sets(
                 raise RuntimeError("token model returned auxiliary output unexpectedly")
             learned_chunks.append(learned.reshape(batch, stop - start).cpu())
             baseline_chunks.append(baseline[:, start:stop].cpu())
-    return (
-        torch.cat(learned_chunks, dim=1),
-        torch.cat(baseline_chunks, dim=1),
-        query_catalog_gate.cpu(),
-    )
+    learned_matrix = torch.cat(learned_chunks, dim=1)
+    baseline_matrix = torch.cat(baseline_chunks, dim=1)
+    if reference_count == 1 and not torch.equal(learned_matrix, baseline_matrix):
+        raise RuntimeError(
+            "singleton token matching must equal the centroid baseline exactly"
+        )
+    return learned_matrix, baseline_matrix, query_catalog_gate.cpu()
 
 
 def _evaluate_selected_reference_sets(
@@ -357,6 +360,12 @@ def _evaluate_selected_reference_sets(
         "reference_count": reference_count,
         "token_matcher": _rank_metrics(learned, targets),
         "centroid_baseline": _rank_metrics(baseline, targets),
+        "paired_top1": paired_retrieval_error_summary(
+            learned,
+            baseline,
+            torch.as_tensor(targets, dtype=torch.long),
+            catalog_gate,
+        ),
         "token_matcher_hard_negative": _hard_negative_metrics(learned, targets),
         "centroid_baseline_hard_negative": _hard_negative_metrics(baseline, targets),
         "catalog_confidence_gate": _catalog_confidence_gate_metrics(catalog_gate),
@@ -424,6 +433,12 @@ def evaluate_leave_one_view_out(
                 "heldout_slot": heldout_slot,
                 "token_matcher": _rank_metrics(learned, targets),
                 "centroid_baseline": _rank_metrics(baseline, targets),
+                "paired_top1": paired_retrieval_error_summary(
+                    learned,
+                    baseline,
+                    torch.as_tensor(targets, dtype=torch.long),
+                    catalog_gate,
+                ),
                 "catalog_confidence_gate": _catalog_confidence_gate_metrics(
                     catalog_gate
                 ),
@@ -440,6 +455,12 @@ def evaluate_leave_one_view_out(
         "heldout_views_per_identity": reference_count + 1,
         "token_matcher": _rank_metrics(learned_all, targets_all),
         "centroid_baseline": _rank_metrics(baseline_all, targets_all),
+        "paired_top1": paired_retrieval_error_summary(
+            learned_all,
+            baseline_all,
+            torch.as_tensor(targets_all, dtype=torch.long),
+            catalog_gate_all,
+        ),
         "token_matcher_hard_negative": _hard_negative_metrics(learned_all, targets_all),
         "centroid_baseline_hard_negative": _hard_negative_metrics(
             baseline_all, targets_all
@@ -522,48 +543,114 @@ def evaluate_reference_count(
     device: torch.device,
     identity_chunk: int,
 ) -> dict[str, Any]:
-    eligible = [
+    reference_count = int(reference_count)
+    eligible = sorted(
         identity for identity, rows in grouped.items() if len(rows) > reference_count
-    ]
+    )
     if not eligible:
         return {
             "status": "skipped",
             "reason": "each identity needs at least reference_count + 1 images",
             "reference_count": reference_count,
         }
-    reference_descriptors = torch.stack(
-        [
-            descriptors[list(grouped[identity][:reference_count])]
+    positions = {identity: index for index, identity in enumerate(eligible)}
+    rotation_count = max(len(grouped[identity]) for identity in eligible)
+    learned_rows: list[torch.Tensor] = []
+    baseline_rows: list[torch.Tensor] = []
+    gate_rows: list[torch.Tensor] = []
+    targets_all: list[int] = []
+    rotations: list[dict[str, Any]] = []
+    for rotation_index in range(rotation_count):
+        query_identities = [
+            identity
             for identity in eligible
+            if rotation_index < len(grouped[identity])
         ]
-    )
-    reference_tokens = torch.stack(
-        [tokens[list(grouped[identity][:reference_count])] for identity in eligible]
-    )
-    query_rows: list[int] = []
-    targets: list[int] = []
-    for target, identity in enumerate(eligible):
-        rows = grouped[identity][reference_count:]
-        query_rows.extend(rows)
-        targets.extend([target] * len(rows))
-    learned, baseline, catalog_gate = _score_sets(
-        model,
-        descriptors[query_rows],
-        tokens[query_rows],
-        reference_descriptors,
-        reference_tokens,
-        device=device,
-        identity_chunk=identity_chunk,
-    )
+        query_rows = [
+            grouped[identity][rotation_index] for identity in query_identities
+        ]
+        targets = [positions[identity] for identity in query_identities]
+        selected_references: list[tuple[int, ...]] = []
+        for identity in eligible:
+            rows = grouped[identity]
+            start = (rotation_index + 1) % len(rows)
+            rotated = rows[start:] + rows[:start]
+            references = rotated[:reference_count]
+            if (
+                rotation_index < len(rows)
+                and rows[rotation_index] in references
+            ):
+                raise RuntimeError("rotating query appeared in its reference set")
+            selected_references.append(references)
+        reference_descriptors = torch.stack(
+            [descriptors[list(rows)] for rows in selected_references]
+        )
+        reference_tokens = torch.stack(
+            [tokens[list(rows)] for rows in selected_references]
+        )
+        learned, baseline, catalog_gate = _score_sets(
+            model,
+            descriptors[query_rows],
+            tokens[query_rows],
+            reference_descriptors,
+            reference_tokens,
+            device=device,
+            identity_chunk=identity_chunk,
+        )
+        learned_rows.append(learned)
+        baseline_rows.append(baseline)
+        gate_rows.append(catalog_gate)
+        targets_all.extend(targets)
+        rotations.append(
+            {
+                "rotation_index": rotation_index,
+                "query_records": len(query_rows),
+                "token_matcher": _rank_metrics(learned, targets),
+                "centroid_baseline": _rank_metrics(baseline, targets),
+                "paired_top1": paired_retrieval_error_summary(
+                    learned,
+                    baseline,
+                    torch.as_tensor(targets, dtype=torch.long),
+                    catalog_gate,
+                ),
+                "catalog_confidence_gate": _catalog_confidence_gate_metrics(
+                    catalog_gate
+                ),
+            }
+        )
+    learned = torch.cat(learned_rows, dim=0)
+    baseline = torch.cat(baseline_rows, dim=0)
+    catalog_gate = torch.cat(gate_rows, dim=0)
+    expected_queries = sum(len(grouped[identity]) for identity in eligible)
+    if len(targets_all) != expected_queries:
+        raise RuntimeError("rotating evaluation did not cover every eligible row")
     return {
         "status": "ok",
         "reference_count": reference_count,
         "identity_count": len(eligible),
-        "token_matcher": _rank_metrics(learned, targets),
-        "centroid_baseline": _rank_metrics(baseline, targets),
-        "token_matcher_hard_negative": _hard_negative_metrics(learned, targets),
-        "centroid_baseline_hard_negative": _hard_negative_metrics(baseline, targets),
+        "query_assignment": "deterministic_rotating_folds",
+        "coverage": {
+            "eligible_manifest_records": expected_queries,
+            "query_records": len(targets_all),
+            "rotation_count": rotation_count,
+            "complete": len(targets_all) == expected_queries,
+        },
+        "token_matcher": _rank_metrics(learned, targets_all),
+        "centroid_baseline": _rank_metrics(baseline, targets_all),
+        "paired_top1": paired_retrieval_error_summary(
+            learned,
+            baseline,
+            torch.as_tensor(targets_all, dtype=torch.long),
+            catalog_gate,
+        ),
+        "token_matcher_hard_negative": _hard_negative_metrics(
+            learned, targets_all
+        ),
+        "centroid_baseline_hard_negative": _hard_negative_metrics(
+            baseline, targets_all
+        ),
         "catalog_confidence_gate": _catalog_confidence_gate_metrics(catalog_gate),
+        "rotations": rotations,
         "reference_query_overlap": False,
     }
 
@@ -633,6 +720,19 @@ def evaluate_open_set(
             "known": _catalog_confidence_gate_metrics(known_catalog_gate),
             "unknown": _catalog_confidence_gate_metrics(unknown_catalog_gate),
         },
+        "known_paired_top1": (
+            paired_retrieval_error_summary(
+                known_scores,
+                known_baseline,
+                torch.as_tensor(known_targets, dtype=torch.long),
+                known_catalog_gate,
+            )
+            if known_scores.shape[1] >= 2
+            else {
+                "status": "skipped",
+                "reason": "paired retrieval needs at least two known identities",
+            }
+        ),
     }
     for name, known_matrix, unknown_matrix in (
         ("token_matcher", known_scores, unknown_scores),

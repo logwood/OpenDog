@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -97,6 +98,7 @@ class ReferenceImageEpisode:
     query_indices: tuple[int, ...]
     reference_indices: tuple[tuple[int, ...], ...]
     targets: torch.Tensor
+    validation_fold_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1646,24 +1648,53 @@ def build_full_catalog_validation_episodes(
     reference_count: int,
     queries_per_identity: int = 1,
     query_identities_per_batch: int = 8,
+    fold_count: int = 0,
     seed: int = 20260903,
 ) -> tuple[ReferenceImageEpisode, ...]:
-    """Cover every query identity once against one fixed full candidate catalog.
+    """Build deterministic rotating folds against the full identity catalog.
 
-    Each identity contributes one deterministic maximum reference set and a
-    disjoint query set. The same candidate references are reused in every
-    query batch, which lets validation compare nested prefixes without changing
-    either the images or the negative identities underneath the metric.
+    A zero ``fold_count`` selects enough folds for every manifest row to be a
+    query exactly once. Within a fold, each identity's held-out query rows are
+    removed before its maximum reference set is built. The same references are
+    then reused by every query batch in that fold, so nested reference prefixes
+    differ only by the newly included reference image.
+
+    An explicit smaller fold count is useful for diagnostics, but its incomplete
+    coverage is reported by :func:`evaluate_cached_reference_catalog` and makes
+    the resulting validation report ineligible for learned-checkpoint selection.
     """
 
     reference_count = int(reference_count)
     queries_per_identity = int(queries_per_identity)
     query_identities_per_batch = int(query_identities_per_batch)
+    fold_count = int(fold_count)
     if min(reference_count, queries_per_identity, query_identities_per_batch) < 1:
         raise ValueError("validation episode sizes must be positive")
+    if fold_count < 0:
+        raise ValueError("validation fold_count cannot be negative")
     groups = _identity_groups(dataset)
     identity_names = tuple(sorted(groups))
-    minimum = reference_count + queries_per_identity
+    record_counts = {
+        identity: int(groups[identity].size) for identity in identity_names
+    }
+    if fold_count == 0:
+        distinct_counts = sorted(set(record_counts.values()))
+        if len(distinct_counts) != 1:
+            raise ValueError(
+                "automatic full-coverage validation requires the same number "
+                f"of images per identity: {record_counts}"
+            )
+        records_per_identity = distinct_counts[0]
+        if records_per_identity % queries_per_identity:
+            raise ValueError(
+                "automatic full-coverage validation requires each identity's "
+                "image count to be divisible by queries_per_identity"
+            )
+        fold_count = records_per_identity // queries_per_identity
+    minimum = max(
+        reference_count + queries_per_identity,
+        fold_count * queries_per_identity,
+    )
     insufficient = {
         identity: int(rows.size)
         for identity, rows in groups.items()
@@ -1675,43 +1706,61 @@ def build_full_catalog_validation_episodes(
         )
 
     rng = np.random.default_rng(int(seed))
-    reference_rows: dict[str, tuple[int, ...]] = {}
-    query_rows: dict[str, tuple[int, ...]] = {}
+    ordered_rows: dict[str, tuple[int, ...]] = {}
     for identity in identity_names:
-        selected = rng.choice(
-            groups[identity],
-            size=minimum,
-            replace=False,
-        ).tolist()
-        reference_rows[identity] = tuple(
-            int(value) for value in selected[:reference_count]
+        ordered_rows[identity] = tuple(
+            int(value) for value in rng.permutation(groups[identity]).tolist()
         )
-        query_rows[identity] = tuple(int(value) for value in selected[reference_count:])
 
-    references = tuple(reference_rows[identity] for identity in identity_names)
     positions = {identity: position for position, identity in enumerate(identity_names)}
     episodes: list[ReferenceImageEpisode] = []
-    for start in range(0, len(identity_names), query_identities_per_batch):
-        query_names = identity_names[start : start + query_identities_per_batch]
-        query_indices = tuple(
-            index for identity in query_names for index in query_rows[identity]
+    for fold_index in range(fold_count):
+        query_start = fold_index * queries_per_identity
+        query_stop = query_start + queries_per_identity
+        fold_queries = {
+            identity: ordered_rows[identity][query_start:query_stop]
+            for identity in identity_names
+        }
+        fold_references: dict[str, tuple[int, ...]] = {}
+        for identity in identity_names:
+            rows = ordered_rows[identity]
+            query_set = set(fold_queries[identity])
+            # Start after the held-out block and wrap around. This creates a
+            # deterministic rotation instead of permanently privileging the
+            # first manifest rows in every nested prefix.
+            rotated = rows[query_stop:] + rows[:query_stop]
+            available = tuple(row for row in rotated if row not in query_set)
+            if len(available) < reference_count:
+                raise ValueError(
+                    f"identity {identity!r} has fewer than {reference_count} "
+                    "non-query validation references"
+                )
+            fold_references[identity] = available[:reference_count]
+        references = tuple(
+            fold_references[identity] for identity in identity_names
         )
-        targets = torch.tensor(
-            [
-                positions[identity]
-                for identity in query_names
-                for _ in range(queries_per_identity)
-            ],
-            dtype=torch.long,
-        )
-        episodes.append(
-            ReferenceImageEpisode(
-                identity_names=identity_names,
-                query_indices=query_indices,
-                reference_indices=references,
-                targets=targets,
+        for start in range(0, len(identity_names), query_identities_per_batch):
+            query_names = identity_names[start : start + query_identities_per_batch]
+            query_indices = tuple(
+                index for identity in query_names for index in fold_queries[identity]
             )
-        )
+            targets = torch.tensor(
+                [
+                    positions[identity]
+                    for identity in query_names
+                    for _ in fold_queries[identity]
+                ],
+                dtype=torch.long,
+            )
+            episodes.append(
+                ReferenceImageEpisode(
+                    identity_names=identity_names,
+                    query_indices=query_indices,
+                    reference_indices=references,
+                    targets=targets,
+                    validation_fold_index=fold_index,
+                )
+            )
     return tuple(episodes)
 
 
@@ -1762,8 +1811,150 @@ def _ranking_summary(
     }
 
 
+def paired_retrieval_error_summary(
+    candidate_scores: torch.Tensor,
+    baseline_scores: torch.Tensor,
+    targets: torch.Tensor,
+    catalog_confidence_gate: torch.Tensor,
+    *,
+    margin_tolerance: float = 1.0e-7,
+) -> dict[str, Any]:
+    """Summarize paired candidate/baseline changes without storing query rows."""
+
+    if candidate_scores.ndim != 2 or tuple(candidate_scores.shape) != tuple(
+        baseline_scores.shape
+    ):
+        raise ValueError("candidate and baseline scores must have the same matrix shape")
+    targets = targets.to(device=candidate_scores.device, dtype=torch.long)
+    gate = catalog_confidence_gate.to(
+        device=candidate_scores.device,
+        dtype=torch.float32,
+    )
+    if gate.ndim != 1 or gate.shape[0] != candidate_scores.shape[0]:
+        raise ValueError("catalog confidence gate must have one value per query")
+    if not bool(torch.isfinite(gate).all()):
+        raise ValueError("catalog confidence gate must contain finite values")
+    tolerance = float(margin_tolerance)
+    if not math.isfinite(tolerance) or tolerance < 0.0:
+        raise ValueError("margin_tolerance must be finite and non-negative")
+
+    candidate_ranks, candidate_margins = _ranking_observations(
+        candidate_scores,
+        targets,
+    )
+    baseline_ranks, baseline_margins = _ranking_observations(
+        baseline_scores.to(device=candidate_scores.device),
+        targets,
+    )
+    candidate_correct = candidate_ranks == 1
+    baseline_correct = baseline_ranks == 1
+
+    def top1_partition(mask: torch.Tensor) -> dict[str, int]:
+        mask = mask.to(device=candidate_correct.device, dtype=torch.bool)
+        candidate_only = mask & candidate_correct & ~baseline_correct
+        baseline_only = mask & ~candidate_correct & baseline_correct
+        both_correct = mask & candidate_correct & baseline_correct
+        both_wrong = mask & ~candidate_correct & ~baseline_correct
+        return {
+            "query_records": int(mask.sum().item()),
+            "candidate_only_correct": int(candidate_only.sum().item()),
+            "baseline_only_correct": int(baseline_only.sum().item()),
+            "both_correct": int(both_correct.sum().item()),
+            "both_wrong": int(both_wrong.sum().item()),
+            "net_candidate_corrections": int(
+                candidate_only.sum().item() - baseline_only.sum().item()
+            ),
+        }
+
+    all_queries = torch.ones_like(candidate_correct, dtype=torch.bool)
+    margin_delta = candidate_margins - baseline_margins
+    margin_improved = margin_delta > tolerance
+    margin_harmed = margin_delta < -tolerance
+    return {
+        **top1_partition(all_queries),
+        "catalog_confidence_gate": {
+            "active": top1_partition(gate > 0.0),
+            "closed": top1_partition(gate <= 0.0),
+        },
+        "margin": {
+            "improved_query_count": int(margin_improved.sum().item()),
+            "harmed_query_count": int(margin_harmed.sum().item()),
+            "unchanged_query_count": int(
+                (~margin_improved & ~margin_harmed).sum().item()
+            ),
+            "mean_delta": float(margin_delta.float().mean().item()),
+            "comparison_tolerance": tolerance,
+        },
+    }
+
+
+def _catalog_reference_count_report(
+    *,
+    reference_count: int,
+    scores: torch.Tensor,
+    baseline: torch.Tensor,
+    targets: torch.Tensor,
+    catalog_gate: torch.Tensor,
+) -> dict[str, Any]:
+    learned_ranks, learned_margins = _ranking_observations(scores, targets)
+    baseline_ranks, baseline_margins = _ranking_observations(baseline, targets)
+    learned = _ranking_summary(learned_ranks, learned_margins)
+    centroid = _ranking_summary(baseline_ranks, baseline_margins)
+    margin_delta = learned_margins - baseline_margins
+    rank_non_degradation = learned_ranks <= baseline_ranks
+    margin_non_degradation = margin_delta >= -1.0e-7
+    return {
+        "reference_count": int(reference_count),
+        "learned": learned,
+        "centroid": centroid,
+        "exact_centroid_match": bool(torch.equal(scores, baseline)),
+        "delta": {
+            "top1_accuracy": float(
+                learned["top1_accuracy"] - centroid["top1_accuracy"]
+            ),
+            "top5_accuracy": float(
+                learned["top5_accuracy"] - centroid["top5_accuracy"]
+            ),
+            "mean_reciprocal_rank": float(
+                learned["mean_reciprocal_rank"]
+                - centroid["mean_reciprocal_rank"]
+            ),
+            "mean_positive_margin": float(margin_delta.mean().item()),
+        },
+        "paired_top1": paired_retrieval_error_summary(
+            scores,
+            baseline,
+            targets,
+            catalog_gate,
+        ),
+        "no_harm": {
+            "rank_non_degradation_rate": float(
+                rank_non_degradation.float().mean().item()
+            ),
+            "margin_non_degradation_rate": float(
+                margin_non_degradation.float().mean().item()
+            ),
+            "harmed_rank_query_count": int((~rank_non_degradation).sum().item()),
+            "harmed_margin_query_count": int(
+                (~margin_non_degradation).sum().item()
+            ),
+        },
+        "catalog_confidence_gate": {
+            "mean": float(catalog_gate.float().mean().item()),
+            "closed_fraction": float(
+                (catalog_gate <= 0.0).float().mean().item()
+            ),
+            "active_fraction": float(
+                (catalog_gate > 0.0).float().mean().item()
+            ),
+        },
+    }
+
+
 def reference_validation_selection_summary(
     reports: dict[str, dict[str, Any]],
+    *,
+    coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not reports:
         raise ValueError("catalog validation has no reference-count reports")
@@ -1801,15 +1992,20 @@ def reference_validation_selection_summary(
     top1_noninferior = (
         bool(multi_reference) and learned_top1_correct >= centroid_top1_correct
     )
-    eligible = singleton_exact and top1_noninferior
+    full_query_coverage = (
+        True if coverage is None else bool(coverage.get("complete", False))
+    )
+    eligible = singleton_exact and full_query_coverage and top1_noninferior
     key = (learned_top1, learned_reciprocal, learned_margin)
     return {
         "policy": (
-            "require exact singleton centroid behavior and noninferior aggregate "
-            "multi-reference top1; rank learned checkpoints by multi-reference "
-            "top1, reciprocal rank, then positive margin"
+            "require complete single-use query coverage, exact singleton centroid "
+            "behavior, and noninferior aggregate multi-reference top1; rank learned "
+            "checkpoints by multi-reference top1, reciprocal rank, then positive "
+            "margin"
         ),
         "eligible_for_best_learned": eligible,
+        "full_query_coverage": full_query_coverage,
         "singleton_exact_centroid_match": singleton_exact,
         "multi_reference_top1_noninferior": top1_noninferior,
         "all_multi_reference_counts_top1_noninferior": bool(multi_reference)
@@ -1913,10 +2109,11 @@ def evaluate_cached_reference_catalog(
     reference_count: int,
     queries_per_identity: int = 1,
     query_identities_per_batch: int = 8,
+    validation_fold_count: int = 0,
     seed: int = 20260903,
     device: str | torch.device = "cpu",
 ) -> dict[str, Any]:
-    """Evaluate each nested reference prefix against every candidate identity."""
+    """Evaluate rotating query folds and nested references over the full catalog."""
 
     reference_count = int(reference_count)
     episodes = build_full_catalog_validation_episodes(
@@ -1924,23 +2121,49 @@ def evaluate_cached_reference_catalog(
         reference_count=reference_count,
         queries_per_identity=queries_per_identity,
         query_identities_per_batch=query_identities_per_batch,
+        fold_count=validation_fold_count,
         seed=seed,
     )
+    if not episodes:
+        raise RuntimeError("catalog validation produced no episodes")
     counts = tuple(range(1, reference_count + 1))
-    collected: dict[int, dict[str, list[torch.Tensor]]] = {
-        count: {
-            "score": [],
-            "baseline": [],
-            "targets": [],
-            "catalog_gate": [],
+    fold_indices = tuple(
+        sorted(
+            {
+                int(episode.validation_fold_index)
+                for episode in episodes
+                if episode.validation_fold_index is not None
+            }
+        )
+    )
+    if not fold_indices or any(
+        episode.validation_fold_index is None for episode in episodes
+    ):
+        raise RuntimeError("catalog validation episodes have no fold assignment")
+    collected: dict[int, dict[int, dict[str, list[torch.Tensor]]]] = {
+        fold_index: {
+            count: {
+                "score": [],
+                "baseline": [],
+                "targets": [],
+                "catalog_gate": [],
+            }
+            for count in counts
         }
-        for count in counts
+        for fold_index in fold_indices
     }
+    fold_episode_counts: Counter[int] = Counter()
+    fold_query_counts: Counter[int] = Counter()
+    query_index_counts: Counter[int] = Counter()
     was_training = bool(model.training)
     model.eval()
     try:
         with torch.inference_mode():
             for episode in episodes:
+                fold_index = int(episode.validation_fold_index)
+                fold_episode_counts[fold_index] += 1
+                fold_query_counts[fold_index] += len(episode.query_indices)
+                query_index_counts.update(episode.query_indices)
                 batch = materialize_cached_reference_episode(
                     cache,
                     dataset,
@@ -1989,75 +2212,112 @@ def evaluate_cached_reference_catalog(
                             "singleton token matching must equal the centroid "
                             "baseline exactly"
                         )
-                    collected[count]["score"].append(scores.detach().cpu())
-                    collected[count]["baseline"].append(baseline.detach().cpu())
-                    collected[count]["targets"].append(prefix.targets.detach().cpu())
-                    collected[count]["catalog_gate"].append(
+                    collected[fold_index][count]["score"].append(
+                        scores.detach().cpu()
+                    )
+                    collected[fold_index][count]["baseline"].append(
+                        baseline.detach().cpu()
+                    )
+                    collected[fold_index][count]["targets"].append(
+                        prefix.targets.detach().cpu()
+                    )
+                    collected[fold_index][count]["catalog_gate"].append(
                         catalog_gate[:, 0].detach().cpu()
                     )
     finally:
         model.train(was_training)
 
+    fold_reports: list[dict[str, Any]] = []
+    for fold_index in fold_indices:
+        reference_reports: dict[str, dict[str, Any]] = {}
+        for count in counts:
+            observations = collected[fold_index][count]
+            reference_reports[str(count)] = _catalog_reference_count_report(
+                reference_count=count,
+                scores=torch.cat(observations["score"], dim=0),
+                baseline=torch.cat(observations["baseline"], dim=0),
+                targets=torch.cat(observations["targets"], dim=0),
+                catalog_gate=torch.cat(
+                    observations["catalog_gate"], dim=0
+                ).float(),
+            )
+        fold_reports.append(
+            {
+                "fold_index": fold_index,
+                "query_records": int(fold_query_counts[fold_index]),
+                "query_batches": int(fold_episode_counts[fold_index]),
+                "reference_counts": reference_reports,
+            }
+        )
+
     reports: dict[str, dict[str, Any]] = {}
     for count in counts:
-        scores = torch.cat(collected[count]["score"], dim=0)
-        baseline = torch.cat(collected[count]["baseline"], dim=0)
-        targets = torch.cat(collected[count]["targets"], dim=0)
-        catalog_gate = torch.cat(collected[count]["catalog_gate"], dim=0).float()
-        learned_ranks, learned_margins = _ranking_observations(scores, targets)
-        baseline_ranks, baseline_margins = _ranking_observations(
-            baseline,
-            targets,
-        )
-        learned = _ranking_summary(learned_ranks, learned_margins)
-        centroid = _ranking_summary(baseline_ranks, baseline_margins)
-        margin_delta = learned_margins - baseline_margins
-        rank_non_degradation = learned_ranks <= baseline_ranks
-        margin_non_degradation = margin_delta >= -1.0e-7
-        reports[str(count)] = {
-            "reference_count": count,
-            "learned": learned,
-            "centroid": centroid,
-            "exact_centroid_match": bool(torch.equal(scores, baseline)),
-            "delta": {
-                "top1_accuracy": float(
-                    learned["top1_accuracy"] - centroid["top1_accuracy"]
-                ),
-                "top5_accuracy": float(
-                    learned["top5_accuracy"] - centroid["top5_accuracy"]
-                ),
-                "mean_reciprocal_rank": float(
-                    learned["mean_reciprocal_rank"] - centroid["mean_reciprocal_rank"]
-                ),
-                "mean_positive_margin": float(margin_delta.mean().item()),
-            },
-            "no_harm": {
-                "rank_non_degradation_rate": float(
-                    rank_non_degradation.float().mean().item()
-                ),
-                "margin_non_degradation_rate": float(
-                    margin_non_degradation.float().mean().item()
-                ),
-                "harmed_rank_query_count": int((~rank_non_degradation).sum().item()),
-                "harmed_margin_query_count": int(
-                    (~margin_non_degradation).sum().item()
-                ),
-            },
-            "catalog_confidence_gate": {
-                "mean": float(catalog_gate.mean().item()),
-                "closed_fraction": float((catalog_gate <= 0.0).float().mean().item()),
-                "active_fraction": float((catalog_gate > 0.0).float().mean().item()),
-            },
+        aggregate = {
+            name: [
+                value
+                for fold_index in fold_indices
+                for value in collected[fold_index][count][name]
+            ]
+            for name in ("score", "baseline", "targets", "catalog_gate")
         }
+        reports[str(count)] = _catalog_reference_count_report(
+            reference_count=count,
+            scores=torch.cat(aggregate["score"], dim=0),
+            baseline=torch.cat(aggregate["baseline"], dim=0),
+            targets=torch.cat(aggregate["targets"], dim=0),
+            catalog_gate=torch.cat(aggregate["catalog_gate"], dim=0).float(),
+        )
+
+    records = getattr(dataset, "records", None)
+    if not isinstance(records, list) or not records:
+        raise ValueError("dataset must expose non-empty manifest records")
+    manifest_records = len(records)
+    covered_once = sum(count == 1 for count in query_index_counts.values())
+    duplicate_occurrences = sum(
+        max(0, count - 1) for count in query_index_counts.values()
+    )
+    uncovered_records = manifest_records - len(query_index_counts)
+    coverage = {
+        "policy": "each manifest record appears exactly once as a query",
+        "requested_fold_count": int(validation_fold_count),
+        "resolved_fold_count": len(fold_indices),
+        "queries_per_identity_per_fold": int(queries_per_identity),
+        "manifest_records": manifest_records,
+        "query_occurrences": int(sum(query_index_counts.values())),
+        "unique_query_records": len(query_index_counts),
+        "records_covered_once": int(covered_once),
+        "duplicate_query_occurrences": int(duplicate_occurrences),
+        "uncovered_records": int(uncovered_records),
+        "query_coverage_fraction": float(len(query_index_counts) / manifest_records),
+        "complete": bool(
+            covered_once == manifest_records
+            and duplicate_occurrences == 0
+            and uncovered_records == 0
+        ),
+        "per_fold": [
+            {
+                "fold_index": fold_index,
+                "query_records": int(fold_query_counts[fold_index]),
+                "query_batches": int(fold_episode_counts[fold_index]),
+            }
+            for fold_index in fold_indices
+        ],
+    }
 
     return {
         "protocol": "full_identity_catalog_nested_references",
+        "query_assignment": "deterministic_rotating_folds",
         "baseline": "centroid",
         "candidate_identities": len(episodes[0].identity_names),
         "query_records": sum(len(episode.query_indices) for episode in episodes),
         "query_batches": len(episodes),
+        "coverage": coverage,
+        "folds": fold_reports,
         "reference_counts": reports,
-        "selection": reference_validation_selection_summary(reports),
+        "selection": reference_validation_selection_summary(
+            reports,
+            coverage=coverage,
+        ),
     }
 
 
@@ -2079,6 +2339,7 @@ __all__ = [
     "load_reference_spatial_feature_cache",
     "materialize_cached_reference_episode",
     "materialize_reference_image_episode",
+    "paired_retrieval_error_summary",
     "reference_episode_loss",
     "reference_validation_checkpoint_eligible",
     "reference_validation_is_better",

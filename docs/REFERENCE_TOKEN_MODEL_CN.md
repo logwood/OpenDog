@@ -41,14 +41,18 @@ gate 是 multi-reference、coverage strength、reliability 和 catalog confidenc
 四项的乘积。单参考严格退化为 centroid；完全重复的 token 参考集也会关闭 residual。
 
 训练默认从同一套三图参考集计算 1→2→3 的嵌套前缀损失。视角与质量 metadata
-直接监督 attention、novelty 和 reliability；验证则让每批 query 对完整开发身份目录
-打分。checkpoint 先经过安全门槛：单参考必须与 centroid 逐元素完全一致，2/3 图的
-聚合 Top-1 不得下降；合格的 learned checkpoint 再依次按多图 Top-1、MRR 和平均
-正类 margin 排序。MRR 与 margin 使用浮点容差，逐 query 的 margin non-degradation
-只保留为诊断，不再一票否决。
+直接监督 attention、novelty 和 reliability；验证则采用确定性的 rotating folds，
+让开发 manifest 中每张图恰好做一次 query，其余视角作为不重叠参考，并让每批 query
+对完整开发身份目录打分。每个 fold 继续比较同一参考序列的 1→2→3 嵌套前缀，报告
+逐 fold 与全量聚合结果。checkpoint 先经过安全门槛：开发 query 必须完整且无重复，
+单参考必须与 centroid 逐元素完全一致，2/3 图的全量聚合 Top-1 不得下降；合格的
+learned checkpoint 再依次按多图 Top-1、MRR 和平均正类 margin 排序。MRR 与 margin
+使用浮点容差，逐 query 的 margin non-degradation 只保留为诊断，不再一票否决。
 no-harm 损失会检查正身份与所有负身份的 pairwise correction，而不再只保护当前最强
 负身份；负身份在 centroid 基线中越接近 query，所占的 detached 权重越高。完整目录
-验证同时报告 catalog gate 的均值、完全关闭比例和实际启用比例。
+验证同时报告 catalog gate 的均值、完全关闭比例和实际启用比例，以及 learned-only
+correct、centroid-only correct、both-correct、both-wrong 四类 paired error；修对与
+改错会再按 gate active/closed 分开，margin 受损 query 只记诊断计数，不写入逐图明细。
 
 训练会分别保存三种语义明确的产物：`centroid_fallback.pth` 是训练前的安全回退，
 `best_learned_retrieval.pth` 是通过安全门槛后的最佳 learned epoch，
@@ -72,8 +76,13 @@ python src/Pet-ReID-IMAG/tools/train_reference_aware_model.py `
   --token-dim 128 `
   --token-grid 4 `
   --reference-set-schedule nested `
+  --validation-fold-count 0 `
   --view-coverage-weight 0.2
 ```
+
+`--validation-fold-count 0` 表示自动使用完整轮换；当前每身份 4 张开发图时会解析为
+4 folds。显式较小值只适合快速诊断，报告会标为 coverage 不完整，并禁止它参与最佳
+learned checkpoint 选择，因此不能用窄切片意外选出“最佳 epoch”。
 
 token checkpoint 使用独立的 `reference-token-aware-pet-reid` 格式，可恢复训练；
 descriptor checkpoint 与 token checkpoint 不会被互相静默加载。旧 matcher

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 import torch
@@ -13,6 +14,7 @@ from torch import nn
 from pet_id.reference_aware_training import (
     AllIdentityReferenceEpisodeSampler,
     ReferenceImageEpisodeSampler,
+    build_full_catalog_validation_episodes,
     build_reference_spatial_feature_cache,
     cached_reference_episode_loss,
     evaluate_cached_reference_catalog,
@@ -20,6 +22,7 @@ from pet_id.reference_aware_training import (
     load_reference_spatial_feature_cache,
     materialize_cached_reference_episode,
     materialize_reference_image_episode,
+    paired_retrieval_error_summary,
     reference_validation_checkpoint_eligible,
     reference_validation_is_better,
     reference_validation_selection_summary,
@@ -87,13 +90,18 @@ class _MultiScaleSpatialEncoder(nn.Module):
 
 
 class _ManifestDataset:
-    def __init__(self, identities: tuple[str, ...] = ("a", "b", "c", "d")) -> None:
+    def __init__(
+        self,
+        identities: tuple[str, ...] = ("a", "b", "c", "d"),
+        *,
+        images_per_identity: int = 3,
+    ) -> None:
         self.training = False
         self.records: list[dict[str, object]] = []
         self.images: list[torch.Tensor] = []
         generator = torch.Generator().manual_seed(71)
         for identity_index, identity in enumerate(identities):
-            for image_index in range(3):
+            for image_index in range(images_per_identity):
                 index = len(self.records)
                 self.records.append(
                     {
@@ -183,6 +191,79 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
             identity = str(dataset.records[query_index]["identity"])
             self.assertEqual(episode.identity_names[target], identity)
             self.assertNotIn(query_index, episode.reference_indices[target])
+
+    def test_rotating_validation_folds_cover_each_manifest_row_once(self):
+        dataset = _ManifestDataset(images_per_identity=4)
+        episodes = build_full_catalog_validation_episodes(
+            dataset,
+            reference_count=3,
+            queries_per_identity=1,
+            query_identities_per_batch=2,
+            fold_count=0,
+            seed=81,
+        )
+        self.assertEqual(len(episodes), 8)
+        self.assertEqual(
+            {episode.validation_fold_index for episode in episodes},
+            {0, 1, 2, 3},
+        )
+        query_counts = Counter(
+            index for episode in episodes for index in episode.query_indices
+        )
+        self.assertEqual(query_counts, Counter({index: 1 for index in range(16)}))
+        for fold_index in range(4):
+            fold = [
+                episode
+                for episode in episodes
+                if episode.validation_fold_index == fold_index
+            ]
+            self.assertEqual(len(fold), 2)
+            self.assertEqual(fold[0].reference_indices, fold[1].reference_indices)
+            for episode in fold:
+                for query_index, target in zip(
+                    episode.query_indices,
+                    episode.targets.tolist(),
+                ):
+                    self.assertNotIn(
+                        query_index,
+                        episode.reference_indices[target],
+                    )
+
+    def test_paired_error_summary_counts_fixes_regressions_and_gate_state(self):
+        candidate = torch.tensor(
+            [
+                [0.9, 0.1],
+                [0.9, 0.1],
+                [0.9, 0.1],
+                [0.9, 0.1],
+            ]
+        )
+        baseline = torch.tensor(
+            [
+                [0.1, 0.9],
+                [0.1, 0.9],
+                [0.8, 0.2],
+                [0.8, 0.2],
+            ]
+        )
+        summary = paired_retrieval_error_summary(
+            candidate,
+            baseline,
+            torch.tensor([0, 1, 0, 1]),
+            torch.tensor([1.0, 0.5, 0.0, 0.0]),
+        )
+        self.assertEqual(summary["candidate_only_correct"], 1)
+        self.assertEqual(summary["baseline_only_correct"], 1)
+        self.assertEqual(summary["both_correct"], 1)
+        self.assertEqual(summary["both_wrong"], 1)
+        self.assertEqual(summary["net_candidate_corrections"], 0)
+        active = summary["catalog_confidence_gate"]["active"]
+        self.assertEqual(active["candidate_only_correct"], 1)
+        self.assertEqual(active["baseline_only_correct"], 1)
+        closed = summary["catalog_confidence_gate"]["closed"]
+        self.assertEqual(closed["both_correct"], 1)
+        self.assertEqual(closed["both_wrong"], 1)
+        self.assertEqual(summary["margin"]["harmed_query_count"], 2)
 
     def test_live_and_cached_spatial_scores_match(self):
         dataset = _ManifestDataset()
@@ -297,19 +378,44 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
                 query_identities_per_batch=2,
                 seed=101,
             )
+            incomplete_report = evaluate_cached_reference_catalog(
+                model,
+                cache,
+                dataset,
+                reference_count=2,
+                queries_per_identity=1,
+                query_identities_per_batch=2,
+                validation_fold_count=1,
+                seed=101,
+            )
         self.assertEqual(
             report["protocol"],
             "full_identity_catalog_nested_references",
         )
         self.assertEqual(report["candidate_identities"], 4)
-        self.assertEqual(report["query_records"], 4)
+        self.assertEqual(report["query_records"], 12)
+        self.assertEqual(report["query_batches"], 6)
+        self.assertEqual(len(report["folds"]), 3)
+        self.assertTrue(report["coverage"]["complete"])
+        self.assertEqual(report["coverage"]["manifest_records"], 12)
+        self.assertEqual(report["coverage"]["records_covered_once"], 12)
+        self.assertEqual(report["coverage"]["duplicate_query_occurrences"], 0)
+        self.assertEqual(report["coverage"]["uncovered_records"], 0)
         self.assertEqual(set(report["reference_counts"]), {"1", "2"})
         singleton = report["reference_counts"]["1"]
+        self.assertEqual(singleton["learned"]["query_records"], 12)
         self.assertTrue(singleton["exact_centroid_match"])
         self.assertEqual(singleton["delta"]["top1_accuracy"], 0.0)
         self.assertEqual(singleton["delta"]["mean_reciprocal_rank"], 0.0)
         self.assertEqual(singleton["no_harm"]["harmed_margin_query_count"], 0)
         multi_reference = report["reference_counts"]["2"]
+        self.assertEqual(multi_reference["paired_top1"]["query_records"], 12)
+        self.assertEqual(
+            multi_reference["paired_top1"]["candidate_only_correct"]
+            - multi_reference["paired_top1"]["baseline_only_correct"],
+            multi_reference["learned"]["top1_correct"]
+            - multi_reference["centroid"]["top1_correct"],
+        )
         self.assertEqual(multi_reference["delta"]["top1_accuracy"], 0.0)
         self.assertEqual(multi_reference["delta"]["mean_positive_margin"], 0.0)
         for row in report["reference_counts"].values():
@@ -321,11 +427,16 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
                 1.0,
             )
         self.assertTrue(report["selection"]["eligible_for_best_learned"])
+        self.assertTrue(report["selection"]["full_query_coverage"])
         self.assertTrue(report["selection"]["singleton_exact_centroid_match"])
         self.assertTrue(report["selection"]["multi_reference_top1_noninferior"])
         self.assertEqual(
             report["selection"]["tie_policy"],
             "keep_earliest_within_tolerance",
+        )
+        self.assertFalse(incomplete_report["coverage"]["complete"])
+        self.assertFalse(
+            incomplete_report["selection"]["eligible_for_best_learned"]
         )
 
     def test_learned_selection_uses_aggregate_top1_and_float_tolerance(self):
@@ -475,6 +586,36 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
                 validation(singleton_exact=False, learned_correct=97)
             )
         )
+
+    def test_incomplete_query_coverage_cannot_select_a_checkpoint(self):
+        def row(count: int, *, exact: bool = False) -> dict:
+            return {
+                "reference_count": count,
+                "exact_centroid_match": exact,
+                "learned": {
+                    "query_records": 100,
+                    "top1_correct": 98,
+                    "mean_reciprocal_rank": 0.99,
+                    "mean_positive_margin": 0.3,
+                },
+                "centroid": {
+                    "query_records": 100,
+                    "top1_correct": 96,
+                    "mean_reciprocal_rank": 0.97,
+                    "mean_positive_margin": 0.2,
+                },
+            }
+
+        selection = reference_validation_selection_summary(
+            {"1": row(1, exact=True), "2": row(2)},
+            coverage={"complete": False},
+        )
+        report = {
+            "protocol": "full_identity_catalog_nested_references",
+            "selection": selection,
+        }
+        self.assertFalse(selection["full_query_coverage"])
+        self.assertFalse(reference_validation_checkpoint_eligible(report))
 
     def test_hard_negative_sees_candidates_outside_small_query_episode(self):
         limited_loss, limited_margin = hard_negative_margin_loss(

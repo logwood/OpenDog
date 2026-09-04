@@ -95,6 +95,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--identities-per-batch", type=int, default=8)
     parser.add_argument("--reference-count", type=int, default=3)
     parser.add_argument("--queries-per-identity", type=int, default=1)
+    parser.add_argument(
+        "--validation-fold-count",
+        type=int,
+        default=0,
+        help=(
+            "deterministic rotating validation folds; 0 uses enough folds for "
+            "every development-manifest row to be a query exactly once"
+        ),
+    )
     parser.add_argument("--max-references", type=int, default=4)
     parser.add_argument(
         "--all-identity-negatives",
@@ -223,6 +232,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--reference-count cannot exceed --max-references")
     if args.steps_per_epoch < 0:
         raise ValueError("--steps-per-epoch cannot be negative")
+    if args.validation_fold_count < 0:
+        raise ValueError("--validation-fold-count cannot be negative")
     for name in (
         "attention_temperature",
         "maximum_residual",
@@ -854,6 +865,7 @@ def main() -> None:
             reference_count=args.reference_count,
             queries_per_identity=args.queries_per_identity,
             query_identities_per_batch=validation_sampler.identities_per_batch,
+            validation_fold_count=args.validation_fold_count,
             seed=args.seed + 101,
             device=device,
         )
@@ -870,6 +882,7 @@ def main() -> None:
             "seed": args.seed,
             "interaction_level": args.interaction_level,
             "reference_set_schedule": args.reference_set_schedule,
+            "validation_fold_count": args.validation_fold_count,
             "validation_protocol": initial_validation["protocol"],
             "initial_validation": initial_validation,
             "best_learned_validation": None,
@@ -947,6 +960,7 @@ def main() -> None:
                 reference_count=args.reference_count,
                 queries_per_identity=args.queries_per_identity,
                 query_identities_per_batch=validation_sampler.identities_per_batch,
+                validation_fold_count=args.validation_fold_count,
                 seed=args.seed + 101,
                 device=device,
             )
@@ -1001,6 +1015,7 @@ def main() -> None:
             "hard_negative_margin": float(args.hard_negative_margin),
             "view_coverage_weight": float(args.view_coverage_weight),
             "reference_set_schedule": args.reference_set_schedule,
+            "validation_fold_count": args.validation_fold_count,
             "validation_protocol": validation.get("protocol", "sampled_episodes"),
             "initial_validation": initial_validation,
             "best_learned_validation": best_learned_validation,
@@ -1067,6 +1082,7 @@ def main() -> None:
         "model_last": str((output_dir / "model_last.pth").resolve()),
         "history": history,
         "configuration": model.configuration(),
+        "validation_fold_count": args.validation_fold_count,
         "initial_validation": initial_validation,
         "best_learned_validation": best_learned_validation,
         "best_learned_selection_key": (
