@@ -72,10 +72,11 @@ class ImageTokenAdapter(nn.Module):
     """Expose a descriptor and a fixed number of spatial tokens per image.
 
     A forward hook is registered only on a likely feature-map module.  The
-    hook is deliberately conservative: if several crops pass through that
-    module, the largest spatial map with the expected batch size is selected.
-    This avoids changing the encoder's forward implementation or its exported
-    single-image descriptor contract.
+    hook preserves every batch-compatible invocation.  Unified encoders pack
+    several crop branches as ``[branch * batch, channels, height, width]``;
+    those rows are restored to their source images and the branch channels are
+    kept distinct before token projection.  This avoids changing the encoder's
+    forward implementation or collapsing genuine multi-scale evidence.
     """
 
     _FEATURE_SUFFIXES = (
@@ -148,15 +149,45 @@ class ImageTokenAdapter(nn.Module):
         if feature is not None:
             self._captured.append(feature)
 
-    def _select_feature(self, batch_size: int) -> torch.Tensor | None:
-        candidates = [
-            item
-            for item in self._captured
-            if item.ndim == 4 and int(item.shape[0]) == int(batch_size)
-        ]
-        if not candidates:
+    def _pool_captured_features(self, batch_size: int) -> torch.Tensor | None:
+        """Pool and restore hook outputs to one token row per source image.
+
+        Crop branches in the unified encoders are concatenated branch-first,
+        so a layer4 output with ``K * batch_size`` rows represents K spatial
+        views of every source image.  Each view is pooled independently and
+        concatenated on the channel axis.  Keeping the token axis fixed makes
+        corresponding spatial cells interact while retaining a distinct set
+        of learnable projection weights for every crop branch.
+        """
+
+        if int(batch_size) < 1:
             return None
-        return max(candidates, key=lambda item: int(item.shape[-2] * item.shape[-1]))
+        pooled_groups: list[torch.Tensor] = []
+        for feature in self._captured:
+            if feature.ndim != 4 or int(feature.shape[0]) < int(batch_size):
+                continue
+            if int(feature.shape[0]) % int(batch_size):
+                continue
+            branch_count = int(feature.shape[0]) // int(batch_size)
+            pooled = self._pool_spatial_feature(feature)
+            if branch_count > 1:
+                pooled = (
+                    pooled.reshape(
+                        branch_count,
+                        -1,
+                        self.token_count,
+                        int(pooled.shape[-1]),
+                    )
+                    .permute(1, 2, 0, 3)
+                    .flatten(2)
+                    .contiguous()
+                )
+            pooled_groups.append(pooled)
+        if not pooled_groups:
+            return None
+        if len(pooled_groups) == 1:
+            return pooled_groups[0]
+        return torch.cat(pooled_groups, dim=2)
 
     @property
     def feature_hook_name(self) -> str | None:
@@ -222,16 +253,21 @@ class ImageTokenAdapter(nn.Module):
             )
         descriptor = F.normalize(descriptor.float(), dim=1, eps=1e-12)
 
-        feature = self._select_feature(int(images.shape[0]))
-        if feature is None:
+        pooled = self._pool_captured_features(int(images.shape[0]))
+        if pooled is None:
             if require_spatial:
                 hook = self._hook_target_name or "<not found>"
+                shapes = [
+                    tuple(int(size) for size in item.shape)
+                    for item in self._captured
+                ]
                 raise RuntimeError(
                     "a real spatial feature map is required for cached token "
-                    f"training; encoder hook {hook!r} produced no usable feature"
+                    f"training; encoder hook {hook!r} produced no batch-compatible "
+                    f"feature (captured shapes: {shapes})"
                 )
             return descriptor, None
-        return descriptor, self._pool_spatial_feature(feature)
+        return descriptor, pooled
 
     def tokens_from_pooled_features(self, pooled: torch.Tensor) -> torch.Tensor:
         """Apply the trainable token projection to cached spatial features."""

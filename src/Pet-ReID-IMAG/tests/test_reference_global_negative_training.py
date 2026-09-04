@@ -56,6 +56,34 @@ class _DescriptorEncoder(nn.Module):
         return self.projection(images.float().mean(dim=(2, 3)))
 
 
+class _MultiScaleSpatialEncoder(nn.Module):
+    """Mimic unified face crops concatenated as [scale * batch, ...]."""
+
+    descriptor_dim = 8
+    input_size = 4
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.backbone = nn.Module()
+        self.backbone.layer4 = nn.Identity()
+        self.projection = nn.Linear(6, self.descriptor_dim)
+
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
+        images = images.float()
+        features = self.backbone.layer4(
+            torch.cat((images, images + 1.0), dim=0)
+        )
+        first_scale, second_scale = features.chunk(2, dim=0)
+        combined = torch.cat(
+            (
+                first_scale.mean(dim=(2, 3)),
+                second_scale.mean(dim=(2, 3)),
+            ),
+            dim=1,
+        )
+        return self.projection(combined)
+
+
 class _ManifestDataset:
     def __init__(self, identities: tuple[str, ...] = ("a", "b", "c", "d")) -> None:
         self.training = False
@@ -113,6 +141,31 @@ def _write_manifest(path: Path, dataset: _ManifestDataset) -> None:
 
 
 class GlobalNegativeTrainingTest(unittest.TestCase):
+    def test_multiscale_hook_rows_are_restored_to_each_source_image(self):
+        encoder = _MultiScaleSpatialEncoder()
+        model = _model(encoder)
+        images = torch.arange(2 * 3 * 4 * 4, dtype=torch.float32).reshape(
+            2, 3, 4, 4
+        )
+        descriptors, pooled = model.image_encoder.encode_cacheable_features(
+            images,
+            require_spatial=True,
+        )
+        expected_first = torch.nn.functional.adaptive_avg_pool2d(images, (2, 2))
+        expected_second = torch.nn.functional.adaptive_avg_pool2d(
+            images + 1.0, (2, 2)
+        )
+        expected = torch.cat(
+            (
+                expected_first.flatten(2).transpose(1, 2),
+                expected_second.flatten(2).transpose(1, 2),
+            ),
+            dim=2,
+        )
+        self.assertEqual(tuple(descriptors.shape), (2, 8))
+        self.assertEqual(tuple(pooled.shape), (2, 4, 6))
+        torch.testing.assert_close(pooled, expected)
+
     def test_all_identity_sampler_keeps_every_candidate_and_disjoint_positive(self):
         dataset = _ManifestDataset()
         sampler = AllIdentityReferenceEpisodeSampler(
