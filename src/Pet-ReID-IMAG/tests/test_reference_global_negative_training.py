@@ -15,6 +15,7 @@ from pet_id.reference_aware_training import (
     ReferenceImageEpisodeSampler,
     build_reference_spatial_feature_cache,
     cached_reference_episode_loss,
+    evaluate_cached_reference_catalog,
     hard_negative_margin_loss,
     load_reference_spatial_feature_cache,
     materialize_cached_reference_episode,
@@ -70,9 +71,7 @@ class _MultiScaleSpatialEncoder(nn.Module):
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         images = images.float()
-        features = self.backbone.layer4(
-            torch.cat((images, images + 1.0), dim=0)
-        )
+        features = self.backbone.layer4(torch.cat((images, images + 1.0), dim=0))
         first_scale, second_scale = features.chunk(2, dim=0)
         combined = torch.cat(
             (
@@ -144,17 +143,13 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
     def test_multiscale_hook_rows_are_restored_to_each_source_image(self):
         encoder = _MultiScaleSpatialEncoder()
         model = _model(encoder)
-        images = torch.arange(2 * 3 * 4 * 4, dtype=torch.float32).reshape(
-            2, 3, 4, 4
-        )
+        images = torch.arange(2 * 3 * 4 * 4, dtype=torch.float32).reshape(2, 3, 4, 4)
         descriptors, pooled = model.image_encoder.encode_cacheable_features(
             images,
             require_spatial=True,
         )
         expected_first = torch.nn.functional.adaptive_avg_pool2d(images, (2, 2))
-        expected_second = torch.nn.functional.adaptive_avg_pool2d(
-            images + 1.0, (2, 2)
-        )
+        expected_second = torch.nn.functional.adaptive_avg_pool2d(images + 1.0, (2, 2))
         expected = torch.cat(
             (
                 expected_first.flatten(2).transpose(1, 2),
@@ -181,9 +176,7 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
         self.assertEqual(episode.identity_names, ("a", "b", "c", "d"))
         self.assertEqual(len(episode.reference_indices), 4)
         self.assertEqual(len(episode.query_indices), 2)
-        for query_index, target in zip(
-            episode.query_indices, episode.targets.tolist()
-        ):
+        for query_index, target in zip(episode.query_indices, episode.targets.tolist()):
             identity = str(dataset.records[query_index]["identity"])
             self.assertEqual(episode.identity_names[target], identity)
             self.assertNotIn(query_index, episode.reference_indices[target])
@@ -214,9 +207,7 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
                 batch_size=4,
             )
             live_batch = materialize_reference_image_episode(dataset, episode)
-            cached_batch = materialize_cached_reference_episode(
-                cache, dataset, episode
-            )
+            cached_batch = materialize_cached_reference_episode(cache, dataset, episode)
             model.eval()
             live_scores = score_reference_image_episode(model, live_batch)
             cached_scores = score_cached_reference_episode(model, cached_batch)
@@ -273,7 +264,54 @@ class GlobalNegativeTrainingTest(unittest.TestCase):
             0.0,
         )
         self.assertTrue(
-            all(parameter.grad is None for parameter in model.image_encoder.encoder.parameters())
+            all(
+                parameter.grad is None
+                for parameter in model.image_encoder.encoder.parameters()
+            )
+        )
+
+    def test_full_catalog_validation_uses_nested_fixed_references(self):
+        dataset = _ManifestDataset()
+        model = _model().eval()
+        model.freeze_encoder()
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "manifest.json"
+            _write_manifest(manifest, dataset)
+            cache = build_reference_spatial_feature_cache(
+                model,
+                dataset,
+                manifest_path=manifest,
+                base_checkpoint_sha256="a" * 64,
+                device="cpu",
+                batch_size=4,
+            )
+            report = evaluate_cached_reference_catalog(
+                model,
+                cache,
+                dataset,
+                reference_count=2,
+                queries_per_identity=1,
+                query_identities_per_batch=2,
+                seed=101,
+            )
+        self.assertEqual(
+            report["protocol"],
+            "full_identity_catalog_nested_references",
+        )
+        self.assertEqual(report["candidate_identities"], 4)
+        self.assertEqual(report["query_records"], 4)
+        self.assertEqual(set(report["reference_counts"]), {"1", "2"})
+        singleton = report["reference_counts"]["1"]
+        self.assertEqual(singleton["delta"]["top1_accuracy"], 0.0)
+        self.assertEqual(singleton["delta"]["mean_reciprocal_rank"], 0.0)
+        self.assertEqual(singleton["no_harm"]["harmed_margin_query_count"], 0)
+        multi_reference = report["reference_counts"]["2"]
+        self.assertEqual(multi_reference["delta"]["top1_accuracy"], 0.0)
+        self.assertEqual(multi_reference["delta"]["mean_positive_margin"], 0.0)
+        self.assertTrue(report["selection"]["all_reference_counts_noninferior"])
+        self.assertEqual(
+            report["selection"]["tie_policy"],
+            "keep_earliest",
         )
 
     def test_hard_negative_sees_candidates_outside_small_query_episode(self):

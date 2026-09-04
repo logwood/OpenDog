@@ -4,6 +4,10 @@
 `ReferenceAwarePetReID` 仍然保留为 descriptor-level 路径；新模型不会替换默认
 服务、生产模型或已有图库。
 
+> 当前 matcher 使用 `evidence_gated_spatial_delta` 策略。2026-09-03 的旧 token
+> checkpoint 属于已经退役的结构，不能加载到当前 matcher；下方旧实验数字只保留为
+> 历史证据，不能当作当前结构的结果。
+
 ## 结构
 
 ```text
@@ -14,15 +18,22 @@ query/reference RGB
                          │
              query ↔ reference cross-token matching
                          │
-             novelty / coverage gate（抑制重复视角）
+          view novelty / reliability（抑制重复视角）
                          │
-             centroid/top-k 安全锚点 + 有界 residual
+       纯 centroid 安全锚点 + evidence-gated spatial delta
 ```
 
 每个 query token 都可以在每张参考图中选择最匹配的局部 token。这样正面、侧面、
 背面等互补视角不会在进入 512D descriptor 之前被强行平均。参考图之间还会计算
-token-summary 的相似度；与其他参考图过于相似的行会得到较低 novelty，coverage gate
-会限制它对最终分数的重复贡献。
+独立 view representation 的相似度；与其他参考图过于相似的行会得到较低 novelty，
+reliability gate 会限制它对最终分数的重复贡献。descriptor 只构成 centroid 基线，
+不会进入参考图路由或 residual head。单参考严格退化为 centroid；完全重复的 token
+参考集会关闭 residual。
+
+训练默认从同一套三图参考集计算 1→2→3 的嵌套前缀损失。视角与质量 metadata
+直接监督 attention、novelty 和 reliability；验证则让每批 query 对完整开发身份目录
+打分，并按各前缀相对 centroid 的非劣性选择 checkpoint。若训练后的 epoch 都变差，
+`model_best.pth` 会保留训练前的零 residual 基线；相同指标不会反复覆盖。
 
 如果 encoder 没有可发现的四维 feature map，`ImageTokenAdapter` 会退回一个明确的
 descriptor-to-token 投影。这种 fallback 只用于保持接口完整；要获得真正的空间互补
@@ -39,11 +50,14 @@ python src/Pet-ReID-IMAG/tools/train_reference_aware_model.py `
   --base-checkpoint <single-image-checkpoint.pth> `
   --interaction-level token `
   --token-dim 128 `
-  --token-grid 4
+  --token-grid 4 `
+  --reference-set-schedule nested `
+  --view-coverage-weight 0.2
 ```
 
 token checkpoint 使用独立的 `reference-token-aware-pet-reid` 格式，可恢复训练；
-descriptor checkpoint 与 token checkpoint 不会被互相静默加载。
+descriptor checkpoint 与 token checkpoint 不会被互相静默加载。旧 matcher
+checkpoint 也会被明确拒绝，必须重新训练。
 
 ## 在线图库接线
 
@@ -83,7 +97,7 @@ checkpoint、base encoder 与 preprocess 还未封装成一个可移植部署清
 清单及非劣性门槛前，只允许上述显式 Python 构造，避免一个看似可选但实际会加载错
 模型空间的 CLI 开关。
 
-## 当前 smoke 结果
+## 历史 smoke 结果（退役 matcher，仅供追溯）
 
 在现有开发 manifest 上进行了 1 epoch / 1 step 的受限 smoke：
 
@@ -104,7 +118,7 @@ centroid/top-k 基线分别为 `93.0% / 95.0% / 94.0%` Top-1，三档都完全�
 模型。下一次正式比较应固定同一开发划分，同时报告单图、不同参考数量、leave-one-view-out、
 hard-negative 和 open-set 指标；在这些指标通过前不应注册为默认模型。
 
-## 固定预算试验（2026-09-03）
+## 历史固定预算试验（2026-09-03，退役 matcher）
 
 这次没有做温度、epoch 或参考数量 sweep。token 与 descriptor 两条路径使用同一
 随机种子、同一冻结的单图 encoder、同一 8 个 epoch × 10 个 step 预算、最多 3 张

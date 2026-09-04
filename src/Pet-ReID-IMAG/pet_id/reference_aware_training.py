@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -181,7 +181,9 @@ class ReferenceSpatialFeatureCache:
             ("manifest_sha256", self.manifest_sha256),
             ("base_checkpoint_sha256", self.base_checkpoint_sha256),
         ):
-            if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+            if len(value) != 64 or any(
+                character not in "0123456789abcdef" for character in value
+            ):
                 raise ValueError(f"cached {name} must be a lowercase SHA-256 digest")
         if any(not str(value) for value in self.source_sha256s):
             raise ValueError("cached source_sha256 values must be non-empty")
@@ -190,7 +192,9 @@ class ReferenceSpatialFeatureCache:
         if not bool(torch.isfinite(self.pooled_spatial_features).all()):
             raise ValueError("cached pooled spatial features contain non-finite values")
         norms = torch.linalg.vector_norm(self.descriptors, dim=1)
-        if not bool(torch.allclose(norms, torch.ones_like(norms), atol=1.0e-4, rtol=1.0e-4)):
+        if not bool(
+            torch.allclose(norms, torch.ones_like(norms), atol=1.0e-4, rtol=1.0e-4)
+        ):
             raise ValueError("cached descriptors must be unit normalized")
 
     def to(self, device: str | torch.device) -> "ReferenceSpatialFeatureCache":
@@ -219,9 +223,7 @@ def _record_source_sha256s(dataset: Any) -> tuple[str, ...]:
     if not isinstance(records, list) or not records:
         raise ValueError("dataset must expose non-empty manifest records")
     values = tuple(
-        str(record.get("source_sha256", ""))
-        if isinstance(record, dict)
-        else ""
+        str(record.get("source_sha256", "")) if isinstance(record, dict) else ""
         for record in records
     )
     if any(not value for value in values):
@@ -290,7 +292,10 @@ def load_reference_spatial_feature_cache(
     if not source.is_file():
         raise FileNotFoundError(source)
     payload = torch.load(source, map_location="cpu", weights_only=True)
-    if not isinstance(payload, dict) or payload.get("format") != SPATIAL_FEATURE_CACHE_FORMAT:
+    if (
+        not isinstance(payload, dict)
+        or payload.get("format") != SPATIAL_FEATURE_CACHE_FORMAT
+    ):
         raise ValueError(f"not a reference spatial feature cache: {source}")
     required = (
         "descriptors",
@@ -387,10 +392,17 @@ def build_reference_spatial_feature_cache(
                     [_sample_rgb(dataset, index) for index in range(start, stop)]
                 ).to(target_device)
                 descriptors, pooled = encode(images)
-                if descriptors.shape[0] != stop - start or pooled.shape[0] != stop - start:
-                    raise ValueError("encoder changed the feature cache batch dimension")
+                if (
+                    descriptors.shape[0] != stop - start
+                    or pooled.shape[0] != stop - start
+                ):
+                    raise ValueError(
+                        "encoder changed the feature cache batch dimension"
+                    )
                 descriptor_chunks.append(
-                    descriptors.detach().to(device="cpu", dtype=torch.float32).contiguous()
+                    descriptors.detach()
+                    .to(device="cpu", dtype=torch.float32)
+                    .contiguous()
                 )
                 spatial_chunks.append(
                     pooled.detach().to(device="cpu", dtype=torch.float32).contiguous()
@@ -507,9 +519,7 @@ class AllIdentityReferenceEpisodeSampler(ReferenceImageEpisodeSampler):
             size=self.identities_per_batch,
             replace=False,
         )
-        query_names = tuple(
-            str(value) for value in selected_query_identities.tolist()
-        )
+        query_names = tuple(str(value) for value in selected_query_identities.tolist())
         query_rows: dict[str, tuple[int, ...]] = {}
         for identity in query_names:
             selected = rng.choice(
@@ -537,9 +547,7 @@ class AllIdentityReferenceEpisodeSampler(ReferenceImageEpisodeSampler):
                     f"identity {identity!r} has fewer than {count} non-query references"
                 )
             selected = rng.choice(available, size=count, replace=False)
-            reference_indices.append(
-                tuple(int(value) for value in selected.tolist())
-            )
+            reference_indices.append(tuple(int(value) for value in selected.tolist()))
 
         positions = {
             identity: index for index, identity in enumerate(self.identity_names)
@@ -806,9 +814,7 @@ def materialize_cached_reference_episode(
         device=cache_device,
     )
     query_descriptors = cache.descriptors.index_select(0, query_index_tensor)
-    query_spatial = cache.pooled_spatial_features.index_select(
-        0, query_index_tensor
-    )
+    query_spatial = cache.pooled_spatial_features.index_select(0, query_index_tensor)
     padded_indices = torch.zeros(
         (identity_count, max_count),
         dtype=torch.long,
@@ -1108,6 +1114,49 @@ def hard_negative_margin_loss(
     return violations[finite].float().mean(), observed_margin[finite].float().mean()
 
 
+def baseline_no_harm_loss(
+    output: dict[str, torch.Tensor],
+    targets: torch.Tensor,
+) -> torch.Tensor:
+    """Penalize a learned reranker only when it reduces its protected baseline margin."""
+
+    scores = output["score"]
+    baseline = output.get("baseline_score")
+    if not isinstance(baseline, torch.Tensor):
+        raise ValueError("matcher diagnostics must contain baseline_score")
+    if scores.ndim != 2 or tuple(baseline.shape) != tuple(scores.shape):
+        raise ValueError(
+            "score and baseline_score must have shape [queries, identities]"
+        )
+    targets = targets.to(device=scores.device, dtype=torch.long)
+    if targets.ndim != 1 or targets.shape[0] != scores.shape[0]:
+        raise ValueError("targets must have one entry per score row")
+    if scores.shape[1] <= 1:
+        return _zero_like_scores(scores)
+    rows = torch.arange(scores.shape[0], device=scores.device)
+    negative_mask = torch.ones_like(scores, dtype=torch.bool)
+    negative_mask[rows, targets] = False
+    # Compare the correction against a protected copy of the current baseline
+    # baseline. The score-minus-baseline expression preserves gradients through
+    # the learned residual while cancelling the direct baseline path, so this
+    # constraint cannot improve itself by moving the descriptor space it is
+    # meant to protect.
+    protected_scores = baseline.detach() + (scores - baseline)
+    learned_margin = (
+        protected_scores[rows, targets]
+        - protected_scores.masked_fill(~negative_mask, torch.finfo(scores.dtype).min)
+        .max(dim=1)
+        .values
+    )
+    baseline_margin = (
+        baseline[rows, targets]
+        - baseline.masked_fill(~negative_mask, torch.finfo(baseline.dtype).min)
+        .max(dim=1)
+        .values
+    )
+    return F.relu(baseline_margin.detach() - learned_margin).float().mean()
+
+
 def _normalise_distribution(
     values: torch.Tensor,
     mask: torch.Tensor,
@@ -1118,7 +1167,7 @@ def _normalise_distribution(
 
 def _view_coverage_targets(
     batch: ReferenceImageBatch,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None:
+) -> dict[str, torch.Tensor] | None:
     """Build soft relevance/novelty targets from continuous view metadata."""
 
     if (
@@ -1192,14 +1241,22 @@ def _view_coverage_targets(
     else:
         quality = torch.ones_like(novelty)
 
-    weights = relevance * (0.5 + 0.5 * novelty).unsqueeze(0) * quality.unsqueeze(0)
+    reliability = quality * (0.5 + 0.5 * novelty)
+    weights = relevance * reliability.unsqueeze(0)
     weights = weights * valid_references.unsqueeze(0).to(dtype=weights.dtype)
     targets = _normalise_distribution(
         weights,
         valid_references.unsqueeze(0).expand(query.shape[0], -1, -1),
     )
     query_valid_rows = query_valid[:, None] & valid_references.any(dim=1)[None, :]
-    return targets, valid_references, query_valid_rows
+    return {
+        "attention": targets,
+        "reference_valid": valid_references,
+        "query_identity_valid": query_valid_rows,
+        "novelty": novelty,
+        "novelty_valid": valid_references & has_other,
+        "reliability": reliability,
+    }
 
 
 def view_coverage_loss(
@@ -1221,11 +1278,17 @@ def view_coverage_loss(
     if target_pack is None:
         zero = _zero_like_scores(output["score"])
         return zero, {
+            "attention_alignment_loss": zero.detach(),
+            "token_alignment_loss": zero.detach(),
+            "novelty_alignment_loss": zero.detach(),
+            "reliability_alignment_loss": zero.detach(),
             "coverage_target_entropy": zero.detach(),
             "coverage_pred_entropy": zero.detach(),
             "coverage_valid_fraction": zero.detach(),
         }
-    targets, valid_references, valid_rows = target_pack
+    targets = target_pack["attention"]
+    valid_references = target_pack["reference_valid"]
+    valid_rows = target_pack["query_identity_valid"]
     scores = output["score"]
     targets = targets.to(device=scores.device)
     valid_references = valid_references.to(device=scores.device)
@@ -1241,7 +1304,9 @@ def view_coverage_loss(
     if bool((target_indices < 0).any()) or bool(
         (target_indices >= scores.shape[1]).any()
     ):
-        raise ValueError("batch targets contain an identity index outside matcher output")
+        raise ValueError(
+            "batch targets contain an identity index outside matcher output"
+        )
     rows = torch.arange(query_count, device=scores.device)
     positive_attention = attention[rows, target_indices].float()
     positive_targets = targets[rows, target_indices]
@@ -1250,12 +1315,13 @@ def view_coverage_loss(
     positive_attention = _normalise_distribution(positive_attention, positive_valid)
     positive_targets = _normalise_distribution(positive_targets, positive_valid)
     log_prediction = positive_attention.clamp_min(1.0e-6).log()
-    kl = (
+    attention_kl = (
         positive_targets * (positive_targets.clamp_min(1.0e-6).log() - log_prediction)
     ).sum(dim=1)
 
     token_scores = output.get("token_scores")
-    if isinstance(token_scores, torch.Tensor):
+    has_token_scores = isinstance(token_scores, torch.Tensor)
+    if has_token_scores:
         if token_scores.ndim != 3 or token_scores.shape[:2] != scores.shape:
             raise ValueError(
                 "token_scores must have shape [queries,identities,references]"
@@ -1270,13 +1336,20 @@ def view_coverage_loss(
                 - token_prediction.clamp_min(1.0e-6).log()
             )
         ).sum(dim=1)
-        kl = 0.5 * (kl + token_kl)
         predicted = 0.5 * (positive_attention + token_prediction)
     else:
+        token_kl = None
         predicted = positive_attention
-    usable_float = usable.to(dtype=kl.dtype)
+    usable_float = usable.to(dtype=attention_kl.dtype)
     if bool(usable.any()):
-        loss = (kl * usable_float).sum() / usable_float.sum().clamp_min(1.0)
+        attention_loss = (
+            attention_kl * usable_float
+        ).sum() / usable_float.sum().clamp_min(1.0)
+        token_loss = (
+            (token_kl * usable_float).sum() / usable_float.sum().clamp_min(1.0)
+            if token_kl is not None
+            else _zero_like_scores(scores)
+        )
         target_entropy = (
             -(positive_targets.clamp_min(1.0e-6).log() * positive_targets).sum(dim=1)
             * usable_float
@@ -1285,10 +1358,67 @@ def view_coverage_loss(
             -(predicted.clamp_min(1.0e-6).log() * predicted).sum(dim=1) * usable_float
         ).sum() / usable_float.sum().clamp_min(1.0)
     else:
-        loss = _zero_like_scores(scores)
-        target_entropy = loss.detach()
-        prediction_entropy = loss.detach()
+        attention_loss = _zero_like_scores(scores)
+        token_loss = _zero_like_scores(scores)
+        target_entropy = attention_loss.detach()
+        prediction_entropy = attention_loss.detach()
+
+    novelty = output.get("novelty")
+    if isinstance(novelty, torch.Tensor):
+        if novelty.ndim != 3 or novelty.shape[:2] != scores.shape:
+            raise ValueError("novelty must have shape [queries,identities,references]")
+        positive_novelty = novelty[rows, target_indices].float()
+        novelty_targets = target_pack["novelty"].to(device=scores.device)[
+            target_indices
+        ]
+        novelty_valid = target_pack["novelty_valid"].to(device=scores.device)[
+            target_indices
+        ]
+        novelty_errors = F.smooth_l1_loss(
+            positive_novelty,
+            novelty_targets,
+            reduction="none",
+        )
+        novelty_valid_float = novelty_valid.to(dtype=novelty_errors.dtype)
+        if bool(novelty_valid.any()):
+            novelty_loss = (
+                novelty_errors * novelty_valid_float
+            ).sum() / novelty_valid_float.sum().clamp_min(1.0)
+        else:
+            novelty_loss = _zero_like_scores(scores)
+    else:
+        # The descriptor-only matcher predates explicit view novelty. It keeps
+        # its attention supervision without pretending to expose this target.
+        novelty_loss = _zero_like_scores(scores)
+
+    coverage_gate = output.get("coverage_gate")
+    if isinstance(coverage_gate, torch.Tensor):
+        if coverage_gate.ndim != 3 or coverage_gate.shape[:2] != scores.shape:
+            raise ValueError(
+                "coverage_gate must have shape [queries,identities,references]"
+            )
+        positive_gate = coverage_gate[rows, target_indices].float()
+        reliability_targets = target_pack["reliability"].to(device=scores.device)[
+            target_indices
+        ]
+        reliability_errors = F.smooth_l1_loss(
+            positive_gate,
+            reliability_targets,
+            reduction="none",
+        )
+        reliability_valid_float = positive_valid.to(dtype=reliability_errors.dtype)
+        reliability_loss = (
+            reliability_errors * reliability_valid_float
+        ).sum() / reliability_valid_float.sum().clamp_min(1.0)
+    else:
+        reliability_loss = _zero_like_scores(scores)
+
+    loss = attention_loss + token_loss + novelty_loss + reliability_loss
     return loss, {
+        "attention_alignment_loss": attention_loss,
+        "token_alignment_loss": token_loss,
+        "novelty_alignment_loss": novelty_loss,
+        "reliability_alignment_loss": reliability_loss,
         "coverage_target_entropy": target_entropy.detach(),
         "coverage_pred_entropy": prediction_entropy.detach(),
         "coverage_valid_fraction": usable_float.mean().detach(),
@@ -1324,18 +1454,21 @@ def _reference_episode_loss_from_output(
     targets = batch.targets.to(device=scores.device, dtype=torch.long)
     retrieval = F.cross_entropy(scores.float() / float(temperature), targets)
     residual = output["residual"]
-    penalty = residual.float().square().mean()
+    raw_residual = output.get("raw_residual", residual)
+    penalty = raw_residual.float().square().mean()
     hard_negative, observed_margin = hard_negative_margin_loss(
         scores,
         targets,
         margin=hard_negative_margin,
     )
+    no_harm = baseline_no_harm_loss(output, targets)
     coverage, coverage_details = view_coverage_loss(output, batch)
     total = (
         retrieval
         + float(residual_regularization) * penalty
         + float(hard_negative_weight) * hard_negative
         + float(view_coverage_weight) * coverage
+        + no_harm
     )
     return total, {
         "loss": total,
@@ -1343,9 +1476,53 @@ def _reference_episode_loss_from_output(
         "residual_penalty": penalty,
         "hard_negative_loss": hard_negative,
         "observed_hard_negative_margin": observed_margin,
+        "baseline_no_harm_loss": no_harm,
         "view_coverage_loss": coverage,
         **coverage_details,
     }
+
+
+def _reference_prefix_batch(
+    batch: ReferenceImageBatch | CachedReferenceFeatureBatch,
+    reference_count: int,
+) -> ReferenceImageBatch | CachedReferenceFeatureBatch:
+    """Mask one nested reference prefix without copying image/features."""
+
+    width = int(batch.reference_mask.shape[1])
+    count = int(reference_count)
+    if count < 1 or count > width:
+        raise ValueError("reference_count must fit within the batch width")
+    columns = torch.arange(
+        width,
+        device=batch.reference_mask.device,
+    ).unsqueeze(0)
+    mask = batch.reference_mask & (columns < count)
+    if not bool(mask.any(dim=1).all()):
+        raise ValueError("every nested reference prefix must remain non-empty")
+    return replace(batch, reference_mask=mask)
+
+
+def _average_loss_details(
+    rows: list[tuple[torch.Tensor, dict[str, torch.Tensor]]],
+    *,
+    reference_counts: tuple[int, ...],
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    if not rows:
+        raise ValueError("nested reference training produced no losses")
+    if len(rows) != len(reference_counts):
+        raise ValueError("reference count diagnostics do not match loss rows")
+    loss = torch.stack([item[0] for item in rows]).mean()
+    names = rows[0][1].keys()
+    details = {
+        name: torch.stack([item[1][name] for item in rows]).mean() for name in names
+    }
+    details["loss"] = loss
+    details["nested_reference_counts"] = torch.tensor(
+        reference_counts,
+        dtype=torch.long,
+        device=loss.device,
+    )
+    return loss, details
 
 
 def reference_episode_loss(
@@ -1357,21 +1534,33 @@ def reference_episode_loss(
     hard_negative_weight: float = 0.0,
     hard_negative_margin: float = 0.15,
     view_coverage_weight: float = 0.0,
+    nested_reference_counts: bool = False,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     """Return retrieval loss for a live image episode."""
 
-    output = score_reference_image_episode(model, batch, return_aux=True)
-    if not isinstance(output, dict):
-        raise RuntimeError("model returned no episode diagnostics")
-    return _reference_episode_loss_from_output(
-        output,
-        batch,
-        temperature=temperature,
-        residual_regularization=residual_regularization,
-        hard_negative_weight=hard_negative_weight,
-        hard_negative_margin=hard_negative_margin,
-        view_coverage_weight=view_coverage_weight,
+    counts = (
+        tuple(range(1, int(batch.reference_mask.shape[1]) + 1))
+        if nested_reference_counts
+        else (int(batch.reference_mask.shape[1]),)
     )
+    rows: list[tuple[torch.Tensor, dict[str, torch.Tensor]]] = []
+    for count in counts:
+        prefix = _reference_prefix_batch(batch, count)
+        output = score_reference_image_episode(model, prefix, return_aux=True)
+        if not isinstance(output, dict):
+            raise RuntimeError("model returned no episode diagnostics")
+        rows.append(
+            _reference_episode_loss_from_output(
+                output,
+                prefix,
+                temperature=temperature,
+                residual_regularization=residual_regularization,
+                hard_negative_weight=hard_negative_weight,
+                hard_negative_margin=hard_negative_margin,
+                view_coverage_weight=view_coverage_weight,
+            )
+        )
+    return _average_loss_details(rows, reference_counts=counts)
 
 
 def cached_reference_episode_loss(
@@ -1383,21 +1572,342 @@ def cached_reference_episode_loss(
     hard_negative_weight: float = 0.0,
     hard_negative_margin: float = 0.15,
     view_coverage_weight: float = 0.0,
+    nested_reference_counts: bool = False,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     """Return the same objectives over an all-identity cached score matrix."""
 
-    output = score_cached_reference_episode(model, batch, return_aux=True)
-    if not isinstance(output, dict):
-        raise RuntimeError("model returned no cached episode diagnostics")
-    return _reference_episode_loss_from_output(
-        output,
-        batch,
-        temperature=temperature,
-        residual_regularization=residual_regularization,
-        hard_negative_weight=hard_negative_weight,
-        hard_negative_margin=hard_negative_margin,
-        view_coverage_weight=view_coverage_weight,
+    counts = (
+        tuple(range(1, int(batch.reference_mask.shape[1]) + 1))
+        if nested_reference_counts
+        else (int(batch.reference_mask.shape[1]),)
     )
+    rows: list[tuple[torch.Tensor, dict[str, torch.Tensor]]] = []
+    for count in counts:
+        prefix = _reference_prefix_batch(batch, count)
+        output = score_cached_reference_episode(model, prefix, return_aux=True)
+        if not isinstance(output, dict):
+            raise RuntimeError("model returned no cached episode diagnostics")
+        rows.append(
+            _reference_episode_loss_from_output(
+                output,
+                prefix,
+                temperature=temperature,
+                residual_regularization=residual_regularization,
+                hard_negative_weight=hard_negative_weight,
+                hard_negative_margin=hard_negative_margin,
+                view_coverage_weight=view_coverage_weight,
+            )
+        )
+    return _average_loss_details(rows, reference_counts=counts)
+
+
+def build_full_catalog_validation_episodes(
+    dataset: Any,
+    *,
+    reference_count: int,
+    queries_per_identity: int = 1,
+    query_identities_per_batch: int = 8,
+    seed: int = 20260903,
+) -> tuple[ReferenceImageEpisode, ...]:
+    """Cover every query identity once against one fixed full candidate catalog.
+
+    Each identity contributes one deterministic maximum reference set and a
+    disjoint query set. The same candidate references are reused in every
+    query batch, which lets validation compare nested prefixes without changing
+    either the images or the negative identities underneath the metric.
+    """
+
+    reference_count = int(reference_count)
+    queries_per_identity = int(queries_per_identity)
+    query_identities_per_batch = int(query_identities_per_batch)
+    if min(reference_count, queries_per_identity, query_identities_per_batch) < 1:
+        raise ValueError("validation episode sizes must be positive")
+    groups = _identity_groups(dataset)
+    identity_names = tuple(sorted(groups))
+    minimum = reference_count + queries_per_identity
+    insufficient = {
+        identity: int(rows.size)
+        for identity, rows in groups.items()
+        if int(rows.size) < minimum
+    }
+    if insufficient:
+        raise ValueError(
+            f"each validation identity needs at least {minimum} images: {insufficient}"
+        )
+
+    rng = np.random.default_rng(int(seed))
+    reference_rows: dict[str, tuple[int, ...]] = {}
+    query_rows: dict[str, tuple[int, ...]] = {}
+    for identity in identity_names:
+        selected = rng.choice(
+            groups[identity],
+            size=minimum,
+            replace=False,
+        ).tolist()
+        reference_rows[identity] = tuple(
+            int(value) for value in selected[:reference_count]
+        )
+        query_rows[identity] = tuple(int(value) for value in selected[reference_count:])
+
+    references = tuple(reference_rows[identity] for identity in identity_names)
+    positions = {identity: position for position, identity in enumerate(identity_names)}
+    episodes: list[ReferenceImageEpisode] = []
+    for start in range(0, len(identity_names), query_identities_per_batch):
+        query_names = identity_names[start : start + query_identities_per_batch]
+        query_indices = tuple(
+            index for identity in query_names for index in query_rows[identity]
+        )
+        targets = torch.tensor(
+            [
+                positions[identity]
+                for identity in query_names
+                for _ in range(queries_per_identity)
+            ],
+            dtype=torch.long,
+        )
+        episodes.append(
+            ReferenceImageEpisode(
+                identity_names=identity_names,
+                query_indices=query_indices,
+                reference_indices=references,
+                targets=targets,
+            )
+        )
+    return tuple(episodes)
+
+
+def _ranking_observations(
+    scores: torch.Tensor,
+    targets: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if scores.ndim != 2 or scores.shape[1] < 2:
+        raise ValueError("catalog scores must contain at least two identities")
+    targets = targets.to(device=scores.device, dtype=torch.long)
+    if targets.ndim != 1 or targets.shape[0] != scores.shape[0]:
+        raise ValueError("catalog targets must have one entry per score row")
+    if bool((targets < 0).any()) or bool((targets >= scores.shape[1]).any()):
+        raise ValueError("catalog targets contain an identity outside scores")
+    rows = torch.arange(scores.shape[0], device=scores.device)
+    ranking = torch.argsort(scores, dim=1, descending=True, stable=True)
+    ranks = (ranking == targets.unsqueeze(1)).nonzero(as_tuple=False)[:, 1] + 1
+    negative_mask = torch.ones_like(scores, dtype=torch.bool)
+    negative_mask[rows, targets] = False
+    hardest_negative = (
+        scores.masked_fill(
+            ~negative_mask,
+            torch.finfo(scores.dtype).min,
+        )
+        .max(dim=1)
+        .values
+    )
+    margins = scores[rows, targets] - hardest_negative
+    return ranks.to(dtype=torch.long), margins.float()
+
+
+def _ranking_summary(
+    ranks: torch.Tensor,
+    margins: torch.Tensor,
+) -> dict[str, float | int]:
+    if ranks.ndim != 1 or margins.ndim != 1 or ranks.shape != margins.shape:
+        raise ValueError("rank and margin observations must be aligned vectors")
+    if ranks.numel() < 1:
+        raise ValueError("catalog validation produced no query records")
+    return {
+        "query_records": int(ranks.numel()),
+        "top1_correct": int((ranks == 1).sum().item()),
+        "top1_accuracy": float((ranks == 1).float().mean().item()),
+        "top5_correct": int((ranks <= 5).sum().item()),
+        "top5_accuracy": float((ranks <= 5).float().mean().item()),
+        "mean_reciprocal_rank": float(ranks.float().reciprocal().mean().item()),
+        "mean_positive_margin": float(margins.mean().item()),
+    }
+
+
+def _catalog_selection_summary(
+    reports: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    if not reports:
+        raise ValueError("catalog validation has no reference-count reports")
+    ordered = [reports[key] for key in sorted(reports, key=int)]
+    top1_deltas = [float(row["delta"]["top1_accuracy"]) for row in ordered]
+    reciprocal_deltas = [float(row["delta"]["mean_reciprocal_rank"]) for row in ordered]
+    margin_rates = [
+        float(row["no_harm"]["margin_non_degradation_rate"]) for row in ordered
+    ]
+    margin_deltas = [float(row["delta"]["mean_positive_margin"]) for row in ordered]
+    all_noninferior = all(
+        top1 >= -1.0e-12 and reciprocal >= -1.0e-12
+        for top1, reciprocal in zip(top1_deltas, reciprocal_deltas)
+    )
+    key = (
+        float(all_noninferior),
+        min(top1_deltas),
+        min(reciprocal_deltas),
+        min(margin_rates),
+        min(margin_deltas),
+        float(np.mean(top1_deltas)),
+        float(np.mean(reciprocal_deltas)),
+        float(np.mean(margin_deltas)),
+        float(np.mean([row["learned"]["top1_accuracy"] for row in ordered])),
+        float(np.mean([row["learned"]["mean_reciprocal_rank"] for row in ordered])),
+    )
+    return {
+        "policy": (
+            "prefer centroid-noninferior checkpoints across every reference "
+            "prefix, then worst-case and mean retrieval deltas"
+        ),
+        "all_reference_counts_noninferior": bool(all_noninferior),
+        "worst_top1_delta": min(top1_deltas),
+        "worst_mean_reciprocal_rank_delta": min(reciprocal_deltas),
+        "worst_margin_non_degradation_rate": min(margin_rates),
+        "worst_mean_positive_margin_delta": min(margin_deltas),
+        "mean_positive_margin_delta": float(np.mean(margin_deltas)),
+        "key": [round(float(value), 12) for value in key],
+        "tie_policy": "keep_earliest",
+    }
+
+
+def reference_validation_selection_key(
+    validation: dict[str, Any],
+) -> tuple[float, ...]:
+    """Return the stable lexicographic key stored by catalog validation."""
+
+    if validation.get("protocol") != "full_identity_catalog_nested_references":
+        raise ValueError("validation report does not use the full catalog protocol")
+    selection = validation.get("selection")
+    if not isinstance(selection, dict):
+        raise ValueError("validation report has no selection summary")
+    key = selection.get("key")
+    if not isinstance(key, list) or not key:
+        raise ValueError("validation report has no selection key")
+    values = tuple(float(value) for value in key)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("validation selection key contains non-finite values")
+    return values
+
+
+def evaluate_cached_reference_catalog(
+    model: Any,
+    cache: ReferenceSpatialFeatureCache,
+    dataset: Any,
+    *,
+    reference_count: int,
+    queries_per_identity: int = 1,
+    query_identities_per_batch: int = 8,
+    seed: int = 20260903,
+    device: str | torch.device = "cpu",
+) -> dict[str, Any]:
+    """Evaluate each nested reference prefix against every candidate identity."""
+
+    reference_count = int(reference_count)
+    episodes = build_full_catalog_validation_episodes(
+        dataset,
+        reference_count=reference_count,
+        queries_per_identity=queries_per_identity,
+        query_identities_per_batch=query_identities_per_batch,
+        seed=seed,
+    )
+    counts = tuple(range(1, reference_count + 1))
+    collected: dict[int, dict[str, list[torch.Tensor]]] = {
+        count: {"score": [], "baseline": [], "targets": []} for count in counts
+    }
+    was_training = bool(model.training)
+    model.eval()
+    try:
+        with torch.inference_mode():
+            for episode in episodes:
+                batch = materialize_cached_reference_episode(
+                    cache,
+                    dataset,
+                    episode,
+                    device=device,
+                )
+                for count in counts:
+                    prefix = _reference_prefix_batch(batch, count)
+                    output = score_cached_reference_episode(
+                        model,
+                        prefix,
+                        return_aux=True,
+                    )
+                    if not isinstance(output, dict):
+                        raise RuntimeError(
+                            "token matcher returned no catalog diagnostics"
+                        )
+                    scores = output.get("score")
+                    baseline = output.get("baseline_score")
+                    if not isinstance(scores, torch.Tensor) or not isinstance(
+                        baseline, torch.Tensor
+                    ):
+                        raise ValueError(
+                            "catalog diagnostics must contain score and baseline_score"
+                        )
+                    if tuple(scores.shape) != tuple(baseline.shape):
+                        raise ValueError("catalog score and baseline shapes differ")
+                    if count == 1 and not torch.equal(scores, baseline):
+                        raise RuntimeError(
+                            "singleton token matching must equal the centroid "
+                            "baseline exactly"
+                        )
+                    collected[count]["score"].append(scores.detach().cpu())
+                    collected[count]["baseline"].append(baseline.detach().cpu())
+                    collected[count]["targets"].append(prefix.targets.detach().cpu())
+    finally:
+        model.train(was_training)
+
+    reports: dict[str, dict[str, Any]] = {}
+    for count in counts:
+        scores = torch.cat(collected[count]["score"], dim=0)
+        baseline = torch.cat(collected[count]["baseline"], dim=0)
+        targets = torch.cat(collected[count]["targets"], dim=0)
+        learned_ranks, learned_margins = _ranking_observations(scores, targets)
+        baseline_ranks, baseline_margins = _ranking_observations(
+            baseline,
+            targets,
+        )
+        learned = _ranking_summary(learned_ranks, learned_margins)
+        centroid = _ranking_summary(baseline_ranks, baseline_margins)
+        margin_delta = learned_margins - baseline_margins
+        rank_non_degradation = learned_ranks <= baseline_ranks
+        margin_non_degradation = margin_delta >= -1.0e-7
+        reports[str(count)] = {
+            "reference_count": count,
+            "learned": learned,
+            "centroid": centroid,
+            "delta": {
+                "top1_accuracy": float(
+                    learned["top1_accuracy"] - centroid["top1_accuracy"]
+                ),
+                "top5_accuracy": float(
+                    learned["top5_accuracy"] - centroid["top5_accuracy"]
+                ),
+                "mean_reciprocal_rank": float(
+                    learned["mean_reciprocal_rank"] - centroid["mean_reciprocal_rank"]
+                ),
+                "mean_positive_margin": float(margin_delta.mean().item()),
+            },
+            "no_harm": {
+                "rank_non_degradation_rate": float(
+                    rank_non_degradation.float().mean().item()
+                ),
+                "margin_non_degradation_rate": float(
+                    margin_non_degradation.float().mean().item()
+                ),
+                "harmed_rank_query_count": int((~rank_non_degradation).sum().item()),
+                "harmed_margin_query_count": int(
+                    (~margin_non_degradation).sum().item()
+                ),
+            },
+        }
+
+    return {
+        "protocol": "full_identity_catalog_nested_references",
+        "baseline": "centroid",
+        "candidate_identities": len(episodes[0].identity_names),
+        "query_records": sum(len(episode.query_indices) for episode in episodes),
+        "query_batches": len(episodes),
+        "reference_counts": reports,
+        "selection": _catalog_selection_summary(reports),
+    }
 
 
 __all__ = [
@@ -1408,14 +1918,18 @@ __all__ = [
     "ReferenceImageEpisode",
     "ReferenceImageEpisodeSampler",
     "ReferenceSpatialFeatureCache",
+    "baseline_no_harm_loss",
     "SPATIAL_FEATURE_CACHE_FORMAT",
+    "build_full_catalog_validation_episodes",
     "build_reference_spatial_feature_cache",
     "cached_reference_episode_loss",
+    "evaluate_cached_reference_catalog",
     "hard_negative_margin_loss",
     "load_reference_spatial_feature_cache",
     "materialize_cached_reference_episode",
     "materialize_reference_image_episode",
     "reference_episode_loss",
+    "reference_validation_selection_key",
     "save_reference_spatial_feature_cache",
     "score_cached_reference_episode",
     "score_reference_image_episode",

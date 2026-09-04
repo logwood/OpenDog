@@ -30,12 +30,12 @@ from .reference_aware_model import _embedding_from_encoder_output
 
 
 MODEL_FORMAT = "reference-token-aware-pet-reid"
+MATCHER_STRATEGY = "evidence_gated_spatial_delta"
 DEFAULT_TOKEN_DIM = 128
 DEFAULT_TOKEN_GRID = 4
 DEFAULT_HIDDEN_DIM = 128
 DEFAULT_MAX_REFERENCES = 16
 DEFAULT_REFERENCE_TOP_K = 3
-DEFAULT_REFERENCE_SCORE_WEIGHT = 0.4
 DEFAULT_ATTENTION_TEMPERATURE = 0.10
 DEFAULT_MAXIMUM_RESIDUAL = 0.25
 DEFAULT_COVERAGE_WEIGHT = 0.35
@@ -221,9 +221,7 @@ class ImageTokenAdapter(nn.Module):
                 align_corners=False,
             )
         else:
-            pooled = F.adaptive_avg_pool2d(
-                feature, (self.token_grid, self.token_grid)
-            )
+            pooled = F.adaptive_avg_pool2d(feature, (self.token_grid, self.token_grid))
         return pooled.flatten(2).transpose(1, 2).contiguous()
 
     def encode_cacheable_features(
@@ -258,8 +256,7 @@ class ImageTokenAdapter(nn.Module):
             if require_spatial:
                 hook = self._hook_target_name or "<not found>"
                 shapes = [
-                    tuple(int(size) for size in item.shape)
-                    for item in self._captured
+                    tuple(int(size) for size in item.shape) for item in self._captured
                 ]
                 raise RuntimeError(
                     "a real spatial feature map is required for cached token "
@@ -337,7 +334,15 @@ class ImageTokenAdapter(nn.Module):
 
 
 class TokenConditionedReferenceMatcher(nn.Module):
-    """Cross-token reference matcher with an explicit diversity/coverage gate."""
+    """Rerank a centroid anchor with evidence-gated spatial set matching.
+
+    Descriptor similarity remains the stable identity-level baseline, but it
+    is deliberately excluded from reference routing and from the learned
+    residual head. This prevents the learned path from taking the trivial
+    shortcut of rescaling an already-good descriptor score. A singleton set
+    returns the centroid score exactly; a multi-reference correction is only
+    enabled when the spatial view representation finds non-duplicate evidence.
+    """
 
     def __init__(
         self,
@@ -347,7 +352,6 @@ class TokenConditionedReferenceMatcher(nn.Module):
         hidden_dim: int = DEFAULT_HIDDEN_DIM,
         max_references: int = DEFAULT_MAX_REFERENCES,
         reference_top_k: int = DEFAULT_REFERENCE_TOP_K,
-        reference_score_weight: float = DEFAULT_REFERENCE_SCORE_WEIGHT,
         attention_temperature: float = DEFAULT_ATTENTION_TEMPERATURE,
         maximum_residual: float = DEFAULT_MAXIMUM_RESIDUAL,
         coverage_weight: float = DEFAULT_COVERAGE_WEIGHT,
@@ -358,7 +362,6 @@ class TokenConditionedReferenceMatcher(nn.Module):
         self.hidden_dim = int(hidden_dim)
         self.max_references = int(max_references)
         self.reference_top_k = int(reference_top_k)
-        self.reference_score_weight = float(reference_score_weight)
         self.attention_temperature = float(attention_temperature)
         self.maximum_residual = float(maximum_residual)
         self.coverage_weight = float(coverage_weight)
@@ -375,8 +378,6 @@ class TokenConditionedReferenceMatcher(nn.Module):
             raise ValueError("matcher dimensions and reference counts must be positive")
         if self.reference_top_k > self.max_references:
             raise ValueError("reference_top_k cannot exceed max_references")
-        if not 0.0 <= self.reference_score_weight <= 1.0:
-            raise ValueError("reference_score_weight must be between 0 and 1")
         if (
             not np.isfinite(self.attention_temperature)
             or self.attention_temperature <= 0
@@ -397,8 +398,18 @@ class TokenConditionedReferenceMatcher(nn.Module):
             nn.Linear(self.token_dim, self.hidden_dim),
             nn.GELU(),
         )
-        # Per-reference learned compatibility is conditioned on the full
-        # token interaction score, not only on a 512-D cosine.
+        # View diversity has its own representation. Sharing the identity
+        # summary here allowed all views of one animal to collapse together.
+        self.view_projection = nn.Sequential(
+            nn.LayerNorm(self.token_dim),
+            nn.Linear(self.token_dim, self.hidden_dim),
+            nn.GELU(),
+        )
+        self.view_pool = nn.Linear(self.hidden_dim, 1)
+
+        # Per-reference compatibility uses spatial evidence only. The two
+        # scalar features are symmetric cross-token matching and same-position
+        # matching; descriptor cosine is intentionally absent.
         self.pair_head = nn.Sequential(
             nn.Linear(4 * self.hidden_dim + 2, self.hidden_dim),
             nn.GELU(),
@@ -435,13 +446,15 @@ class TokenConditionedReferenceMatcher(nn.Module):
             "hidden_dim": self.hidden_dim,
             "max_references": self.max_references,
             "reference_top_k": self.reference_top_k,
-            "reference_score_weight": self.reference_score_weight,
             "attention_temperature": self.attention_temperature,
             "maximum_residual": self.maximum_residual,
             "coverage_weight": self.coverage_weight,
-            "baseline": "centroid_plus_masked_top_k_mean",
-            "conditioning": "query_reference_cross_token_attention",
-            "coverage": "novelty_gated_reference_attention",
+            "strategy": MATCHER_STRATEGY,
+            "baseline": "centroid",
+            "reference_routing": "symmetric_centered_cross_token",
+            "coverage": "directly_supervised_view_novelty",
+            "residual_gate": "multi_reference_coverage_reliability",
+            "singleton_behavior": "exact_centroid",
         }
 
     def _validate_inputs(
@@ -537,24 +550,52 @@ class TokenConditionedReferenceMatcher(nn.Module):
         return_aux: bool = False,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
         mask_float = mask.to(dtype=query_descriptor.dtype)
-        query_summary = query_tokens.mean(dim=1)
-        reference_summary = reference_tokens.mean(dim=2)
-        query_hidden = F.normalize(self.query_projection(query_summary), dim=-1)
-        reference_hidden = F.normalize(
-            self.reference_projection(reference_summary), dim=-1
+        # Remove each image's global token mode. The protected descriptor
+        # already represents global identity; the learned path must explain
+        # spatial differences instead of reconstructing that same score.
+        spatial_query_tokens = F.normalize(
+            query_tokens - query_tokens.mean(dim=1, keepdim=True),
+            dim=-1,
+            eps=1e-12,
+        )
+        spatial_reference_tokens = F.normalize(
+            reference_tokens - reference_tokens.mean(dim=2, keepdim=True),
+            dim=-1,
+            eps=1e-12,
+        )
+        query_token_hidden = self.query_projection(spatial_query_tokens)
+        reference_token_hidden = self.reference_projection(spatial_reference_tokens)
+        query_hidden = F.normalize(query_token_hidden.mean(dim=1), dim=-1)
+        reference_hidden = F.normalize(reference_token_hidden.mean(dim=2), dim=-1)
+
+        view_tokens = self.view_projection(spatial_reference_tokens)
+        view_attention = F.softmax(self.view_pool(view_tokens).squeeze(-1), dim=2)
+        reference_view_hidden = F.normalize(
+            torch.einsum("bkt,bkth->bkh", view_attention, view_tokens),
+            dim=-1,
+            eps=1e-12,
         )
 
-        # Full cross-token matching: every query token can select the best
-        # reference token, so a side-view can contribute a different local
-        # region than a frontal-view rather than being averaged away.
+        # Symmetric cross-token matching prevents one generic query patch from
+        # explaining an entire reference. Same-position evidence remains a
+        # separate signal rather than being erased by unrestricted alignment.
         token_similarity = torch.einsum(
-            "btd,bkud->bktu", query_tokens, reference_tokens
+            "btd,bkud->bktu", spatial_query_tokens, spatial_reference_tokens
         )
         token_attention = F.softmax(
             token_similarity / self.attention_temperature, dim=-1
         )
-        aligned_tokens = (token_attention * token_similarity).sum(dim=-1)
-        token_scores = aligned_tokens.mean(dim=-1)
+        query_aligned = (token_attention * token_similarity).sum(dim=-1).mean(dim=-1)
+        reverse_token_attention = F.softmax(
+            token_similarity / self.attention_temperature, dim=-2
+        )
+        reference_aligned = (
+            (reverse_token_attention * token_similarity).sum(dim=-2).mean(dim=-1)
+        )
+        token_scores = 0.5 * (query_aligned + reference_aligned)
+        positional_token_scores = torch.diagonal(
+            token_similarity, dim1=-2, dim2=-1
+        ).mean(dim=-1)
 
         descriptor_similarity = torch.einsum("bd,bkd->bk", query_descriptor, references)
         pair_query = query_hidden.unsqueeze(1).expand_as(reference_hidden)
@@ -565,17 +606,18 @@ class TokenConditionedReferenceMatcher(nn.Module):
                 pair_query * reference_hidden,
                 (pair_query - reference_hidden).abs(),
                 token_scores.unsqueeze(-1),
-                descriptor_similarity.unsqueeze(-1),
+                positional_token_scores.unsqueeze(-1),
             ),
             dim=-1,
         )
         learned_logits = self.pair_head(pair_features).squeeze(-1)
 
-        # Reference novelty is computed from token summaries.  The diagonal is
-        # excluded; a singleton set gets neutral novelty instead of a false
-        # duplicate penalty.
+        # Novelty comes from a dedicated view representation and receives a
+        # direct pairwise supervision target during training. The diagonal is
+        # excluded; a singleton remains neutral because its learned correction
+        # is disabled below.
         summary_similarity = torch.einsum(
-            "bkd,bjd->bkj", reference_hidden, reference_hidden
+            "bkd,bjd->bkj", reference_view_hidden, reference_view_hidden
         )
         pair_mask = mask.unsqueeze(1) & mask.unsqueeze(2)
         eye = torch.eye(
@@ -590,13 +632,25 @@ class TokenConditionedReferenceMatcher(nn.Module):
             (1.0 - other_max).clamp(0.0, 2.0) * 0.5,
             torch.ones_like(other_max),
         )
+        # Numerically identical normalized views can differ from one by a few
+        # ulps after the dot product. Snap that round-off to zero so an exact
+        # duplicate set cannot leak a tiny learned correction through the
+        # coverage gate.
+        novelty = torch.where(
+            novelty <= 1.0e-6,
+            torch.zeros_like(novelty),
+            novelty,
+        )
         novelty = novelty * mask_float
-        coverage_features = torch.cat((reference_hidden, novelty.unsqueeze(-1)), dim=-1)
-        learned_coverage = torch.sigmoid(
-            self.coverage_head(coverage_features).squeeze(-1)
+        coverage_features = torch.cat(
+            (reference_view_hidden, novelty.unsqueeze(-1)), dim=-1
+        )
+        learned_coverage = (
+            torch.sigmoid(self.coverage_head(coverage_features).squeeze(-1))
+            * mask_float
         )
 
-        logits = descriptor_similarity / self.attention_temperature + learned_logits
+        logits = token_scores / self.attention_temperature + learned_logits
         logits = logits + float(self.coverage_weight) * novelty * learned_coverage
         logits = logits.masked_fill(~mask, torch.finfo(logits.dtype).min)
         attention = F.softmax(logits, dim=1) * mask_float
@@ -614,16 +668,19 @@ class TokenConditionedReferenceMatcher(nn.Module):
         top_k_score = self._masked_top_k_mean(
             descriptor_similarity, mask, self.reference_top_k
         )
-        baseline_score = (
-            1.0 - self.reference_score_weight
-        ) * centroid_score + self.reference_score_weight * top_k_score
+        baseline_score = centroid_score
 
-        pooled_tokens = torch.einsum("bk,bktd->btd", gated_attention, reference_tokens)
+        pooled_tokens = torch.einsum(
+            "bk,bktd->btd", gated_attention, spatial_reference_tokens
+        )
         pooled_hidden = F.normalize(
-            self.reference_projection(pooled_tokens.mean(dim=1)), dim=-1
+            self.reference_projection(pooled_tokens).mean(dim=1), dim=-1
         )
         coverage_score = (gated_attention * novelty).sum(dim=1)
         duplicate_score = (gated_attention * (1.0 - novelty)).sum(dim=1)
+        reliability_score = (gated_attention * learned_coverage).sum(dim=1)
+        pooled_token_score = (gated_attention * token_scores).sum(dim=1)
+        pooled_position_score = (gated_attention * positional_token_scores).sum(dim=1)
         count = mask_float.sum(dim=1)
         count_feature = (count / float(self.max_references)).unsqueeze(1)
         score_features = torch.cat(
@@ -632,17 +689,21 @@ class TokenConditionedReferenceMatcher(nn.Module):
                 pooled_hidden,
                 query_hidden * pooled_hidden,
                 (query_hidden - pooled_hidden).abs(),
-                centroid_score.unsqueeze(1),
-                top_k_score.unsqueeze(1),
                 coverage_score.unsqueeze(1),
                 duplicate_score.unsqueeze(1),
                 count_feature,
+                pooled_token_score.unsqueeze(1),
+                pooled_position_score.unsqueeze(1),
             ),
             dim=1,
         )
-        residual = self.maximum_residual * torch.tanh(
+        raw_residual = self.maximum_residual * torch.tanh(
             self.score_head(score_features).squeeze(1)
         )
+        multi_reference = (count > 1.0).to(dtype=raw_residual.dtype)
+        coverage_strength = (coverage_score * count).clamp(0.0, 1.0)
+        residual_gate = multi_reference * coverage_strength * reliability_score
+        residual = residual_gate * raw_residual
         score = baseline_score + residual
         if not return_aux:
             return score
@@ -650,18 +711,24 @@ class TokenConditionedReferenceMatcher(nn.Module):
             "score": score,
             "baseline_score": baseline_score,
             "residual": residual,
+            "raw_residual": raw_residual,
+            "residual_gate": residual_gate,
             "attention": gated_attention,
             "raw_attention": attention,
             "coverage_gate": learned_coverage,
             "novelty": novelty,
             "token_scores": token_scores,
+            "positional_token_scores": positional_token_scores,
             "token_attention": token_attention,
+            "reverse_token_attention": reverse_token_attention,
             "token_similarity": token_similarity,
+            "view_attention": view_attention,
             "similarities": descriptor_similarity,
             "pooled_reference": pooled_reference,
             "reference_count": count,
             "coverage_score": coverage_score,
             "duplicate_score": duplicate_score,
+            "reliability_score": reliability_score,
             "centroid_score": centroid_score,
             "top_k_score": top_k_score,
         }
@@ -1034,13 +1101,18 @@ def build_token_reference_aware_model_from_checkpoint(
         raise ValueError(
             "token reference-aware checkpoint has no matcher configuration"
         )
+    strategy = matcher_config.get("strategy")
+    if strategy != MATCHER_STRATEGY:
+        raise ValueError(
+            "token reference-aware checkpoint uses the retired matcher strategy; "
+            "retrain it with the evidence-gated spatial matcher"
+        )
     constructor_keys = {
         "descriptor_dim",
         "token_dim",
         "hidden_dim",
         "max_references",
         "reference_top_k",
-        "reference_score_weight",
         "attention_temperature",
         "maximum_residual",
         "coverage_weight",
@@ -1066,6 +1138,7 @@ def build_token_reference_aware_model_from_checkpoint(
 
 
 __all__ = [
+    "MATCHER_STRATEGY",
     "MODEL_FORMAT",
     "ImageTokenAdapter",
     "TokenConditionedReferenceMatcher",

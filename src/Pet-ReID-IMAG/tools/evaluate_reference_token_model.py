@@ -2,7 +2,7 @@
 
 The evaluator keeps the descriptor and token grids together.  It never
 constructs a reference set from the query row and it never reads a blind split.
-The descriptor centroid/top-k score is reported beside the learned token score
+The descriptor centroid score is reported beside the learned token score
 so a short structural experiment cannot be mistaken for a parameter sweep.
 """
 
@@ -206,9 +206,7 @@ def _hard_negative_metrics(
         "positive_minus_hard_negative_p05": float(
             np.percentile(margin.detach().float().cpu().numpy(), 5.0)
         ),
-        "positive_beats_hard_negative_rate": float(
-            (margin > 0).float().mean().cpu()
-        ),
+        "positive_beats_hard_negative_rate": float((margin > 0).float().mean().cpu()),
     }
 
 
@@ -234,18 +232,9 @@ def _score_sets(
     reference_descriptors = F.normalize(reference_descriptors.float(), dim=2).to(device)
     reference_tokens = F.normalize(reference_tokens.float(), dim=-1).to(device)
     with torch.inference_mode():
-        similarities = torch.einsum(
-            "qd,ikd->qik", query_descriptor, reference_descriptors
-        )
         centroids = F.normalize(reference_descriptors.mean(dim=1), dim=1)
         centroid_scores = torch.einsum("qd,id->qi", query_descriptor, centroids)
-        top_k = min(
-            int(getattr(model.matcher, "reference_top_k", reference_count)),
-            reference_count,
-        )
-        top_k_scores = similarities.topk(top_k, dim=2).values.mean(dim=2)
-        weight = float(getattr(model.matcher, "reference_score_weight", 0.4))
-        baseline = (1.0 - weight) * centroid_scores + weight * top_k_scores
+        baseline = centroid_scores
         for start in range(0, identity_count, identity_chunk):
             stop = min(start + identity_chunk, identity_count)
             ref_descriptor_chunk = reference_descriptors[start:stop]
@@ -342,11 +331,9 @@ def _evaluate_selected_reference_sets(
         "identity_count": len(identities),
         "reference_count": reference_count,
         "token_matcher": _rank_metrics(learned, targets),
-        "centroid_top_k_baseline": _rank_metrics(baseline, targets),
+        "centroid_baseline": _rank_metrics(baseline, targets),
         "token_matcher_hard_negative": _hard_negative_metrics(learned, targets),
-        "centroid_top_k_baseline_hard_negative": _hard_negative_metrics(
-            baseline, targets
-        ),
+        "centroid_baseline_hard_negative": _hard_negative_metrics(baseline, targets),
         "reference_query_overlap": False,
     }
 
@@ -388,7 +375,9 @@ def evaluate_leave_one_view_out(
             selections.append((identity, query, refs, (heldout_slot,)))
         query_rows = [int(item[1]) for item in selections]
         ref_rows = [tuple(int(row) for row in item[2]) for item in selections]
-        reference_descriptors = torch.stack([descriptors[list(rows)] for rows in ref_rows])
+        reference_descriptors = torch.stack(
+            [descriptors[list(rows)] for rows in ref_rows]
+        )
         reference_tokens = torch.stack([tokens[list(rows)] for rows in ref_rows])
         learned, baseline = _score_sets(
             model,
@@ -406,7 +395,7 @@ def evaluate_leave_one_view_out(
             {
                 "heldout_slot": heldout_slot,
                 "token_matcher": _rank_metrics(learned, targets),
-                "centroid_top_k_baseline": _rank_metrics(baseline, targets),
+                "centroid_baseline": _rank_metrics(baseline, targets),
             }
         )
     learned_all = torch.cat(learned_matrices, dim=0)
@@ -418,11 +407,9 @@ def evaluate_leave_one_view_out(
         "reference_count": reference_count,
         "heldout_views_per_identity": reference_count + 1,
         "token_matcher": _rank_metrics(learned_all, targets_all),
-        "centroid_top_k_baseline": _rank_metrics(baseline_all, targets_all),
-        "token_matcher_hard_negative": _hard_negative_metrics(
-            learned_all, targets_all
-        ),
-        "centroid_top_k_baseline_hard_negative": _hard_negative_metrics(
+        "centroid_baseline": _rank_metrics(baseline_all, targets_all),
+        "token_matcher_hard_negative": _hard_negative_metrics(learned_all, targets_all),
+        "centroid_baseline_hard_negative": _hard_negative_metrics(
             baseline_all, targets_all
         ),
         "rotations": rotations,
@@ -463,9 +450,7 @@ def evaluate_view_diversity_subsets(
                     pair_candidates.append(
                         (float((local[left] * local[right]).sum()), left, right)
                     )
-            pair = (
-                max(pair_candidates) if mode == "repeated" else min(pair_candidates)
-            )
+            pair = max(pair_candidates) if mode == "repeated" else min(pair_candidates)
             _cosine, left, right = pair
             refs = (rows[left], rows[right])
             remaining = [row for row in rows if row not in refs]
@@ -542,11 +527,9 @@ def evaluate_reference_count(
         "reference_count": reference_count,
         "identity_count": len(eligible),
         "token_matcher": _rank_metrics(learned, targets),
-        "centroid_top_k_baseline": _rank_metrics(baseline, targets),
+        "centroid_baseline": _rank_metrics(baseline, targets),
         "token_matcher_hard_negative": _hard_negative_metrics(learned, targets),
-        "centroid_top_k_baseline_hard_negative": _hard_negative_metrics(
-            baseline, targets
-        ),
+        "centroid_baseline_hard_negative": _hard_negative_metrics(baseline, targets),
         "reference_query_overlap": False,
     }
 
@@ -615,7 +598,7 @@ def evaluate_open_set(
     }
     for name, known_matrix, unknown_matrix in (
         ("token_matcher", known_scores, unknown_scores),
-        ("centroid_top_k_baseline", known_baseline, unknown_baseline),
+        ("centroid_baseline", known_baseline, unknown_baseline),
     ):
         target_tensor = torch.as_tensor(known_targets, dtype=torch.long)
         positive = known_matrix[torch.arange(known_matrix.shape[0]), target_tensor]

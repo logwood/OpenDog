@@ -6,9 +6,12 @@ from torch import nn
 from pet_id.reference_aware_training import (
     ReferenceImageBatch,
     ReferenceImageEpisode,
+    baseline_no_harm_loss,
     hard_negative_margin_loss,
     materialize_reference_image_episode,
     reference_episode_loss,
+    score_reference_image_episode,
+    view_coverage_loss,
 )
 from pet_id.reference_token_model import (
     TokenConditionedReferenceMatcher,
@@ -39,6 +42,23 @@ def _token_model() -> TokenReferenceAwarePetReID:
         hidden_dim=5,
         max_references=2,
         reference_top_k=2,
+    )
+    return TokenReferenceAwarePetReID(
+        _SpatialEncoder(),
+        matcher,
+        token_dim=6,
+        token_grid=2,
+    )
+
+
+def _three_reference_token_model() -> TokenReferenceAwarePetReID:
+    torch.manual_seed(29)
+    matcher = TokenConditionedReferenceMatcher(
+        descriptor_dim=8,
+        token_dim=6,
+        hidden_dim=5,
+        max_references=3,
+        reference_top_k=3,
     )
     return TokenReferenceAwarePetReID(
         _SpatialEncoder(),
@@ -91,11 +111,136 @@ def test_view_coverage_supervision_reaches_token_gate() -> None:
     )
     assert torch.isfinite(loss)
     assert float(details["coverage_valid_fraction"]) == 1.0
-    assert float(details["view_coverage_loss"]) > 0.0
+    assert float(details["view_coverage_loss"].detach()) > 0.0
     loss.backward()
-    gradient = model.matcher.coverage_head[-1].weight.grad
-    assert gradient is not None
-    assert float(gradient.abs().sum()) > 0.0
+    coverage_gradient = model.matcher.coverage_head[-1].weight.grad
+    novelty_gradient = model.matcher.view_projection[1].weight.grad
+    assert coverage_gradient is not None
+    assert novelty_gradient is not None
+    assert float(coverage_gradient.abs().sum()) > 0.0
+    assert float(novelty_gradient.abs().sum()) > 0.0
+    assert float(details["novelty_alignment_loss"].detach()) > 0.0
+    assert float(details["reliability_alignment_loss"].detach()) > 0.0
+
+
+def test_baseline_no_harm_penalizes_only_reduced_margin() -> None:
+    baseline = torch.tensor([[0.8, 0.4, 0.2], [0.1, 0.6, 0.5]])
+    score = torch.tensor(
+        [[0.7, 0.5, 0.2], [0.0, 0.8, 0.5]],
+        requires_grad=True,
+    )
+    loss = baseline_no_harm_loss(
+        {"score": score, "baseline_score": baseline},
+        torch.tensor([0, 1]),
+    )
+    torch.testing.assert_close(loss, torch.tensor(0.1))
+    loss.backward()
+    torch.testing.assert_close(
+        score.grad,
+        torch.tensor([[-0.5, 0.5, 0.0], [0.0, 0.0, 0.0]]),
+    )
+
+
+def test_baseline_no_harm_does_not_move_the_protected_baseline() -> None:
+    baseline = torch.tensor([[0.8, 0.4]], requires_grad=True)
+    residual = torch.tensor([[-0.2, 0.1]], requires_grad=True)
+    loss = baseline_no_harm_loss(
+        {
+            "score": baseline + residual,
+            "baseline_score": baseline,
+        },
+        torch.tensor([0]),
+    )
+    loss.backward()
+    torch.testing.assert_close(baseline.grad, torch.zeros_like(baseline))
+    torch.testing.assert_close(residual.grad, torch.tensor([[-1.0, 1.0]]))
+
+
+def test_direct_alignment_losses_reach_their_dedicated_heads() -> None:
+    model = _token_model()
+    batch = _metadata_batch()
+    output = score_reference_image_episode(model, batch, return_aux=True)
+    assert isinstance(output, dict)
+    _, details = view_coverage_loss(output, batch)
+    novelty_gradient = torch.autograd.grad(
+        details["novelty_alignment_loss"],
+        model.matcher.view_projection[1].weight,
+        retain_graph=True,
+    )[0]
+    reliability_gradient = torch.autograd.grad(
+        details["reliability_alignment_loss"],
+        model.matcher.coverage_head[-1].weight,
+    )[0]
+    assert float(novelty_gradient.abs().sum()) > 0.0
+    assert float(reliability_gradient.abs().sum()) > 0.0
+
+
+def test_descriptor_only_attention_supervision_skips_token_only_targets() -> None:
+    scores = torch.zeros(2, 2, requires_grad=True)
+    attention_logits = torch.tensor(
+        [
+            [[0.2, 0.8], [0.7, 0.3]],
+            [[0.6, 0.4], [0.1, 0.9]],
+        ],
+        requires_grad=True,
+    )
+    coverage, details = view_coverage_loss(
+        {
+            "score": scores,
+            "attention": attention_logits.softmax(dim=-1),
+        },
+        _metadata_batch(),
+    )
+    torch.testing.assert_close(coverage, details["attention_alignment_loss"])
+    for name in (
+        "token_alignment_loss",
+        "novelty_alignment_loss",
+        "reliability_alignment_loss",
+    ):
+        torch.testing.assert_close(details[name], torch.tensor(0.0))
+
+
+def test_nested_training_evaluates_one_two_and_three_reference_prefixes() -> None:
+    model = _three_reference_token_model()
+    batch = ReferenceImageBatch(
+        query_images=torch.rand(2, 3, 4, 4),
+        reference_images=torch.rand(2, 3, 3, 4, 4),
+        reference_mask=torch.ones(2, 3, dtype=torch.bool),
+        targets=torch.tensor([0, 1]),
+        identity_names=("a", "b"),
+    )
+    seen_counts: list[int] = []
+    original_forward = model.forward_encoded
+
+    def recording_forward(
+        query_descriptor,
+        reference_descriptors,
+        reference_mask=None,
+        **kwargs,
+    ):
+        assert reference_mask is not None
+        counts = reference_mask.sum(dim=1).unique()
+        assert counts.numel() == 1
+        seen_counts.append(int(counts.item()))
+        return original_forward(
+            query_descriptor,
+            reference_descriptors,
+            reference_mask,
+            **kwargs,
+        )
+
+    model.forward_encoded = recording_forward
+    loss, details = reference_episode_loss(
+        model,
+        batch,
+        nested_reference_counts=True,
+    )
+    assert torch.isfinite(loss)
+    assert seen_counts == [1, 2, 3]
+    torch.testing.assert_close(
+        details["nested_reference_counts"],
+        torch.tensor([1, 2, 3]),
+    )
 
 
 def test_metadata_free_batch_keeps_coverage_objective_as_zero() -> None:

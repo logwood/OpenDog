@@ -171,8 +171,10 @@ class QueryConditionedReferenceSelector:
         "coverage_gate",
         "baseline_score",
         "residual",
+        "residual_gate",
         "coverage_score",
         "duplicate_score",
+        "reliability_score",
         "centroid_score",
         "top_k_score",
     )
@@ -361,8 +363,10 @@ class IdentitySetReranker:
     _PER_IDENTITY_OUTPUTS = (
         "baseline_score",
         "residual",
+        "residual_gate",
         "coverage_score",
         "duplicate_score",
+        "reliability_score",
         "centroid_score",
         "top_k_score",
     )

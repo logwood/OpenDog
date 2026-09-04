@@ -40,10 +40,12 @@ from pet_id.reference_aware_training import (  # noqa: E402
     ReferenceSpatialFeatureCache,
     build_reference_spatial_feature_cache,
     cached_reference_episode_loss,
+    evaluate_cached_reference_catalog,
     load_reference_spatial_feature_cache,
     materialize_cached_reference_episode,
     materialize_reference_image_episode,
     reference_episode_loss,
+    reference_validation_selection_key,
     save_reference_spatial_feature_cache,
     score_reference_image_episode,
     validate_reference_image_manifest,
@@ -89,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--steps-per-epoch", type=int, default=0)
     parser.add_argument("--identities-per-batch", type=int, default=8)
-    parser.add_argument("--reference-count", type=int, default=2)
+    parser.add_argument("--reference-count", type=int, default=3)
     parser.add_argument("--queries-per-identity", type=int, default=1)
     parser.add_argument("--max-references", type=int, default=4)
     parser.add_argument(
@@ -125,6 +127,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--token-dim", type=int, default=128)
     parser.add_argument("--token-grid", type=int, default=4)
     parser.add_argument("--coverage-weight", type=float, default=0.35)
+    parser.add_argument(
+        "--reference-set-schedule",
+        choices=("nested", "sampled"),
+        default="nested",
+        help=(
+            "nested trains every 1..reference-count prefix from one shared set; "
+            "sampled retains independently sampled set sizes"
+        ),
+    )
     parser.add_argument(
         "--highres-image-size",
         type=int,
@@ -248,17 +259,11 @@ def validate_args(args: argparse.Namespace) -> None:
                 "--all-identity-negatives requires a fully frozen base encoder"
             )
         if not args.no_augmentation:
-            raise ValueError(
-                "--all-identity-negatives requires --no-augmentation"
-            )
+            raise ValueError("--all-identity-negatives requires --no-augmentation")
         if args.feature_cache is None:
-            raise ValueError(
-                "--all-identity-negatives requires --feature-cache"
-            )
+            raise ValueError("--all-identity-negatives requires --feature-cache")
     elif args.feature_cache is not None:
-        raise ValueError(
-            "--feature-cache is only used with --all-identity-negatives"
-        )
+        raise ValueError("--feature-cache is only used with --all-identity-negatives")
 
 
 def _jsonable(value: Any) -> Any:
@@ -331,6 +336,7 @@ def train_one_epoch(
     hard_negative_weight: float,
     hard_negative_margin: float,
     view_coverage_weight: float,
+    nested_reference_counts: bool,
     grad_clip: float,
 ) -> dict[str, float]:
     model.train()
@@ -340,7 +346,12 @@ def train_one_epoch(
         "residual_penalty": 0.0,
         "hard_negative_loss": 0.0,
         "observed_hard_negative_margin": 0.0,
+        "baseline_no_harm_loss": 0.0,
         "view_coverage_loss": 0.0,
+        "attention_alignment_loss": 0.0,
+        "token_alignment_loss": 0.0,
+        "novelty_alignment_loss": 0.0,
+        "reliability_alignment_loss": 0.0,
         "coverage_target_entropy": 0.0,
         "coverage_pred_entropy": 0.0,
         "coverage_valid_fraction": 0.0,
@@ -357,6 +368,7 @@ def train_one_epoch(
             hard_negative_weight=hard_negative_weight,
             hard_negative_margin=hard_negative_margin,
             view_coverage_weight=view_coverage_weight,
+            nested_reference_counts=nested_reference_counts,
         )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(
@@ -386,6 +398,7 @@ def train_one_cached_epoch(
     hard_negative_weight: float,
     hard_negative_margin: float,
     view_coverage_weight: float,
+    nested_reference_counts: bool,
     grad_clip: float,
 ) -> dict[str, float]:
     """Train against the full identity catalog without rerunning the encoder."""
@@ -397,7 +410,12 @@ def train_one_cached_epoch(
         "residual_penalty": 0.0,
         "hard_negative_loss": 0.0,
         "observed_hard_negative_margin": 0.0,
+        "baseline_no_harm_loss": 0.0,
         "view_coverage_loss": 0.0,
+        "attention_alignment_loss": 0.0,
+        "token_alignment_loss": 0.0,
+        "novelty_alignment_loss": 0.0,
+        "reliability_alignment_loss": 0.0,
         "coverage_target_entropy": 0.0,
         "coverage_pred_entropy": 0.0,
         "coverage_valid_fraction": 0.0,
@@ -419,6 +437,7 @@ def train_one_cached_epoch(
             hard_negative_weight=hard_negative_weight,
             hard_negative_margin=hard_negative_margin,
             view_coverage_weight=view_coverage_weight,
+            nested_reference_counts=nested_reference_counts,
         )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(
@@ -476,6 +495,24 @@ def evaluate_episodes(
 
 def reference_episode_scores(model, batch):
     return score_reference_image_episode(model, batch)
+
+
+def validation_selection_key(validation: dict[str, Any]) -> tuple[float, ...]:
+    """Use catalog-relative selection when available, with legacy fallback."""
+
+    if validation.get("protocol") == "full_identity_catalog_nested_references":
+        return reference_validation_selection_key(validation)
+    values = (
+        validation.get("top1_accuracy"),
+        validation.get("top5_accuracy"),
+        validation.get("mean_reciprocal_rank"),
+    )
+    if not all(isinstance(value, (int, float)) for value in values):
+        raise ValueError("validation report has no supported selection metrics")
+    key = tuple(float(value) for value in values)
+    if not all(math.isfinite(value) for value in key):
+        raise ValueError("validation selection metrics must be finite")
+    return key
 
 
 def main() -> None:
@@ -581,7 +618,6 @@ def main() -> None:
                 hidden_dim=args.hidden_dim,
                 max_references=args.max_references,
                 reference_top_k=args.reference_top_k,
-                reference_score_weight=args.reference_score_weight,
                 attention_temperature=args.attention_temperature,
                 maximum_residual=args.maximum_residual,
                 coverage_weight=args.coverage_weight,
@@ -672,14 +708,51 @@ def main() -> None:
                 {
                     "stage": "spatial_feature_cache_ready",
                     "records": int(training_cache.descriptors.shape[0]),
-                    "pooled_shape": list(
-                        training_cache.pooled_spatial_features.shape
-                    ),
+                    "pooled_shape": list(training_cache.pooled_spatial_features.shape),
                     "sha256": feature_cache_sha256,
                 }
             ),
             flush=True,
         )
+    validation_cache: ReferenceSpatialFeatureCache | None = None
+    if isinstance(model, TokenReferenceAwarePetReID) and not args.unfreeze_identity:
+        validation_feature_hook = model.image_encoder.feature_hook_name
+        if isinstance(validation_feature_hook, str):
+            print(
+                json.dumps(
+                    {
+                        "stage": "building_validation_spatial_feature_cache",
+                        "records": len(validation_dataset),
+                        "feature_hook": validation_feature_hook,
+                        "token_grid": model.token_grid,
+                    }
+                ),
+                flush=True,
+            )
+            validation_cache = build_reference_spatial_feature_cache(
+                model,
+                validation_dataset,
+                manifest_path=validation_manifest,
+                base_checkpoint_sha256=base_checkpoint_sha256,
+                device=device,
+                batch_size=FEATURE_CACHE_BATCH_SIZE,
+            )
+            with torch.no_grad():
+                model.tokens_from_pooled_features(
+                    validation_cache.pooled_spatial_features[:1].to(device)
+                )
+            print(
+                json.dumps(
+                    {
+                        "stage": "validation_spatial_feature_cache_ready",
+                        "records": int(validation_cache.descriptors.shape[0]),
+                        "candidate_identities": len(
+                            validation_dataset.identity_to_label
+                        ),
+                    }
+                ),
+                flush=True,
+            )
     train_sampler_type = (
         AllIdentityReferenceEpisodeSampler
         if args.all_identity_negatives
@@ -691,6 +764,7 @@ def main() -> None:
         reference_count=args.reference_count,
         queries_per_identity=args.queries_per_identity,
         max_references=args.max_references,
+        variable_reference_count=args.reference_set_schedule == "sampled",
         seed=args.seed,
     )
     validation_sampler = ReferenceImageEpisodeSampler(
@@ -716,6 +790,11 @@ def main() -> None:
         optimizer_state = resume_payload.get("optimizer")
         if isinstance(optimizer_state, dict) and optimizer_state:
             optimizer.load_state_dict(optimizer_state)
+    save_model = (
+        save_token_reference_aware_model
+        if isinstance(model, TokenReferenceAwarePetReID)
+        else save_reference_aware_model
+    )
     steps = args.steps_per_epoch or max(
         1, math.ceil(len(train_sampler.identity_names) / args.identities_per_batch)
     )
@@ -727,6 +806,87 @@ def main() -> None:
         ),
     )
     history: list[dict[str, Any]] = []
+    resume_training: dict[str, Any] = {}
+    if args.resume:
+        training_payload = resume_payload.get("training")
+        if isinstance(training_payload, dict):
+            resume_training = training_payload
+        resumed_history = resume_training.get("history")
+        if isinstance(resumed_history, list):
+            history = [dict(item) for item in resumed_history if isinstance(item, dict)]
+    best_path = output_dir / "model_best.pth"
+    best_selection_key: tuple[float, ...] | None = None
+    stored_best_key = resume_training.get("best_selection_key")
+    if best_path.exists() and isinstance(stored_best_key, list):
+        try:
+            candidate_key = tuple(float(value) for value in stored_best_key)
+            if candidate_key and all(math.isfinite(value) for value in candidate_key):
+                best_selection_key = candidate_key
+        except (TypeError, ValueError):
+            best_selection_key = None
+    if best_path.exists() and best_selection_key is None:
+        for item in history:
+            validation_row = item.get("validation")
+            if not isinstance(validation_row, dict):
+                continue
+            try:
+                candidate_key = validation_selection_key(validation_row)
+            except (TypeError, ValueError):
+                continue
+            if best_selection_key is None or candidate_key > best_selection_key:
+                best_selection_key = candidate_key
+    initial_validation: dict[str, Any] | None = None
+    if validation_cache is not None and (not args.resume or not best_path.exists()):
+        initial_validation = evaluate_cached_reference_catalog(
+            model,
+            validation_cache,
+            validation_dataset,
+            reference_count=args.reference_count,
+            queries_per_identity=args.queries_per_identity,
+            query_identities_per_batch=validation_sampler.identities_per_batch,
+            seed=args.seed + 101,
+            device=device,
+        )
+        best_selection_key = validation_selection_key(initial_validation)
+        initial_metadata = {
+            "epoch": start_epoch - 1,
+            "stage": "untrained_centroid_baseline",
+            "base_checkpoint": str(base_checkpoint),
+            "base_checkpoint_sha256": base_checkpoint_sha256,
+            "train_manifest": str(train_manifest),
+            "validation_manifest": str(validation_manifest),
+            "validation": initial_validation,
+            "history": history,
+            "seed": args.seed,
+            "interaction_level": args.interaction_level,
+            "reference_set_schedule": args.reference_set_schedule,
+            "validation_protocol": initial_validation["protocol"],
+            "best_selection_key": list(best_selection_key),
+            "checkpoint_selection": {
+                "key": list(best_selection_key),
+                "replaces_best": True,
+                "tie_policy": "keep_earliest",
+                "initial_centroid_baseline": True,
+            },
+        }
+        save_model(
+            model,
+            best_path,
+            base_encoder_checkpoint=base_checkpoint,
+            encoder_fingerprint=base_checkpoint_sha256,
+            training=initial_metadata,
+            optimizer_state=optimizer.state_dict(),
+        )
+        print(
+            json.dumps(
+                {
+                    "stage": "initial_centroid_baseline_saved",
+                    "model_best": str(best_path),
+                    "validation": initial_validation,
+                }
+            ),
+            flush=True,
+        )
     started = time.time()
     for epoch in range(start_epoch, start_epoch + args.epochs):
         if training_cache is None:
@@ -743,6 +903,7 @@ def main() -> None:
                 hard_negative_weight=args.hard_negative_weight,
                 hard_negative_margin=args.hard_negative_margin,
                 view_coverage_weight=args.view_coverage_weight,
+                nested_reference_counts=args.reference_set_schedule == "nested",
                 grad_clip=args.grad_clip,
             )
         else:
@@ -764,16 +925,41 @@ def main() -> None:
                 hard_negative_weight=args.hard_negative_weight,
                 hard_negative_margin=args.hard_negative_margin,
                 view_coverage_weight=args.view_coverage_weight,
+                nested_reference_counts=args.reference_set_schedule == "nested",
                 grad_clip=args.grad_clip,
             )
-        validation = evaluate_episodes(
-            model,
-            validation_dataset,
-            validation_sampler,
-            device=device,
-            steps=validation_steps,
+        if validation_cache is not None:
+            validation = evaluate_cached_reference_catalog(
+                model,
+                validation_cache,
+                validation_dataset,
+                reference_count=args.reference_count,
+                queries_per_identity=args.queries_per_identity,
+                query_identities_per_batch=validation_sampler.identities_per_batch,
+                seed=args.seed + 101,
+                device=device,
+            )
+        else:
+            validation = evaluate_episodes(
+                model,
+                validation_dataset,
+                validation_sampler,
+                device=device,
+                steps=validation_steps,
+            )
+        current_selection_key = validation_selection_key(validation)
+        replaces_best = (
+            best_selection_key is None or current_selection_key > best_selection_key
         )
-        row = {"epoch": epoch, "training": training, "validation": validation}
+        if replaces_best:
+            best_selection_key = current_selection_key
+        row = {
+            "epoch": epoch,
+            "training": training,
+            "validation": validation,
+            "selection_key": list(current_selection_key),
+            "replaces_best": replaces_best,
+        }
         history.append(row)
         metadata = {
             "epoch": epoch,
@@ -796,6 +982,15 @@ def main() -> None:
             "hard_negative_weight": float(args.hard_negative_weight),
             "hard_negative_margin": float(args.hard_negative_margin),
             "view_coverage_weight": float(args.view_coverage_weight),
+            "reference_set_schedule": args.reference_set_schedule,
+            "validation_protocol": validation.get("protocol", "sampled_episodes"),
+            "initial_validation": initial_validation,
+            "best_selection_key": list(best_selection_key),
+            "checkpoint_selection": {
+                "key": list(current_selection_key),
+                "replaces_best": replaces_best,
+                "tie_policy": "keep_earliest",
+            },
             "view_supervision_available": _dataset_has_view_supervision(train_dataset),
             "data_mode": "highres" if highres_mode else "fixed",
             "image_size": (
@@ -804,11 +999,6 @@ def main() -> None:
                 else int(getattr(train_dataset, "input_size", 0))
             ),
         }
-        save_model = (
-            save_token_reference_aware_model
-            if isinstance(model, TokenReferenceAwarePetReID)
-            else save_reference_aware_model
-        )
         save_model(
             model,
             output_dir / "model_last.pth",
@@ -817,16 +1007,7 @@ def main() -> None:
             training=metadata,
             optimizer_state=optimizer.state_dict(),
         )
-        best_path = output_dir / "model_best.pth"
-        best_metric = max(
-            (item["validation"]["top1_accuracy"], item["validation"]["top5_accuracy"])
-            for item in history
-        )
-        current_metric = (
-            validation["top1_accuracy"],
-            validation["top5_accuracy"],
-        )
-        if current_metric == best_metric or not best_path.exists():
+        if replaces_best or not best_path.exists():
             save_model(
                 model,
                 best_path,
@@ -835,7 +1016,13 @@ def main() -> None:
                 training=metadata,
                 optimizer_state=optimizer.state_dict(),
             )
-        summary = {"epoch": epoch, "training": training, "validation": validation}
+        summary = {
+            "epoch": epoch,
+            "training": training,
+            "validation": validation,
+            "selection_key": list(current_selection_key),
+            "replaces_best": replaces_best,
+        }
         (output_dir / "training_state.json").write_text(
             json.dumps(_jsonable(summary), ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -851,6 +1038,10 @@ def main() -> None:
         "model_last": str((output_dir / "model_last.pth").resolve()),
         "history": history,
         "configuration": model.configuration(),
+        "initial_validation": initial_validation,
+        "best_selection_key": (
+            list(best_selection_key) if best_selection_key is not None else None
+        ),
     }
     (output_dir / "train_summary.json").write_text(
         json.dumps(_jsonable(final), ensure_ascii=False, indent=2),

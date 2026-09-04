@@ -68,6 +68,15 @@ def make_model(encoder: nn.Module | None = None) -> TokenReferenceAwarePetReID:
 
 
 class ReferenceTokenModelTest(unittest.TestCase):
+    @staticmethod
+    def _matcher_inputs():
+        generator = torch.Generator().manual_seed(211)
+        query = torch.rand(2, 8, generator=generator)
+        references = torch.rand(2, 3, 8, generator=generator)
+        query_tokens = torch.rand(2, 4, 6, generator=generator)
+        reference_tokens = torch.rand(2, 3, 4, 6, generator=generator)
+        return query, references, query_tokens, reference_tokens
+
     def test_spatial_tokens_and_coverage_diagnostics(self):
         model = make_model()
         query = torch.rand(2, 3, 4, 4)
@@ -121,6 +130,129 @@ class ReferenceTokenModelTest(unittest.TestCase):
             )
             torch.testing.assert_close(restored(query, references), expected)
             self.assertEqual(payload["format"], "reference-token-aware-pet-reid")
+            self.assertEqual(
+                payload["model_config"]["matcher"]["strategy"],
+                "evidence_gated_spatial_delta",
+            )
+
+    def test_single_reference_is_exact_centroid_for_arbitrary_score_head(self):
+        matcher = make_model().matcher
+        with torch.no_grad():
+            for parameter in matcher.score_head.parameters():
+                parameter.uniform_(-3.0, 3.0)
+        query, references, query_tokens, reference_tokens = self._matcher_inputs()
+        mask = torch.tensor([[True, False, False], [True, False, False]])
+        output = matcher(
+            query,
+            references,
+            query_tokens,
+            reference_tokens,
+            mask,
+            return_aux=True,
+        )
+        torch.testing.assert_close(
+            output["score"],
+            output["centroid_score"],
+            rtol=0.0,
+            atol=0.0,
+        )
+        torch.testing.assert_close(
+            output["residual"],
+            torch.zeros_like(output["residual"]),
+            rtol=0.0,
+            atol=0.0,
+        )
+        torch.testing.assert_close(
+            output["residual_gate"],
+            torch.zeros_like(output["residual_gate"]),
+            rtol=0.0,
+            atol=0.0,
+        )
+
+    def test_duplicate_reference_tokens_disable_the_residual(self):
+        matcher = make_model().matcher
+        with torch.no_grad():
+            for parameter in matcher.score_head.parameters():
+                parameter.uniform_(-2.0, 2.0)
+        query, references, query_tokens, reference_tokens = self._matcher_inputs()
+        reference_tokens[:, 1] = reference_tokens[:, 0]
+        reference_tokens[:, 2] = reference_tokens[:, 0]
+        output = matcher(
+            query,
+            references,
+            query_tokens,
+            reference_tokens,
+            torch.ones(2, 3, dtype=torch.bool),
+            return_aux=True,
+        )
+        torch.testing.assert_close(
+            output["novelty"],
+            torch.zeros_like(output["novelty"]),
+            rtol=0.0,
+            atol=0.0,
+        )
+        torch.testing.assert_close(
+            output["score"],
+            output["centroid_score"],
+            rtol=0.0,
+            atol=0.0,
+        )
+
+    def test_descriptor_changes_do_not_route_reference_attention(self):
+        matcher = make_model().matcher.eval()
+        query, references, query_tokens, reference_tokens = self._matcher_inputs()
+        mask = torch.ones(2, 3, dtype=torch.bool)
+        first = matcher(
+            query,
+            references,
+            query_tokens,
+            reference_tokens,
+            mask,
+            return_aux=True,
+        )
+        second = matcher(
+            torch.flip(query, dims=(1,)),
+            references,
+            query_tokens,
+            reference_tokens,
+            mask,
+            return_aux=True,
+        )
+        torch.testing.assert_close(
+            first["attention"],
+            second["attention"],
+            rtol=0.0,
+            atol=0.0,
+        )
+        torch.testing.assert_close(
+            first["raw_residual"],
+            second["raw_residual"],
+            rtol=0.0,
+            atol=0.0,
+        )
+        torch.testing.assert_close(
+            first["residual_gate"],
+            second["residual_gate"],
+            rtol=0.0,
+            atol=0.0,
+        )
+        self.assertFalse(
+            torch.allclose(first["centroid_score"], second["centroid_score"])
+        )
+
+    def test_old_matcher_checkpoint_is_rejected_explicitly(self):
+        model = make_model()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "old-token-model.pth"
+            save_token_reference_aware_model(model, path)
+            payload = torch.load(path, map_location="cpu", weights_only=False)
+            payload["model_config"]["matcher"].pop("strategy")
+            torch.save(payload, path)
+            with self.assertRaisesRegex(ValueError, "retired matcher strategy"):
+                build_token_reference_aware_model_from_checkpoint(
+                    path,
+                    TinySpatialEncoder(),
+                )
 
     def test_export_boundary(self):
         model = make_model().eval()
