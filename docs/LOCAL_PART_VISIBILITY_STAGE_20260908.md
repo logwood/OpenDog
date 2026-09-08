@@ -1,10 +1,15 @@
 # 模型内部位可用性：工程阶段与数据审计
 
-日期：2026-09-08。状态：`engineering_verified_training_data_blocked`。
+日期：2026-09-09。状态：`engineering_verified_training_data_blocked`。
 
 本轮已完成实现、数据审计、旧模型全量复现和新图导出验证；没有启动可见性训练，
 没有形成新的准确率收益证据，也没有更换生产模型。仍遵守用户要求：不增加整图身份
 保底分支，保持一个 raw RGB 输入、一个 512D 输出的完整端到端模型。
+
+2026-09-09 已将标注数据问题推进到可人工操作：从合规身份池按固定 seed 抽取 120 个
+身份（384 条 train、96 条 validation），实际运行当前完整模型并物化 1440 个局部 crop
+（每条源图两个 face 尺度和一个 nose crop）。所有 960 个部位标签仍为 `unknown`；
+这是标注队列，不是训练集，也没有把检测器或注意力统计写入标签。
 
 ## 已验证的结果
 
@@ -124,6 +129,11 @@ Loader 会拒绝来源哈希失配、越权 split、未声明/不属于来源的
 ## 产物与复现
 
 审计：`artifacts/runs/local_visibility/data_audit_20260908/data_audit.json`。
+
+可人工标注的真实模型 crop 队列：
+`artifacts/runs/local_visibility/crop_queue_120id_20260909_v3/crop_queue.json`；局部图片在
+同目录 `crops/`，按 `face_crop_paths`、`nose_crop_path` 引用。队列状态为
+`awaiting_human_model_crop_labels`，train/validation 身份不相交。
 
 工程验证目录：`artifacts/runs/local_visibility/engineering_verification_20260908/`。
 

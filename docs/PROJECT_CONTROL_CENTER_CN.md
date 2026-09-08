@@ -21,6 +21,9 @@
   教师输出与人工真值分开；不能从 development 识别成绩生成标签。V4 validation 的
   Joint800 已消费 blind 来源已核对指纹并隔离。下一步是补标注/锁定验证身份，
   **不是继续阈值扫描或无监督地启动新训练**。生产 registry、模型及图库未更换。
+- 2026-09-09 已物化 120 个身份的实际模型 crop 标注队列（384 train、96 validation、
+  1440 crops），见 `artifacts/runs/local_visibility/crop_queue_120id_20260909_v3/`。
+  队列标签全部保留 unknown，等待人工逐 crop 标注；没有把这批队列误报成训练结果。
 
 - 2026-09-08 可靠度门控诊断已完成，见
   [`LOCAL_PATH_RELIABILITY_20260908.md`](LOCAL_PATH_RELIABILITY_20260908.md)。
