@@ -151,6 +151,38 @@ class BoundedBodyReliabilityGate(nn.Module):
         return torch.cat((body_weight, 1.0 - body_weight), dim=1)
 
 
+class EvidenceConcatResidual(nn.Module):
+    """Learn a late interaction from all branch evidence without replacing it.
+
+    The last projection is zero initialized, so loading an older checkpoint
+    keeps the historical descriptor at step zero while the new branch-aware
+    path can learn identity interactions during finetuning.
+    """
+
+    def __init__(self, feature_dim: int, metadata_dim: int, *, hidden_dim: int = 128):
+        super().__init__()
+        self.feature_dim = int(feature_dim)
+        self.metadata_dim = int(metadata_dim)
+        input_dim = 3 * self.feature_dim + self.metadata_dim
+        self.network = nn.Sequential(
+            nn.LayerNorm(input_dim),
+            nn.Linear(input_dim, int(hidden_dim)),
+            nn.GELU(),
+            nn.Linear(int(hidden_dim), self.feature_dim),
+        )
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+        self.scale = nn.Parameter(torch.tensor(0.10))
+
+    def forward(self, face, body, nose, metadata):
+        if face.ndim != 2 or face.shape != body.shape or face.shape != nose.shape:
+            raise ValueError("branch features must have the same [batch, dimension] shape")
+        if metadata.shape != (face.shape[0], self.metadata_dim):
+            raise ValueError("metadata shape does not match the evidence residual")
+        values = torch.cat((face, body, nose, metadata.to(dtype=face.dtype)), dim=1)
+        return self.network(values) * self.scale.clamp_min(0.0)
+
+
 class BodyPrimaryFusionNeck(nn.Module):
     """Fuse adapted nose, face, and headless whole-body backbone descriptors.
 
@@ -219,6 +251,11 @@ class BodyPrimaryFusionNeck(nn.Module):
         self.nose_interaction = CrossModalResidual(
             self.embedding_dim,
             gate_hidden_dim,
+        )
+        self.evidence_residual = EvidenceConcatResidual(
+            self.embedding_dim,
+            metadata_dim=5,
+            hidden_dim=gate_hidden_dim,
         )
 
     def _check_inputs(
@@ -342,6 +379,21 @@ class BodyPrimaryFusionNeck(nn.Module):
         features = torch.where(nose_only, nose_features, features)
         features = torch.where(primary_only, primary, features)
 
+        # Keep the exact single-branch fallbacks above.  When all evidence is
+        # present, let the model learn a joint interaction instead of forcing
+        # every identity cue through two sequential convex averages.
+        metadata = torch.cat(
+            (body_weight, nose_weight, available.to(dtype=features.dtype)), dim=1
+        )
+        evidence_delta = self.evidence_residual(
+            face_features,
+            adapted_body,
+            nose_features,
+            metadata,
+        )
+        all_branches = available.all(dim=1, keepdim=True).to(dtype=features.dtype)
+        features = F.normalize(features + all_branches * evidence_delta, dim=1)
+
         return {
             "features": features,
             "primary_features": primary,
@@ -351,4 +403,10 @@ class BodyPrimaryFusionNeck(nn.Module):
             "body_interaction": bounded_body_interaction,
             "nose_interaction": bounded_nose_interaction,
             "effective_branch_available": available,
+            "evidence_delta": evidence_delta,
+            "evidence_descriptors": {
+                "face": face_features,
+                "body": adapted_body,
+                "nose": nose_features,
+            },
         }

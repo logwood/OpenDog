@@ -158,6 +158,9 @@ class _CompetitiveMeshRead(nn.Module):
         self.slot_norm = nn.LayerNorm(dim)
         self.context_norm = nn.LayerNorm(dim)
         self.query_projection = nn.Linear(dim, dim, bias=False)
+        self.slot_query_projections = nn.ModuleList(
+            [nn.Linear(dim, dim, bias=False) for _ in range(num_slots)]
+        )
         self.key_projection = nn.Linear(dim, dim, bias=False)
         self.value_projection = nn.Linear(dim, dim, bias=False)
         # Keep a learned input marginal so the read can down-weight background
@@ -165,7 +168,9 @@ class _CompetitiveMeshRead(nn.Module):
         # supervised ReID model otherwise learn a winner-take-all marginal long
         # before their spatial roles have formed.
         self.token_marginal = nn.Linear(dim, 1, bias=False)
-        self.update = nn.GRUCell(dim, dim)
+        self.slot_update_cells = nn.ModuleList(
+            [nn.GRUCell(dim, dim) for _ in range(num_slots)]
+        )
 
     @staticmethod
     def _fixed_noise(cost):
@@ -264,7 +269,14 @@ class _CompetitiveMeshRead(nn.Module):
             query_input = normalized_slots
             if role_anchor is not None:
                 query_input = query_input + role_anchor.float()
-            query = self.query_projection(query_input)
+            query_base = self.query_projection(query_input)
+            query = torch.stack(
+                [
+                    projection(query_base[:, index])
+                    for index, projection in enumerate(self.slot_query_projections)
+                ],
+                dim=1,
+            )
             key = self.key_projection(normalized_tokens)
             value = self.value_projection(normalized_tokens)
             similarity = torch.bmm(key, query.transpose(1, 2)) / math.sqrt(self.dim)
@@ -291,9 +303,13 @@ class _CompetitiveMeshRead(nn.Module):
                 dim=2, keepdim=True
             ).clamp_min(1e-12)
             slot_update = torch.bmm(slot_weights, value)
-            proposal = self.update(
-                slot_update.reshape(-1, self.dim), slots.reshape(-1, self.dim)
-            ).view_as(slots)
+            proposal = torch.stack(
+                [
+                    cell(slot_update[:, index], slots[:, index])
+                    for index, cell in enumerate(self.slot_update_cells)
+                ],
+                dim=1,
+            )
             if update_alpha is None:
                 updated_slots = proposal
             else:
@@ -475,7 +491,10 @@ class _SharedWorkspaceCell(nn.Module):
                 need_weights=capture_attention,
                 average_attn_weights=True,
             )
-            latents = latents + read_output
+            if update_alpha is None:
+                latents = latents + read_output
+            else:
+                latents = latents + float(update_alpha) * read_output
         else:
             latents, read_diagnostics, attention_map = self.mesh_read(
                 latents,
@@ -704,6 +723,7 @@ class PersistentLatentWorkspace(nn.Module):
         mix_centered=False,
         write_stages=("c3", "c4", "c5"),
         spatial_write_gate_enabled=False,
+        full_resolution_c2_read=False,
     ):
         super().__init__()
         if num_slots < 2:
@@ -757,7 +777,7 @@ class PersistentLatentWorkspace(nn.Module):
                 "c2": _StageAdapter(
                     256,
                     dim,
-                    read_downsample=2,
+                    read_downsample=1 if full_resolution_c2_read else 2,
                     write_enabled="c2" in write_stages,
                     gate_min=gate_min,
                     gate_init=gate_init,
@@ -833,6 +853,7 @@ class PersistentLatentWorkspace(nn.Module):
             mix_centered=workspace.MIX_CENTERED,
             write_stages=workspace.WRITE_STAGES,
             spatial_write_gate_enabled=workspace.SPATIAL_WRITE_GATE_ENABLED,
+            full_resolution_c2_read=workspace.FULL_RESOLUTION_C2_READ,
         )
 
     def reset_parameters(self):

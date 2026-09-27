@@ -1,0 +1,21 @@
+_BASE_: modern_structural_s101_224.yaml
+
+# Full remote validation run on one RTX 3090.  Keep validation enabled: the
+# training entrypoint clears DATASETS.TESTS when --skip-final-eval is passed.
+SOLVER:
+  AMP:
+    ENABLED: True
+  IMS_PER_BATCH: 80
+  MAX_EPOCH: 35
+  WARMUP_ITERS: 400
+  FREEZE_ITERS: 1000
+  CHECKPOINT_PERIOD: 5
+
+DATALOADER:
+  NUM_WORKERS: 8
+
+TEST:
+  EVAL_PERIOD: 1
+  IMS_PER_BATCH: 64
+
+OUTPUT_DIR: artifacts/runs/structural-latent/remote_structural_s101_224

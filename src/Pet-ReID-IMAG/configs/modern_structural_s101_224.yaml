@@ -1,0 +1,53 @@
+_BASE_: modern_latent_spatial_query_s101_224.yaml
+
+# Structural evidence path: private slot queries/updates, full-resolution C2
+# reads, and spatially gated write-back.  Keep the identity-query decoder as
+# the only descriptor fusion point so intermediate evidence is not collapsed
+# into the old shared slot residual.
+SEED: 20260926
+
+MODEL:
+  META_ARCHITECTURE: SpatialQueryLatentWorkspace
+  LATENT_WORKSPACE:
+    READ_MODE: mesh
+    ROLE_ANCHOR_ENABLED: True
+    POSITION_ENCODING_ENABLED: True
+    UPDATE_MODE: residual
+    UPDATE_ALPHAS: [0.05, 0.10, 0.15, 0.20]
+    MIX_ENABLED: True
+    MIX_GATE_INIT: 0.02
+    MIX_GATE_TRAINABLE: True
+    MIX_ROLE_CONDITIONED: True
+    MIX_CENTERED: True
+    FFN_LAYER_SCALE: 0.05
+    GATE_MIN: 0.0
+    GATE_INIT: 0.05
+    WRITE_STAGES: ["c2", "c3", "c4"]
+    SPATIAL_WRITE_GATE_ENABLED: True
+    FULL_RESOLUTION_C2_READ: True
+    SLOT_SET_HEAD_ENABLED: False
+    SLOT_FEATURE_FUSION_SCALE: 0.0
+    SLOT_INFERENCE_FUSION_WEIGHT: 0.0
+    IDENTITY_QUERY_HEAD_ENABLED: True
+    IDENTITY_QUERY_NUM: 4
+    IDENTITY_QUERY_DIM: 128
+    IDENTITY_QUERY_NUM_HEADS: 4
+    IDENTITY_QUERY_FFN_SCALE: 0.10
+    IDENTITY_QUERY_LOSS_WEIGHT: 0.20
+    IDENTITY_FUSION_LOSS_WEIGHT: 0.10
+    IDENTITY_FUSION_WEIGHT_MIN: 0.0
+    IDENTITY_FUSION_WEIGHT_MAX: 0.5
+    IDENTITY_FUSION_WEIGHT_INIT: 0.05
+    HEALTH_PERIOD: 50
+    EARLY_ABORT_ENABLED: True
+    EARLY_ABORT_WARMUP_ITERS: 100
+    EARLY_ABORT_PATIENCE: 2
+    EARLY_ABORT_SLOT_COSINE_MAX: 0.995
+    EARLY_ABORT_MIN_EFFECTIVE_RANK: 2.0
+    EARLY_ABORT_QUERY_COSINE_MAX: 0.995
+    EARLY_ABORT_MIN_QUERY_RANK: 1.5
+
+SOLVER:
+  CHECKPOINT_PERIOD: 5
+
+OUTPUT_DIR: artifacts/runs/structural-latent/modern_structural_s101_224
