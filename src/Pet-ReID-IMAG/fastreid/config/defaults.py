@@ -72,6 +72,11 @@ _C.MODEL.LATENT_WORKSPACE.EVIDENCE_TOKENS_ENABLED = False
 _C.MODEL.LATENT_WORKSPACE.EVIDENCE_TOKEN_COUNT = 3
 _C.MODEL.LATENT_WORKSPACE.EVIDENCE_INPUT_DIM = 0
 _C.MODEL.LATENT_WORKSPACE.EVIDENCE_GATE_INIT = 0.05
+# If no external body/face/nose archive is attached to a batch, derive the
+# same three-token state directly from the C2 visual context.  This keeps the
+# new route runnable on the regular PetID loader while preserving the external
+# ingress for data-backed multimodal runs.
+_C.MODEL.LATENT_WORKSPACE.EVIDENCE_AUTO_FROM_C2 = False
 _C.MODEL.LATENT_WORKSPACE.SLOT_SET_HEAD_ENABLED = False
 _C.MODEL.LATENT_WORKSPACE.SLOT_SET_DIM_PER_SLOT = 64
 _C.MODEL.LATENT_WORKSPACE.SLOT_SET_LOSS_WEIGHT = 0.20

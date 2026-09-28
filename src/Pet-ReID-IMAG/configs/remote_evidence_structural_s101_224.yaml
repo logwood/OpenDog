@@ -1,0 +1,16 @@
+_BASE_: remote_structural_s101_224.yaml
+
+# The old body/face/nose contract and the C2 fallback both enter the same
+# persistent latent state.  This run enables the fallback so the standard
+# PetID loader can exercise the full route without a side-channel archive.
+SEED: 20260928
+
+MODEL:
+  LATENT_WORKSPACE:
+    EVIDENCE_TOKENS_ENABLED: True
+    EVIDENCE_TOKEN_COUNT: 3
+    EVIDENCE_INPUT_DIM: 0
+    EVIDENCE_GATE_INIT: 0.05
+    EVIDENCE_AUTO_FROM_C2: True
+
+OUTPUT_DIR: artifacts/runs/structural-latent/evidence_structural_s101_224

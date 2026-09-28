@@ -354,6 +354,46 @@ class LatentWorkspaceTest(unittest.TestCase):
                 evidence_tokens=torch.randn(1, 3, 32),
             )
 
+    def test_auto_c2_evidence_source_is_differentiable_and_uses_three_views(self):
+        torch.manual_seed(37)
+        workspace = PersistentLatentWorkspace(
+            dim=32,
+            num_slots=8,
+            num_heads=8,
+            mlp_ratio=2.0,
+            gate_min=0.0,
+            gate_init=0.05,
+            dropout=0.0,
+            read_mode="mha",
+            write_stages=(),
+            evidence_tokens_enabled=True,
+            evidence_token_count=3,
+            evidence_auto_from_c2=True,
+            evidence_gate_init=0.05,
+        ).train()
+        features = torch.randn(2, 256, 4, 4, requires_grad=True)
+
+        _, latents = workspace.forward_stage(
+            "c2", features, collect_diagnostics=True
+        )
+
+        self.assertEqual(tuple(latents.shape), (2, 8, 32))
+        diagnostics = workspace.diagnostics()
+        self.assertEqual(diagnostics["c2_evidence_auto_source"].item(), 1.0)
+        self.assertAlmostEqual(
+            diagnostics["c2_evidence_valid_fraction"].item(), 1.0, places=6
+        )
+        (latents.square().mean()).backward()
+        self.assertTrue(torch.isfinite(features.grad).all())
+        for name in (
+            "evidence_auto_queries",
+            "evidence_auto_key.weight",
+            "evidence_auto_value.weight",
+        ):
+            parameter = dict(workspace.named_parameters())[name]
+            self.assertIsNotNone(parameter.grad, name)
+            self.assertTrue(torch.isfinite(parameter.grad).all(), name)
+
     def test_identity_query_head_decodes_four_views_with_gradients(self):
         torch.manual_seed(29)
         head = _IdentityQueryHead(

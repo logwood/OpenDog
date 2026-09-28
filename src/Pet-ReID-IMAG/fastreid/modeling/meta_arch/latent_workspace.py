@@ -754,6 +754,7 @@ class PersistentLatentWorkspace(nn.Module):
         evidence_token_count=3,
         evidence_input_dim=0,
         evidence_gate_init=0.05,
+        evidence_auto_from_c2=False,
     ):
         super().__init__()
         if num_slots < 2:
@@ -777,6 +778,7 @@ class PersistentLatentWorkspace(nn.Module):
         self.evidence_tokens_enabled = bool(evidence_tokens_enabled)
         self.evidence_token_count = int(evidence_token_count)
         self.evidence_input_dim = int(evidence_input_dim)
+        self.evidence_auto_from_c2 = bool(evidence_auto_from_c2)
         if self.evidence_tokens_enabled:
             if self.evidence_token_count < 1:
                 raise ValueError("evidence token count must be positive")
@@ -805,6 +807,17 @@ class PersistentLatentWorkspace(nn.Module):
                 )
             else:
                 self.evidence_projections = nn.ModuleList()
+            if self.evidence_auto_from_c2:
+                # A shared key/value map with three learned queries creates
+                # three distinct views of the visual C2 context.  The result
+                # uses exactly the same type embeddings, validity mask, and
+                # gate as externally supplied body/face/nose descriptors.
+                self.evidence_auto_norm = nn.LayerNorm(dim)
+                self.evidence_auto_key = nn.Linear(dim, dim, bias=False)
+                self.evidence_auto_value = nn.Linear(dim, dim, bias=False)
+                self.evidence_auto_queries = nn.Parameter(
+                    torch.empty(self.evidence_token_count, dim)
+                )
         self.read_mode = str(read_mode).lower()
         self.role_anchor_enabled = bool(role_anchor_enabled)
         self.role_anchor_scale = float(role_anchor_scale)
@@ -917,6 +930,7 @@ class PersistentLatentWorkspace(nn.Module):
             evidence_token_count=workspace.EVIDENCE_TOKEN_COUNT,
             evidence_input_dim=workspace.EVIDENCE_INPUT_DIM,
             evidence_gate_init=workspace.EVIDENCE_GATE_INIT,
+            evidence_auto_from_c2=workspace.EVIDENCE_AUTO_FROM_C2,
         )
 
     def reset_parameters(self):
@@ -924,6 +938,8 @@ class PersistentLatentWorkspace(nn.Module):
         nn.init.normal_(self.stage_embeddings, std=0.02)
         if self.evidence_tokens_enabled:
             nn.init.normal_(self.evidence_type_embeddings, std=0.02)
+            if self.evidence_auto_from_c2:
+                nn.init.normal_(self.evidence_auto_queries, std=0.02)
 
     def _initial_latents(self, context):
         return self.latent_slots.expand(context.shape[0], -1, -1).to(
@@ -967,6 +983,33 @@ class PersistentLatentWorkspace(nn.Module):
         )
         visual_context = context
         context_mask = None
+        if (
+            stage_name == "c2"
+            and self.evidence_tokens_enabled
+            and evidence_tokens is None
+            and evidence_mask is None
+            and self.evidence_auto_from_c2
+        ):
+            auto_context = self.evidence_auto_norm(context)
+            auto_keys = self.evidence_auto_key(auto_context)
+            auto_values = self.evidence_auto_value(auto_context)
+            auto_queries = self.evidence_auto_queries.to(
+                device=context.device, dtype=context.dtype
+            ).unsqueeze(0)
+            auto_scores = torch.matmul(
+                auto_queries, auto_keys.transpose(1, 2)
+            ) / math.sqrt(float(self.dim))
+            auto_weights = auto_scores.softmax(dim=-1)
+            evidence_tokens = torch.matmul(auto_weights, auto_values)
+            evidence_mask = torch.ones(
+                evidence_tokens.shape[:2],
+                device=context.device,
+                dtype=torch.bool,
+            )
+            if collect_diagnostics:
+                self._last_diagnostics["c2_evidence_auto_source"] = torch.ones(
+                    (), device=context.device, dtype=context.dtype
+                )
         if evidence_tokens is not None:
             if evidence_tokens.ndim != 3:
                 raise ValueError(
