@@ -12,6 +12,7 @@ from .dataset import (
 )
 from .evaluator import PetIDEvaluator, PetIDFeatureEvaluator, PetIDVerificationEvaluator
 from .arcface import DogArcFaceEncoder, fuse_main_and_arcface, fuse_normalized_features
+from .body_fusion import BodyPrimaryFusionNeck, evidence_tokens_from_descriptors
 from .localization import (
     VIEWPOINT_DIM,
     AnyFaceDetector,

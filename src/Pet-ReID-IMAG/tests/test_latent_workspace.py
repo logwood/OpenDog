@@ -295,6 +295,65 @@ class LatentWorkspaceTest(unittest.TestCase):
         self.assertLess(diagnostics["slot_cosine_max"].item(), 0.995)
         self.assertGreater(diagnostics["slot_effective_rank"].item(), 2.0)
 
+    def test_evidence_tokens_enter_c2_and_keep_spatial_write_visual_only(self):
+        torch.manual_seed(31)
+        workspace = PersistentLatentWorkspace(
+            dim=32,
+            num_slots=8,
+            num_heads=8,
+            mlp_ratio=2.0,
+            gate_min=0.0,
+            gate_init=0.05,
+            dropout=0.0,
+            read_mode="mesh",
+            full_resolution_c2_read=True,
+            write_stages=("c2",),
+            evidence_tokens_enabled=True,
+            evidence_token_count=3,
+            evidence_input_dim=48,
+            evidence_gate_init=0.05,
+        ).train()
+        features = torch.randn(2, 256, 4, 4, requires_grad=True)
+        evidence = torch.randn(2, 3, 48, requires_grad=True)
+        evidence_mask = torch.tensor([[True, True, True], [True, False, False]])
+
+        enriched, latents = workspace.forward_stage(
+            "c2",
+            features,
+            collect_diagnostics=True,
+            evidence_tokens=evidence,
+            evidence_mask=evidence_mask,
+        )
+
+        self.assertEqual(tuple(enriched.shape), tuple(features.shape))
+        self.assertEqual(tuple(latents.shape), (2, 8, 32))
+        self.assertAlmostEqual(
+            workspace.diagnostics()["c2_evidence_valid_fraction"].item(),
+            2.0 / 3.0,
+            places=6,
+        )
+        loss = enriched.square().mean() + latents.square().mean()
+        loss.backward()
+
+        self.assertTrue(torch.isfinite(evidence.grad).all())
+        self.assertGreater(evidence.grad[:, 0].abs().sum().item(), 0.0)
+        self.assertEqual(evidence.grad[1, 1:].abs().sum().item(), 0.0)
+        self.assertTrue(torch.isfinite(workspace.evidence_gate_logit.grad).all())
+        for name, parameter in workspace.named_parameters():
+            if parameter.grad is not None:
+                self.assertTrue(torch.isfinite(parameter.grad).all(), name)
+
+    def test_disabled_evidence_ingress_preserves_checkpoint_surface(self):
+        workspace = self._workspace(dim=32, read_mode="mha")
+        self.assertFalse(workspace.evidence_tokens_enabled)
+        self.assertFalse(any(name.startswith("evidence_") for name in workspace.state_dict()))
+        with self.assertRaisesRegex(ValueError, "ingress is disabled"):
+            workspace.forward_stage(
+                "c2",
+                torch.randn(1, 256, 4, 4),
+                evidence_tokens=torch.randn(1, 3, 32),
+            )
+
     def test_identity_query_head_decodes_four_views_with_gradients(self):
         torch.manual_seed(29)
         head = _IdentityQueryHead(

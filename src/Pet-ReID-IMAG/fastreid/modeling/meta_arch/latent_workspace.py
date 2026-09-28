@@ -250,6 +250,7 @@ class _CompetitiveMeshRead(nn.Module):
         latents,
         context,
         *,
+        context_mask=None,
         role_anchor=None,
         update_alpha=None,
         collect_diagnostics=False,
@@ -281,9 +282,23 @@ class _CompetitiveMeshRead(nn.Module):
             value = self.value_projection(normalized_tokens)
             similarity = torch.bmm(key, query.transpose(1, 2)) / math.sqrt(self.dim)
             cost = -similarity
-            token_marginal = (
-                self.token_marginal(normalized_tokens).squeeze(-1).softmax(dim=1)
-            )
+            token_scores = self.token_marginal(normalized_tokens).squeeze(-1)
+            if context_mask is not None:
+                if context_mask.shape != token_scores.shape:
+                    raise ValueError(
+                        "context_mask must match the token batch and sequence length"
+                    )
+                context_mask = context_mask.to(device=token_scores.device).bool()
+                if not context_mask.any(dim=1).all():
+                    raise ValueError("every workspace sample needs one valid context token")
+                # Keep masked tokens in the rectangular transport tensor while
+                # assigning them effectively zero mass.  Their values are
+                # still present for shape stability, but cannot contribute to
+                # slot updates through the transport plan.
+                token_scores = token_scores.masked_fill(
+                    ~context_mask, torch.finfo(token_scores.dtype).min
+                )
+            token_marginal = token_scores.softmax(dim=1)
             slot_marginal = torch.full(
                 (slots.shape[0], self.num_slots),
                 1.0 / self.num_slots,
@@ -468,6 +483,7 @@ class _SharedWorkspaceCell(nn.Module):
         latents,
         context,
         *,
+        context_mask=None,
         role_anchor=None,
         update_alpha=None,
         collect_diagnostics=False,
@@ -488,6 +504,9 @@ class _SharedWorkspaceCell(nn.Module):
                 query,
                 normalized_context,
                 normalized_context,
+                key_padding_mask=(
+                    None if context_mask is None else ~context_mask.bool()
+                ),
                 need_weights=capture_attention,
                 average_attn_weights=True,
             )
@@ -499,6 +518,7 @@ class _SharedWorkspaceCell(nn.Module):
             latents, read_diagnostics, attention_map = self.mesh_read(
                 latents,
                 context,
+                context_mask=context_mask,
                 role_anchor=role_anchor,
                 update_alpha=update_alpha,
                 collect_diagnostics=collect_diagnostics,
@@ -688,7 +708,13 @@ class _StageAdapter(nn.Module):
 
 
 class PersistentLatentWorkspace(nn.Module):
-    """Carry one latent state from C2 through C5 while preserving the CNN path."""
+    """Carry one latent state from C2 through C5 while preserving the CNN path.
+
+    When enabled, ``evidence_tokens`` are an optional fixed-width external
+    state with one token per legacy branch (the shared body-fusion helper uses
+    ``[body, face, nose]``).  They enter only the C2 read and then travel in
+    the same persistent slots as visual evidence.
+    """
 
     stage_names = ("c2", "c3", "c4", "c5")
     stage_channels = {"c2": 256, "c3": 512, "c4": 1024, "c5": 2048}
@@ -724,6 +750,10 @@ class PersistentLatentWorkspace(nn.Module):
         write_stages=("c3", "c4", "c5"),
         spatial_write_gate_enabled=False,
         full_resolution_c2_read=False,
+        evidence_tokens_enabled=False,
+        evidence_token_count=3,
+        evidence_input_dim=0,
+        evidence_gate_init=0.05,
     ):
         super().__init__()
         if num_slots < 2:
@@ -744,8 +774,37 @@ class PersistentLatentWorkspace(nn.Module):
         self.dim = int(dim)
         self.num_slots = int(num_slots)
         self.write_stages = write_stages
+        self.evidence_tokens_enabled = bool(evidence_tokens_enabled)
+        self.evidence_token_count = int(evidence_token_count)
+        self.evidence_input_dim = int(evidence_input_dim)
+        if self.evidence_tokens_enabled:
+            if self.evidence_token_count < 1:
+                raise ValueError("evidence token count must be positive")
+            if self.evidence_input_dim < 0:
+                raise ValueError("evidence input dimension cannot be negative")
+            if not 0.0 < float(evidence_gate_init) < 1.0:
+                raise ValueError("evidence gate init must be between zero and one")
         self.latent_slots = nn.Parameter(torch.empty(1, num_slots, dim))
         self.stage_embeddings = nn.Parameter(torch.empty(len(self.stage_names), 1, dim))
+        if self.evidence_tokens_enabled:
+            self.evidence_type_embeddings = nn.Parameter(
+                torch.empty(1, self.evidence_token_count, dim)
+            )
+            gate_logit = math.log(
+                float(evidence_gate_init) / (1.0 - float(evidence_gate_init))
+            )
+            self.evidence_gate_logit = nn.Parameter(
+                torch.full((self.evidence_token_count,), gate_logit)
+            )
+            if self.evidence_input_dim > 0:
+                self.evidence_projections = nn.ModuleList(
+                    [
+                        nn.Linear(self.evidence_input_dim, dim, bias=False)
+                        for _ in range(self.evidence_token_count)
+                    ]
+                )
+            else:
+                self.evidence_projections = nn.ModuleList()
         self.read_mode = str(read_mode).lower()
         self.role_anchor_enabled = bool(role_anchor_enabled)
         self.role_anchor_scale = float(role_anchor_scale)
@@ -854,11 +913,17 @@ class PersistentLatentWorkspace(nn.Module):
             write_stages=workspace.WRITE_STAGES,
             spatial_write_gate_enabled=workspace.SPATIAL_WRITE_GATE_ENABLED,
             full_resolution_c2_read=workspace.FULL_RESOLUTION_C2_READ,
+            evidence_tokens_enabled=workspace.EVIDENCE_TOKENS_ENABLED,
+            evidence_token_count=workspace.EVIDENCE_TOKEN_COUNT,
+            evidence_input_dim=workspace.EVIDENCE_INPUT_DIM,
+            evidence_gate_init=workspace.EVIDENCE_GATE_INIT,
         )
 
     def reset_parameters(self):
         nn.init.normal_(self.latent_slots, std=0.02)
         nn.init.normal_(self.stage_embeddings, std=0.02)
+        if self.evidence_tokens_enabled:
+            nn.init.normal_(self.evidence_type_embeddings, std=0.02)
 
     def _initial_latents(self, context):
         return self.latent_slots.expand(context.shape[0], -1, -1).to(
@@ -872,10 +937,23 @@ class PersistentLatentWorkspace(nn.Module):
         return self.role_anchor_scale * anchors.expand(context.shape[0], -1, -1)
 
     def forward_stage(
-        self, stage_name, features, latents=None, collect_diagnostics=False
+        self,
+        stage_name,
+        features,
+        latents=None,
+        collect_diagnostics=False,
+        evidence_tokens=None,
+        evidence_mask=None,
     ):
         if stage_name not in self.adapters:
             raise KeyError(f"unknown latent workspace stage {stage_name}")
+        if evidence_tokens is not None or evidence_mask is not None:
+            if not self.evidence_tokens_enabled:
+                raise ValueError(
+                    "evidence tokens were provided but the latent workspace ingress is disabled"
+                )
+            if stage_name != "c2":
+                raise ValueError("evidence tokens can only enter at the C2 workspace read")
         expected_channels = self.stage_channels[stage_name]
         if features.ndim != 4 or features.shape[1] != expected_channels:
             raise ValueError(
@@ -887,6 +965,71 @@ class PersistentLatentWorkspace(nn.Module):
         context, read_spatial_size = adapter.read_tokens(
             features, self.stage_embeddings[stage_index]
         )
+        visual_context = context
+        context_mask = None
+        if evidence_tokens is not None:
+            if evidence_tokens.ndim != 3:
+                raise ValueError(
+                    "evidence_tokens must have shape [batch, token_count, feature_dim]"
+                )
+            if evidence_tokens.shape[0] != context.shape[0]:
+                raise ValueError("evidence token batch must match C2 features")
+            if evidence_tokens.shape[1] != self.evidence_token_count:
+                raise ValueError(
+                    "evidence token count does not match the configured ingress: "
+                    f"expected {self.evidence_token_count}, got {evidence_tokens.shape[1]}"
+                )
+            expected_dim = self.evidence_input_dim or self.dim
+            if evidence_tokens.shape[2] != expected_dim:
+                raise ValueError(
+                    "evidence token feature width does not match the configured ingress: "
+                    f"expected {expected_dim}, got {evidence_tokens.shape[2]}"
+                )
+            if evidence_mask is None:
+                evidence_mask = torch.ones(
+                    evidence_tokens.shape[:2],
+                    device=evidence_tokens.device,
+                    dtype=torch.bool,
+                )
+            elif evidence_mask.shape != evidence_tokens.shape[:2]:
+                raise ValueError("evidence_mask must match [batch, token_count]")
+            evidence_mask = evidence_mask.to(device=context.device).bool()
+            evidence_tokens = evidence_tokens.to(
+                device=context.device, dtype=context.dtype
+            )
+            if self.evidence_input_dim > 0:
+                evidence_tokens = torch.stack(
+                    [
+                        projection(evidence_tokens[:, index])
+                        for index, projection in enumerate(self.evidence_projections)
+                    ],
+                    dim=1,
+                )
+            evidence_tokens = evidence_tokens + self.evidence_type_embeddings.to(
+                device=context.device, dtype=context.dtype
+            )
+            evidence_gates = self.evidence_gate_logit.sigmoid().to(
+                device=context.device, dtype=context.dtype
+            )
+            evidence_tokens = evidence_tokens * evidence_gates.view(1, -1, 1)
+            evidence_tokens = evidence_tokens * evidence_mask.unsqueeze(-1).to(
+                dtype=context.dtype
+            )
+            context_mask = torch.cat(
+                (
+                    torch.ones(
+                        context.shape[:2], device=context.device, dtype=torch.bool
+                    ),
+                    evidence_mask,
+                ),
+                dim=1,
+            )
+            context = torch.cat((context, evidence_tokens), dim=1)
+            if collect_diagnostics:
+                self._last_diagnostics["c2_evidence_gate_mean"] = evidence_gates.mean()
+                self._last_diagnostics["c2_evidence_valid_fraction"] = (
+                    evidence_mask.float().mean()
+                )
         if latents is None:
             latents = self._initial_latents(context)
         role_anchor = self._role_anchor(context)
@@ -896,6 +1039,7 @@ class PersistentLatentWorkspace(nn.Module):
         latents, read_diagnostics, attention_map = self.cell.read_and_mix(
             latents,
             context,
+            context_mask=context_mask,
             role_anchor=role_anchor,
             update_alpha=update_alpha,
             collect_diagnostics=collect_diagnostics,
@@ -925,7 +1069,10 @@ class PersistentLatentWorkspace(nn.Module):
             return features, latents
 
         if tuple(read_spatial_size) == tuple(features.shape[-2:]):
-            write_context = context
+            # Evidence is read by the latent state but is not spatially
+            # written back to C2.  The write projection expects exactly the
+            # visual H*W tokens, so keep the external state out of this path.
+            write_context = visual_context
             write_spatial_size = read_spatial_size
         else:
             write_context, write_spatial_size = adapter.write_tokens(
@@ -1022,7 +1169,12 @@ class LatentWorkspaceBaseline(Baseline):
         return storage.iter % self.health_period == 0
 
     def _forward_workspace_backbone(
-        self, images, collect_diagnostics, return_latents=False
+        self,
+        images,
+        collect_diagnostics,
+        return_latents=False,
+        evidence_tokens=None,
+        evidence_mask=None,
     ):
         if not hasattr(self.backbone, "forward_stem") or not hasattr(
             self.backbone, "forward_stage"
@@ -1034,7 +1186,11 @@ class LatentWorkspaceBaseline(Baseline):
         features = self.backbone.forward_stem(images)
         c2 = self.backbone.forward_stage(features, 1)
         c2, latents = self.workspace.forward_stage(
-            "c2", c2, collect_diagnostics=collect_diagnostics
+            "c2",
+            c2,
+            collect_diagnostics=collect_diagnostics,
+            evidence_tokens=evidence_tokens,
+            evidence_mask=evidence_mask,
         )
         c3 = self.backbone.forward_stage(c2, 2)
         c3, latents = self.workspace.forward_stage(
@@ -1062,7 +1218,22 @@ class LatentWorkspaceBaseline(Baseline):
     def forward(self, batched_inputs):
         images = self.preprocess_image(batched_inputs)
         collect_diagnostics = self._should_collect_diagnostics()
-        features = self._forward_workspace_backbone(images, collect_diagnostics)
+        evidence_tokens = (
+            batched_inputs.get("evidence_tokens")
+            if isinstance(batched_inputs, dict)
+            else None
+        )
+        evidence_mask = (
+            batched_inputs.get("evidence_mask")
+            if isinstance(batched_inputs, dict)
+            else None
+        )
+        features = self._forward_workspace_backbone(
+            images,
+            collect_diagnostics,
+            evidence_tokens=evidence_tokens,
+            evidence_mask=evidence_mask,
+        )
         if collect_diagnostics:
             self._write_workspace_metrics()
 
@@ -1244,8 +1415,22 @@ class RoleAnchoredLatentWorkspace(LatentWorkspaceBaseline):
     def forward(self, batched_inputs):
         images = self.preprocess_image(batched_inputs)
         collect_diagnostics = self._should_collect_diagnostics()
+        evidence_tokens = (
+            batched_inputs.get("evidence_tokens")
+            if isinstance(batched_inputs, dict)
+            else None
+        )
+        evidence_mask = (
+            batched_inputs.get("evidence_mask")
+            if isinstance(batched_inputs, dict)
+            else None
+        )
         features, latents = self._forward_workspace_backbone(
-            images, collect_diagnostics, return_latents=True
+            images,
+            collect_diagnostics,
+            return_latents=True,
+            evidence_tokens=evidence_tokens,
+            evidence_mask=evidence_mask,
         )
 
         targets = (
@@ -1597,8 +1782,22 @@ class SpatialQueryLatentWorkspace(LatentWorkspaceBaseline):
     def forward(self, batched_inputs):
         images = self.preprocess_image(batched_inputs)
         collect_diagnostics = self._should_collect_diagnostics()
+        evidence_tokens = (
+            batched_inputs.get("evidence_tokens")
+            if isinstance(batched_inputs, dict)
+            else None
+        )
+        evidence_mask = (
+            batched_inputs.get("evidence_mask")
+            if isinstance(batched_inputs, dict)
+            else None
+        )
         features, latents = self._forward_workspace_backbone(
-            images, collect_diagnostics, return_latents=True
+            images,
+            collect_diagnostics,
+            return_latents=True,
+            evidence_tokens=evidence_tokens,
+            evidence_mask=evidence_mask,
         )
         targets = (
             batched_inputs.get("targets") if isinstance(batched_inputs, dict) else None

@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 from torch.nn import functional as F
 
-from pet_id.body_fusion import BodyPrimaryFusionNeck
+from pet_id.body_fusion import BodyPrimaryFusionNeck, evidence_tokens_from_descriptors
 
 
 def _inputs(batch: int = 6) -> dict[str, torch.Tensor]:
@@ -84,4 +84,26 @@ def test_single_primary_branch_has_exact_weight_one_fallback():
         output["features"][0], output["adapted_body_features"][0], atol=1e-6
     )
     assert torch.allclose(output["features"][1], inputs["face_features"][1], atol=1e-6)
+
+
+def test_body_fusion_exports_ordered_workspace_evidence_tokens():
+    model = BodyPrimaryFusionNeck()
+    inputs = _inputs(batch=2)
+    inputs["branch_available"] = torch.tensor(
+        [[True, True, True], [False, False, True]]
+    )
+    output = model(**inputs)
+
+    tokens, mask = evidence_tokens_from_descriptors(
+        output["evidence_descriptors"], output["effective_branch_available"]
+    )
+    assert torch.allclose(tokens, output["evidence_tokens"])
+    assert torch.equal(mask, output["evidence_mask"])
+    assert torch.equal(
+        mask,
+        torch.tensor([[True, True, True], [True, False, False]]),
+    )
+    assert torch.allclose(tokens[:, 0], output["evidence_descriptors"]["body"])
+    assert torch.allclose(tokens[:, 1], output["evidence_descriptors"]["face"])
+    assert torch.allclose(tokens[:, 2], output["evidence_descriptors"]["nose"])
 

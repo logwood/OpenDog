@@ -183,6 +183,39 @@ class EvidenceConcatResidual(nn.Module):
         return self.network(values) * self.scale.clamp_min(0.0)
 
 
+def evidence_tokens_from_descriptors(
+    evidence_descriptors: dict[str, torch.Tensor],
+    branch_available: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Pack body/face/nose descriptors for the latent workspace ingress.
+
+    The token order is fixed as ``[body, face, nose]``.  The legacy neck uses
+    ``[nose, face, body]`` for its availability flags, so this helper performs
+    that permutation once and returns a boolean mask that the workspace can
+    use without inventing a second fusion branch.
+    """
+
+    required = ("body", "face", "nose")
+    missing = [name for name in required if name not in evidence_descriptors]
+    if missing:
+        raise KeyError(f"missing evidence descriptors: {missing}")
+    body, face, nose = (evidence_descriptors[name] for name in required)
+    if body.ndim != 2 or body.shape != face.shape or body.shape != nose.shape:
+        raise ValueError("body, face, and nose descriptors must share [batch, dimension]")
+    tokens = torch.stack((body, face, nose), dim=1)
+    if branch_available is None:
+        mask = torch.ones(
+            tokens.shape[:2], device=tokens.device, dtype=torch.bool
+        )
+    else:
+        if branch_available.shape != (tokens.shape[0], 3):
+            raise ValueError("branch_available must have shape [batch, 3]")
+        mask = branch_available.to(
+            device=tokens.device, dtype=torch.bool
+        )[:, [2, 1, 0]]
+    return tokens, mask
+
+
 class BodyPrimaryFusionNeck(nn.Module):
     """Fuse adapted nose, face, and headless whole-body backbone descriptors.
 
@@ -394,6 +427,15 @@ class BodyPrimaryFusionNeck(nn.Module):
         all_branches = available.all(dim=1, keepdim=True).to(dtype=features.dtype)
         features = F.normalize(features + all_branches * evidence_delta, dim=1)
 
+        evidence_descriptors = {
+            "face": face_features,
+            "body": adapted_body,
+            "nose": nose_features,
+        }
+        evidence_tokens, evidence_mask = evidence_tokens_from_descriptors(
+            evidence_descriptors, available
+        )
+
         return {
             "features": features,
             "primary_features": primary,
@@ -404,9 +446,7 @@ class BodyPrimaryFusionNeck(nn.Module):
             "nose_interaction": bounded_nose_interaction,
             "effective_branch_available": available,
             "evidence_delta": evidence_delta,
-            "evidence_descriptors": {
-                "face": face_features,
-                "body": adapted_body,
-                "nose": nose_features,
-            },
+            "evidence_descriptors": evidence_descriptors,
+            "evidence_tokens": evidence_tokens,
+            "evidence_mask": evidence_mask,
         }
