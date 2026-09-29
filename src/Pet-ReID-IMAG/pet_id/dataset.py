@@ -11,7 +11,7 @@ from pathlib import Path
 from fastreid.data.datasets import DATASET_REGISTRY
 from fastreid.data.datasets.bases import ImageDataset
 
-from .workspace_paths import PROCESSED_DATA_ROOT
+from .workspace_paths import PROCESSED_DATA_ROOT, WORKSPACE_ROOT
 
 __all__ = [
     "PetID",
@@ -21,12 +21,17 @@ __all__ = [
     "PetIDValidationSmoke",
     "PetIDTest",
     "PetIDTestPseudo",
+    "BIFORDog",
+    "BIFORDogValidation",
 ]
 
 
 TRAIN_ROOT = PROCESSED_DATA_ROOT / "dir_train_fusai"
 SPLIT_ROOT = PROCESSED_DATA_ROOT / "splits"
 TEST_ROOT = PROCESSED_DATA_ROOT / "test" / "test"
+BIFOR_ROOT = WORKSPACE_ROOT / "data" / "BIFOR" / "YT-BB-dog"
+
+_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 
 def _read_nonempty_lines(path: Path) -> list[str]:
@@ -60,6 +65,68 @@ def _training_items(identity_names: list[str], dataset_name: str) -> list[list[s
     if not items:
         raise RuntimeError("The selected PetID training split contains no images")
     return items
+
+
+def _bifor_identity_dirs(split: str) -> list[Path]:
+    """Return numeric BIFOR identity directories for one fixed split."""
+
+    split_root = BIFOR_ROOT / split
+    if not split_root.is_dir():
+        raise RuntimeError(
+            f'BIFOR split directory "{split_root}" is missing. '
+            "Copy data/BIFOR/YT-BB-dog before running the dog heterogeneity experiment."
+        )
+    directories = [path for path in split_root.iterdir() if path.is_dir()]
+    return sorted(directories, key=lambda path: int(path.name))
+
+
+def _bifor_image_files(directory: Path) -> list[Path]:
+    return sorted(
+        (path for path in directory.iterdir() if path.is_file() and path.suffix.lower() in _IMAGE_SUFFIXES),
+        key=lambda path: path.name,
+    )
+
+
+def _bifor_training_items() -> list[list[str]]:
+    """Build train items from all identities in the BIFOR train split."""
+
+    items: list[list[str]] = []
+    for directory in _bifor_identity_dirs("train"):
+        files = _bifor_image_files(directory)
+        if len(files) < 2:
+            continue
+        pid = f"bifor_train_{int(directory.name)}"
+        items.extend([[str(path), pid, "bifor_train_0"] for path in files])
+    if not items:
+        raise RuntimeError("The BIFOR dog training split contains no identities with two images")
+    return items
+
+
+def _bifor_validation_items() -> tuple[list[list[object]], list[list[object]]]:
+    """Split each held-out identity into deterministic query and gallery views.
+
+    BIFOR's train and test directories are identity-disjoint.  Keeping the two
+    halves on distinct camera IDs makes the generic ReID evaluator retain the
+    positive match while still measuring cross-view retrieval.
+    """
+
+    query: list[list[object]] = []
+    gallery: list[list[object]] = []
+    for directory in _bifor_identity_dirs("test"):
+        files = _bifor_image_files(directory)
+        if len(files) < 2:
+            continue
+        split_at = max(1, len(files) // 2)
+        query_files = files[:split_at]
+        gallery_files = files[split_at:]
+        if not gallery_files:
+            continue
+        pid = int(directory.name)
+        query.extend([[str(path), pid, 0] for path in query_files])
+        gallery.extend([[str(path), pid, 1] for path in gallery_files])
+    if not query or not gallery:
+        raise RuntimeError("The BIFOR dog validation split contains no query/gallery pairs")
+    return query, gallery
 
 
 def _verification_items(max_pairs_per_label: int | None = None):
@@ -231,3 +298,26 @@ class PetIDTestPseudo(ImageDataset):
     def process_test(image_dir: Path) -> list[list[str]]:
         image_paths = sorted(glob.glob(os.path.join(str(image_dir), "*.jpg")))
         return [[path, os.path.basename(path), "pet_0"] for path in image_paths]
+
+
+@DATASET_REGISTRY.register()
+class BIFORDog(ImageDataset):
+    """BIFOR full-body dog identities used for heterogeneity training."""
+
+    dataset_name = "bifor_dog"
+
+    def __init__(self, root="datasets", **kwargs):
+        del root
+        super().__init__(_bifor_training_items(), [], [], **kwargs)
+
+
+@DATASET_REGISTRY.register()
+class BIFORDogValidation(ImageDataset):
+    """Held-out BIFOR identities with deterministic cross-view retrieval."""
+
+    dataset_name = "bifor_dog_validation"
+
+    def __init__(self, root="datasets", **kwargs):
+        del root
+        query, gallery = _bifor_validation_items()
+        super().__init__([], query, gallery, **kwargs)

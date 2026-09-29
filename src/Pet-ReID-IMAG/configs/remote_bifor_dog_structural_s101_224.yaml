@@ -1,0 +1,36 @@
+_BASE_: remote_evidence_structural_s101_224.yaml
+
+# First heterogeneous full-body experiment.  BIFOR train/test identities are
+# disjoint; the validation adapter makes two deterministic cross-view halves
+# per held-out identity and keeps them on separate camera IDs.
+SEED: 20260929
+
+DATASETS:
+  NAMES: ("BIFORDog",)
+  TESTS: ("BIFORDogValidation",)
+
+MODEL:
+  HEADS:
+    NUM_CLASSES: 0
+  LATENT_WORKSPACE:
+    EVIDENCE_TOKENS_ENABLED: True
+    EVIDENCE_TOKEN_COUNT: 3
+    EVIDENCE_INPUT_DIM: 0
+    EVIDENCE_GATE_INIT: 0.05
+    EVIDENCE_AUTO_FROM_C2: True
+
+SOLVER:
+  # Twelve epochs are enough to expose whether the fused route learns across
+  # full-body pose/background changes while keeping the first remote run under
+  # an hour on the RTX 3090.
+  MAX_EPOCH: 12
+  CHECKPOINT_PERIOD: 2
+
+DATALOADER:
+  NUM_WORKERS: 8
+
+TEST:
+  EVAL_PERIOD: 1
+  IMS_PER_BATCH: 64
+
+OUTPUT_DIR: artifacts/runs/structural-latent-bifor/bifor_dog_structural_s101_224

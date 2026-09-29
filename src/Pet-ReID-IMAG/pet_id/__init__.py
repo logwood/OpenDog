@@ -3,6 +3,8 @@
 
 from .config import add_retri_config
 from .dataset import (
+    BIFORDog,
+    BIFORDogValidation,
     PetID,
     PetIDFull,
     PetIDSmoke,
