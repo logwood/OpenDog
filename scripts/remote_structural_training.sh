@@ -4,6 +4,7 @@ set -euo pipefail
 root="${PET_REID_REMOTE_ROOT:-/data/senwang/pet-reid-imag-20260901}"
 project="${root}/src/Pet-ReID-IMAG"
 python_bin="${PET_REID_PYTHON:-/data/senwang/envs/pet-reid-imag/bin/python}"
+python_dir="$(dirname "${python_bin}")"
 config="${PET_REID_CONFIG:-configs/remote_structural_s101_224.yaml}"
 run_id="${PET_REID_RUN_ID:-structural_s101_224_seed20260926}"
 workstream="${PET_REID_WORKSTREAM:-structural-latent}"
@@ -12,6 +13,11 @@ control="${root}/artifacts/runs/${workstream}/control"
 run_dir="${root}/artifacts/runs/${workstream}/${run_id}"
 pid_file="${control}/${run_id}.pid"
 log_file="${control}/${run_id}.log"
+
+# Runtime evaluation compiles FastReID's Cython rank helper through the
+# command name ``python3``.  Keep that helper on the same environment as the
+# trainer so it sees numpy/Cython and cannot silently fall back to /usr/bin.
+export PATH="${python_dir}:${PATH}"
 
 check() {
   cd "${project}"
