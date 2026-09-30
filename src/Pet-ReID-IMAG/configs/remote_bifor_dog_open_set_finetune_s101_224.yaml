@@ -6,11 +6,10 @@ _BASE_: remote_bifor_dog_structural_s101_224.yaml
 SEED: 20260930
 
 MODEL:
-  # Keep the CNN and established embedding head fixed during this short
-  # adaptation.  The latent workspace and identity-query route can still move
-  # enough to separate hard identity prototypes without rewriting the proven
-  # closed-set representation.
-  FREEZE_LAYERS: [backbone, heads]
+  # Keep the CNN fixed during this short adaptation.  The established
+  # embedding head stays in train mode because its legacy loss contract needs
+  # training outputs; its optimizer group is reduced below instead.
+  FREEZE_LAYERS: [backbone]
   LATENT_WORKSPACE:
     OPEN_SET_LOSS_ENABLED: True
     OPEN_SET_LOSS_WEIGHT: 0.05
@@ -23,6 +22,7 @@ SOLVER:
   DELAY_EPOCHS: 0
   SCHED: CosineAnnealingLR
   ETA_MIN_LR: 0.000002
+  HEADS_LR_FACTOR: 0.1
   WARMUP_ITERS: 100
   FREEZE_ITERS: 100000
   CHECKPOINT_PERIOD: 1
