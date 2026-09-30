@@ -92,6 +92,13 @@ _C.MODEL.LATENT_WORKSPACE.IDENTITY_FUSION_LOSS_WEIGHT = 0.10
 _C.MODEL.LATENT_WORKSPACE.IDENTITY_FUSION_WEIGHT_MIN = 0.0
 _C.MODEL.LATENT_WORKSPACE.IDENTITY_FUSION_WEIGHT_MAX = 0.5
 _C.MODEL.LATENT_WORKSPACE.IDENTITY_FUSION_WEIGHT_INIT = 0.05
+# Identity-level metric regularization for open-set fine-tuning.  It compares
+# each sample with a leave-one-out prototype for its identity and the hardest
+# other identity in the same balanced batch.  The default is disabled so old
+# recipes and checkpoints keep exactly their historical objective.
+_C.MODEL.LATENT_WORKSPACE.OPEN_SET_LOSS_ENABLED = False
+_C.MODEL.LATENT_WORKSPACE.OPEN_SET_LOSS_WEIGHT = 0.05
+_C.MODEL.LATENT_WORKSPACE.OPEN_SET_MARGIN = 0.08
 _C.MODEL.LATENT_WORKSPACE.EARLY_ABORT_ENABLED = False
 _C.MODEL.LATENT_WORKSPACE.EARLY_ABORT_WARMUP_ITERS = 100
 _C.MODEL.LATENT_WORKSPACE.EARLY_ABORT_PATIENCE = 2

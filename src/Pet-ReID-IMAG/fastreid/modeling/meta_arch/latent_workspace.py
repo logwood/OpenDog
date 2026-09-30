@@ -50,6 +50,64 @@ def _slot_statistics(slots):
     )
 
 
+def identity_prototype_margin_loss(
+    features,
+    targets,
+    *,
+    margin=0.08,
+):
+    """Separate each identity from its hardest in-batch prototype.
+
+    The positive prototype excludes the current sample, so the loss cannot be
+    satisfied by the trivial self-similarity of an anchor.  This is an
+    identity-level complement to the existing sample-level triplet loss and is
+    useful for open-set fine-tuning: an unseen identity must not be absorbed by
+    one highly similar enrolled identity merely because its nearest sample is
+    visually close.
+
+    The loss is deliberately defined only from the balanced training batch.
+    It changes no descriptor dimensions and returns an exact zero when every
+    identity already clears the requested cosine margin.
+    """
+
+    if features.ndim != 2 or targets.ndim != 1 or features.shape[0] != targets.shape[0]:
+        raise ValueError("features must be [batch, dim] and targets must be [batch]")
+    if features.shape[0] == 0:
+        return features.sum() * 0.0
+    if float(margin) < 0.0:
+        raise ValueError("prototype margin must be non-negative")
+
+    values = F.normalize(features.float(), dim=1)
+    unique_targets, inverse = torch.unique(targets, sorted=True, return_inverse=True)
+    identity_count = int(unique_targets.numel())
+    if identity_count < 2:
+        return values.sum() * 0.0
+
+    prototypes = values.new_zeros((identity_count, values.shape[1]))
+    prototypes.index_add_(0, inverse, values)
+    counts = torch.bincount(inverse, minlength=identity_count).to(values.dtype)
+
+    # Leave the anchor out of its positive prototype whenever a second view is
+    # present.  A singleton identity remains valid for synthetic/smoke batches.
+    own_counts = counts[inverse].unsqueeze(1)
+    leave_one_out = prototypes[inverse] - values
+    positive_prototypes = leave_one_out / (own_counts - 1.0).clamp_min(1.0)
+    singleton = own_counts <= 1.0
+    positive_prototypes = torch.where(
+        singleton,
+        prototypes[inverse],
+        positive_prototypes,
+    )
+    positive_prototypes = F.normalize(positive_prototypes, dim=1)
+    positive_scores = (values * positive_prototypes).sum(dim=1)
+
+    prototype_scores = values @ F.normalize(prototypes, dim=1).transpose(0, 1)
+    prototype_scores.scatter_(1, inverse.unsqueeze(1), float("-inf"))
+    hardest_negative_scores = prototype_scores.max(dim=1).values
+    violations = float(margin) + hardest_negative_scores - positive_scores
+    return F.relu(violations).mean().to(dtype=features.dtype)
+
+
 def _orthogonal_role_anchors(num_slots, dim):
     """Build deterministic zero-mean DCT rows with equal norm and no parameters."""
     if num_slots > dim:
@@ -1691,6 +1749,9 @@ class SpatialQueryLatentWorkspace(LatentWorkspaceBaseline):
         fusion_weight_min=0.0,
         fusion_weight_max=0.5,
         fusion_weight_init=0.05,
+        open_set_loss_enabled=False,
+        open_set_loss_weight=0.05,
+        open_set_margin=0.08,
     ):
         """Experimental configurable constructor for the spatial-query latent workspace."""
         super().__init__(
@@ -1711,6 +1772,13 @@ class SpatialQueryLatentWorkspace(LatentWorkspaceBaseline):
         self.fusion_loss_weight = float(fusion_loss_weight)
         self.fusion_weight_min = float(fusion_weight_min)
         self.fusion_weight_max = float(fusion_weight_max)
+        self.open_set_loss_enabled = bool(open_set_loss_enabled)
+        self.open_set_loss_weight = float(open_set_loss_weight)
+        self.open_set_margin = float(open_set_margin)
+        if self.open_set_loss_weight < 0.0:
+            raise ValueError("open-set loss weight cannot be negative")
+        if self.open_set_margin < 0.0:
+            raise ValueError("open-set prototype margin cannot be negative")
         probability = (fusion_weight_init - fusion_weight_min) / (
             fusion_weight_max - fusion_weight_min
         )
@@ -1745,6 +1813,9 @@ class SpatialQueryLatentWorkspace(LatentWorkspaceBaseline):
             fusion_weight_min=workspace.IDENTITY_FUSION_WEIGHT_MIN,
             fusion_weight_max=workspace.IDENTITY_FUSION_WEIGHT_MAX,
             fusion_weight_init=workspace.IDENTITY_FUSION_WEIGHT_INIT,
+            open_set_loss_enabled=workspace.OPEN_SET_LOSS_ENABLED,
+            open_set_loss_weight=workspace.OPEN_SET_LOSS_WEIGHT,
+            open_set_margin=workspace.OPEN_SET_MARGIN,
         )
         return params
 
@@ -1876,6 +1947,15 @@ class SpatialQueryLatentWorkspace(LatentWorkspaceBaseline):
                     main_outputs["features"], query_outputs["features"]
                 )
                 losses.update(self._fused_metric_losses(fused, targets))
+                if self.open_set_loss_enabled and self.open_set_loss_weight > 0.0:
+                    losses["loss_open_set_prototype"] = (
+                        identity_prototype_margin_loss(
+                            fused,
+                            targets,
+                            margin=self.open_set_margin,
+                        )
+                        * self.open_set_loss_weight
+                    )
             return losses
 
         main_descriptor = self.heads(features)

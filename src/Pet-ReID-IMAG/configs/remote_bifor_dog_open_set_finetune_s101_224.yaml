@@ -1,0 +1,38 @@
+_BASE_: remote_bifor_dog_structural_s101_224.yaml
+
+# Open-set fine-tuning keeps the existing fused descriptor contract.  The new
+# objective operates on leave-one-out identity prototypes inside each balanced
+# training batch, so no held-out test identity is exposed to the optimizer.
+SEED: 20260930
+
+MODEL:
+  # Keep the CNN and established embedding head fixed during this short
+  # adaptation.  The latent workspace and identity-query route can still move
+  # enough to separate hard identity prototypes without rewriting the proven
+  # closed-set representation.
+  FREEZE_LAYERS: [backbone, heads]
+  LATENT_WORKSPACE:
+    OPEN_SET_LOSS_ENABLED: True
+    OPEN_SET_LOSS_WEIGHT: 0.05
+    OPEN_SET_MARGIN: 0.08
+
+SOLVER:
+  OPT: Adam
+  BASE_LR: 0.00002
+  MAX_EPOCH: 6
+  DELAY_EPOCHS: 0
+  SCHED: CosineAnnealingLR
+  ETA_MIN_LR: 0.000002
+  WARMUP_ITERS: 100
+  FREEZE_ITERS: 100000
+  CHECKPOINT_PERIOD: 1
+  IMS_PER_BATCH: 80
+
+DATALOADER:
+  NUM_WORKERS: 8
+
+TEST:
+  EVAL_PERIOD: 1
+  IMS_PER_BATCH: 64
+
+OUTPUT_DIR: artifacts/runs/structural-latent-bifor/bifor_dog_open_set_finetune_s101_224
