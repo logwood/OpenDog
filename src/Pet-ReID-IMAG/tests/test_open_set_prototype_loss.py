@@ -31,3 +31,26 @@ def test_identity_prototype_margin_loss_backpropagates_for_a_hard_negative():
     assert float(loss) > 0.0
     assert features.grad is not None
     assert torch.isfinite(features.grad).all()
+
+
+def test_identity_prototype_margin_loss_uses_cross_batch_memory():
+    features = torch.tensor(
+        [[1.0, 0.0], [0.99, 0.01]],
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+    targets = torch.tensor([0, 0])
+    memory_features = torch.tensor([[0.98, 0.02], [-1.0, 0.0]])
+    memory_targets = torch.tensor([1, 2])
+
+    loss = identity_prototype_margin_loss(
+        features,
+        targets,
+        margin=0.08,
+        memory_features=memory_features,
+        memory_targets=memory_targets,
+    )
+
+    assert float(loss) > 0.0
+    loss.backward()
+    assert torch.isfinite(features.grad).all()

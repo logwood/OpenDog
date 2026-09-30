@@ -55,6 +55,8 @@ def identity_prototype_margin_loss(
     targets,
     *,
     margin=0.08,
+    memory_features=None,
+    memory_targets=None,
 ):
     """Separate each identity from its hardest in-batch prototype.
 
@@ -80,7 +82,7 @@ def identity_prototype_margin_loss(
     values = F.normalize(features.float(), dim=1)
     unique_targets, inverse = torch.unique(targets, sorted=True, return_inverse=True)
     identity_count = int(unique_targets.numel())
-    if identity_count < 2:
+    if identity_count < 2 and memory_features is None:
         return values.sum() * 0.0
 
     prototypes = values.new_zeros((identity_count, values.shape[1]))
@@ -101,8 +103,29 @@ def identity_prototype_margin_loss(
     positive_prototypes = F.normalize(positive_prototypes, dim=1)
     positive_scores = (values * positive_prototypes).sum(dim=1)
 
-    prototype_scores = values @ F.normalize(prototypes, dim=1).transpose(0, 1)
-    prototype_scores.scatter_(1, inverse.unsqueeze(1), float("-inf"))
+    candidate_prototypes = F.normalize(prototypes, dim=1)
+    candidate_targets = unique_targets
+    if memory_features is not None or memory_targets is not None:
+        if memory_features is None or memory_targets is None:
+            raise ValueError("memory features and labels must be provided together")
+        if memory_features.ndim != 2 or memory_targets.ndim != 1:
+            raise ValueError("memory features must be [memory, dim] and labels [memory]")
+        if memory_features.shape[0] != memory_targets.shape[0]:
+            raise ValueError("memory features and labels must have equal length")
+        if memory_features.shape[1] != values.shape[1]:
+            raise ValueError("memory feature width must match the current descriptor")
+        if memory_features.shape[0] > 0:
+            candidate_prototypes = torch.cat(
+                (candidate_prototypes, F.normalize(memory_features.float(), dim=1)),
+                dim=0,
+            )
+            candidate_targets = torch.cat(
+                (candidate_targets, memory_targets.to(device=targets.device)), dim=0
+            )
+
+    prototype_scores = values @ candidate_prototypes.transpose(0, 1)
+    same_identity = candidate_targets.view(1, -1).eq(targets.view(-1, 1))
+    prototype_scores = prototype_scores.masked_fill(same_identity, float("-inf"))
     hardest_negative_scores = prototype_scores.max(dim=1).values
     violations = float(margin) + hardest_negative_scores - positive_scores
     return F.relu(violations).mean().to(dtype=features.dtype)
@@ -1752,6 +1775,7 @@ class SpatialQueryLatentWorkspace(LatentWorkspaceBaseline):
         open_set_loss_enabled=False,
         open_set_loss_weight=0.05,
         open_set_margin=0.08,
+        open_set_memory_size=4096,
     ):
         """Experimental configurable constructor for the spatial-query latent workspace."""
         super().__init__(
@@ -1775,10 +1799,16 @@ class SpatialQueryLatentWorkspace(LatentWorkspaceBaseline):
         self.open_set_loss_enabled = bool(open_set_loss_enabled)
         self.open_set_loss_weight = float(open_set_loss_weight)
         self.open_set_margin = float(open_set_margin)
+        self.open_set_memory_size = int(open_set_memory_size)
         if self.open_set_loss_weight < 0.0:
             raise ValueError("open-set loss weight cannot be negative")
         if self.open_set_margin < 0.0:
             raise ValueError("open-set prototype margin cannot be negative")
+        if self.open_set_memory_size < 0:
+            raise ValueError("open-set memory size cannot be negative")
+        self._open_set_memory_features = None
+        self._open_set_memory_targets = None
+        self._open_set_memory_pointer = 0
         probability = (fusion_weight_init - fusion_weight_min) / (
             fusion_weight_max - fusion_weight_min
         )
@@ -1816,6 +1846,7 @@ class SpatialQueryLatentWorkspace(LatentWorkspaceBaseline):
             open_set_loss_enabled=workspace.OPEN_SET_LOSS_ENABLED,
             open_set_loss_weight=workspace.OPEN_SET_LOSS_WEIGHT,
             open_set_margin=workspace.OPEN_SET_MARGIN,
+            open_set_memory_size=workspace.OPEN_SET_MEMORY_SIZE,
         )
         return params
 
@@ -1893,6 +1924,55 @@ class SpatialQueryLatentWorkspace(LatentWorkspaceBaseline):
             ) * kwargs["scale"]
         return {name: value * self.fusion_loss_weight for name, value in losses.items()}
 
+    def _open_set_memory(self):
+        if self._open_set_memory_features is None:
+            return None, None
+        valid = self._open_set_memory_targets >= 0
+        if not bool(valid.any()):
+            return None, None
+        return (
+            self._open_set_memory_features[valid],
+            self._open_set_memory_targets[valid],
+        )
+
+    @torch.no_grad()
+    def _update_open_set_memory(self, features, targets):
+        if not self.open_set_loss_enabled or self.open_set_memory_size <= 0:
+            return
+        values = F.normalize(features.detach().float(), dim=1)
+        labels = targets.detach().long()
+        if self._open_set_memory_features is None:
+            self._open_set_memory_features = values.new_zeros(
+                self.open_set_memory_size, values.shape[1]
+            )
+            self._open_set_memory_targets = torch.full(
+                (self.open_set_memory_size,),
+                -1,
+                dtype=labels.dtype,
+                device=values.device,
+            )
+            self._open_set_memory_pointer = 0
+        if self._open_set_memory_features.shape[1] != values.shape[1]:
+            raise ValueError("open-set memory descriptor width changed during training")
+
+        if values.shape[0] >= self.open_set_memory_size:
+            values = values[-self.open_set_memory_size :]
+            labels = labels[-self.open_set_memory_size :]
+            self._open_set_memory_features.copy_(values)
+            self._open_set_memory_targets.copy_(labels)
+            self._open_set_memory_pointer = 0
+            return
+
+        count = values.shape[0]
+        positions = (
+            torch.arange(count, device=values.device) + self._open_set_memory_pointer
+        ) % self.open_set_memory_size
+        self._open_set_memory_features[positions] = values
+        self._open_set_memory_targets[positions] = labels
+        self._open_set_memory_pointer = int(
+            (self._open_set_memory_pointer + count) % self.open_set_memory_size
+        )
+
     def forward(self, batched_inputs):
         images = self.preprocess_image(batched_inputs)
         collect_diagnostics = self._should_collect_diagnostics()
@@ -1948,14 +2028,18 @@ class SpatialQueryLatentWorkspace(LatentWorkspaceBaseline):
                 )
                 losses.update(self._fused_metric_losses(fused, targets))
                 if self.open_set_loss_enabled and self.open_set_loss_weight > 0.0:
+                    memory_features, memory_targets = self._open_set_memory()
                     losses["loss_open_set_prototype"] = (
                         identity_prototype_margin_loss(
                             fused,
                             targets,
                             margin=self.open_set_margin,
+                            memory_features=memory_features,
+                            memory_targets=memory_targets,
                         )
                         * self.open_set_loss_weight
                     )
+                    self._update_open_set_memory(fused, targets)
             return losses
 
         main_descriptor = self.heads(features)
