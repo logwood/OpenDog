@@ -1,7 +1,8 @@
 // End-to-end: Chromium fake camera (real dog footage) -> H5 -> worker (ORT-WASM, real models)
 // -> upload -> server re-check (real models) -> token -> commit into the stand-in gallery.
 //   E2E_MEDIA=<dir with front.y4m, sides.y4m> DOG_CAPTURE_MODELS=<models> PYTHON=<python> node e2e/run.mjs <out-dir>
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:net';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
@@ -13,29 +14,42 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 const here = dirname(fileURLToPath(import.meta.url));
 const out = resolve(process.argv[2] ?? join(here, 'results'));
 mkdirSync(out, { recursive: true });
-const port = 8765;
+const reservation = createServer();
+await new Promise((resolve) => reservation.listen(0, '127.0.0.1', resolve));
+const port = reservation.address().port;
+await new Promise((resolve) => reservation.close(resolve));
 const base = `http://127.0.0.1:${port}`;
 const media = process.env.E2E_MEDIA;
+if (!media) throw new Error('Set E2E_MEDIA to the generated Y4M fixture directory');
 
 const server = spawn(process.env.PYTHON ?? 'python', [join(here, 'server.py'), '--port', String(port)],
-  { stdio: ['ignore', 'inherit', 'inherit'], env: process.env });
+  { stdio: ['ignore', 'inherit', 'inherit'], env: process.env, windowsHide: true });
+let startupError = null;
+server.on('error', (error) => { startupError = error; });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-for (let i = 0; i < 100; i++) {
-  try { if ((await fetch(`${base}/capture/`)).ok) break; } catch { /* starting */ }
-  await sleep(300);
-}
 
 const scenarios = [
   { name: 'identify_front', video: 'front.y4m', body: { purpose: 'identify', policy: 'identify_quick', client_commit: true } },
   { name: 'enroll_sides', video: 'sides.y4m', body: { purpose: 'enroll', policy: 'sides_only', pet_id: 'e2e-dog', client_commit: true } },
 ];
 const summary = [];
+const browsers = new Set();
 try {
+  let ready = false;
+  for (let i = 0; i < 200; i++) {
+    if (startupError || server.exitCode !== null) throw startupError ?? new Error(`Server exited: ${server.exitCode}`);
+    try { if ((await fetch(`${base}/capture/`)).ok) { ready = true; break; } } catch { /* starting */ }
+    await sleep(300);
+  }
+  if (!ready) throw new Error('Capture server failed to start in 60 seconds (build H5 first)');
   for (const s of scenarios) {
-    const browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
+    const browser = await chromium.launch({ channel: process.env.E2E_BROWSER || undefined,
+      args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
       `--use-file-for-fake-video-capture=${join(media, s.video)}`] });
+    browsers.add(browser);
     const page = await browser.newPage({ viewport: { width: 412, height: 860 }, deviceScaleFactor: 1 });
     const consoleErrors = [];
+    page.on('response', (r) => { if (r.status() >= 400) consoleErrors.push(`HTTP ${r.status()} ${r.url()}`); });
     page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
     page.on('pageerror', (e) => consoleErrors.push(String(e)));
     // What went over the wire for the heavy assets (runtime and models), and with which encoding.
@@ -83,6 +97,12 @@ try {
     await page.getByText('确认照片').waitFor({ timeout: 30_000 });
     await page.screenshot({ path: join(out, `${s.name}-3-review.png`), fullPage: true });
     const thumbs = await page.locator('.thumbs img').count();
+    if (process.env.E2E_RETAKE === '1' && s.name === 'identify_front') {
+      await page.getByRole('button', { name: '重拍正面', exact: true }).click();
+      await page.locator('.stage').waitFor({ timeout: 10_000 });
+      await page.locator('.review').waitFor({ timeout: 60_000 });
+      await page.screenshot({ path: join(out, `${s.name}-3-retaken.png`), fullPage: true });
+    }
     await page.getByRole('button', { name: '提交' }).click();
     await page.locator('.result h1').waitFor({ timeout: 60_000 });
     const verdict = await page.locator('.result h1').textContent();
@@ -100,13 +120,24 @@ try {
     summary.push({ scenario: s.name, cross_origin_isolated: isolated, model_load_ms: loadedMs, capture_ms: captureMs,
       prompt_timeline: timeline, thumbnails: thumbs, verdict, server_status: status.result?.status,
       server_shots: status.result?.shots?.map((x) => ({ id: x.id, accepted: x.accepted, reasons: x.reasons, server: x.server })),
-      recognition: status.result?.recognition, state: status.state, committed: committed?.action ?? null, outcome: committed?.outcome ?? null,
+      recognition: status.result?.recognition, state: status.state, committed: committed?.action ?? null,
+      gallery: committed?.gallery ?? null, outcome: committed?.outcome ?? null,
       signals: status.signals_recorded, transfers, console_errors: consoleErrors });
     await browser.close();
+    browsers.delete(browser);
+    if (verdict !== '采集成功' || status.state !== 'committed' || consoleErrors.length) {
+      throw new Error(`${s.name}: verification/commit/browser check failed (see summary.json)`);
+    }
+    if (committed?.gallery?.predicted_pet_id && !committed.outcome.includes(committed.gallery.predicted_pet_id)) {
+      throw new Error('UI outcome does not reflect the real recognition response');
+    }
   }
   summary.push({ gallery_calls: await (await fetch(`${base}/e2e/calls`)).json() });
 } finally {
-  server.kill();
+  for (const browser of browsers) await browser.close();
+  if (process.platform === 'win32' && server.pid) spawnSync('taskkill', ['/PID', String(server.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+  else server.kill();
+  writeFileSync(join(out, 'summary.json'), JSON.stringify(summary, null, 2));
 }
 writeFileSync(join(out, 'summary.json'), JSON.stringify(summary, null, 2));
 console.log(JSON.stringify(summary, null, 2));

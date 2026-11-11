@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import type { CaptureSession } from '../lib/session';
 import { reasonText, VIEW_NAMES } from '../lib/texts';
+import { commitOutcome } from '../lib/outcome';
 
 const props = defineProps<{ session: CaptureSession }>();
 const emit = defineEmits<{ retake: [views: string[]]; close: [] }>();
@@ -11,15 +12,7 @@ const rejected = computed(() => result.value.shots.filter((s) => !s.accepted));
 const missingText = computed(() => result.value.missing_views.map((name: string) => VIEW_NAMES[name] ?? name).join('、'));
 const committed = ref<Record<string, any> | null>(null);
 // Readable outcome of the commit; the full response stays available under "详细数据".
-const outcome = computed(() => {
-  const c = committed.value;
-  if (!c) return '';
-  if (c.action === 'enroll') return `已为 ${c.pet_id} 建档，录入 ${c.gallery?.added ?? c.images?.length ?? 0} 张照片。`;
-  const top = c.gallery?.matches?.[0];
-  if (!top) return '比对已完成，没有找到足够相似的已建档狗狗。';
-  const score = typeof top.score === 'number' ? `（相似度 ${top.score.toFixed(2)}）` : '';
-  return `最相近：${top.display_name || top.pet_id}${score}`;
-});
+const outcome = computed(() => commitOutcome(committed.value));
 const committing = ref(false);
 const error = ref('');
 

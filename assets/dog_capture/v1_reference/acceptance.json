@@ -1,0 +1,10 @@
+{
+  "scope": "Local release checks on previously reviewed development videos; not a held-out accuracy benchmark.",
+  "cases": {
+    "user": {"required_views": ["front", "left"], "rejected_frames": [865], "reason": "Frame 865: sideways close-up with closed/occluded eyes, incorrectly selected as frontal by this reference model. Prior validated v0.3.1 selects front 271 and left 282."},
+    "wolfhound_panting": {"required_views": ["front", "left", "right"]},
+    "blurred_front_fixture": {"forbid_any_capture": true},
+    "empty_scene_fixture": {"forbid_any_capture": true},
+    "frozen_front_fixture": {"forbidden_views": ["left", "right"]}
+  }
+}

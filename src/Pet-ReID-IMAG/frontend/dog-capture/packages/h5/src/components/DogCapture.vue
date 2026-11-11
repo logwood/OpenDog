@@ -44,11 +44,10 @@ onBeforeUnmount(() => session.dispose());
 async function finish() {
   if (screen.value !== 'camera') return;
   screen.value = 'review';
-  await session.finish();
+  try { await session.finish(); } catch (error) { fail(String(error)); }
 }
 async function retake(views: string[]) {
-  screen.value = 'camera';
-  await session.retake(views);
+  try { await session.retake(views); screen.value = 'camera'; } catch (error) { fail(String(error)); }
 }
 async function submit() {
   await session.upload();

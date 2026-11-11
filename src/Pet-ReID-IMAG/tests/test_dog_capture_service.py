@@ -206,7 +206,7 @@ def test_h5_static_serves_precompressed_assets(tmp_path):
     (tmp_path / 'ort').mkdir()
     raw = b'\0asm' + bytes(4096)
     (tmp_path / 'ort' / 'rt.wasm').write_bytes(raw)
-    (tmp_path / 'ort' / 'rt.wasm.br').write_bytes(b'br-bytes')
+    (tmp_path / 'ort' / 'rt.wasm.br').write_bytes(pytest.importorskip('brotli').compress(raw))
     (tmp_path / 'ort' / 'rt.wasm.gz').write_bytes(gzip.compress(raw))
     (tmp_path / 'index.html').write_text('<!doctype html>', encoding='utf8')
     app = FastAPI()
@@ -220,3 +220,72 @@ def test_h5_static_serves_precompressed_assets(tmp_path):
     plain = client.get('/capture/ort/rt.wasm', headers={'accept-encoding': 'identity'})
     assert 'content-encoding' not in plain.headers and plain.content == raw
     assert client.get('/capture/', headers={'accept-encoding': 'br'}).text == '<!doctype html>'
+
+
+def test_missing_nonce_does_not_consume_attempts(app_parts):
+    client, detector, _, store = app_parts
+    session = start(client)
+    data, files = package(session, FULL, detector)
+    manifest = json.loads(data['manifest'])
+    del manifest['nonce']
+    response = client.post(f'/v1/capture/sessions/{session["session_id"]}/package',
+                           data={'manifest': json.dumps(manifest)}, files=files)
+    assert response.status_code == 403
+    assert store.get(session['session_id']).attempts == 0
+
+
+def test_server_species_check_cannot_reuse_previous_uploaded_image():
+    image, detections = render(size=(480, 640), center=(320, 240), iod=110)
+    detector = QueueDetector()
+    detector.queue = [detections[0], detections[0]]
+
+    class Gate:
+        calls = 0
+
+        def detect(self, frame):
+            self.calls += 1
+            if self.calls == 1:
+                return np.asarray([[0, 0, 640, 480]], np.float32), np.asarray([.99])
+            return np.zeros((0, 4), np.float32), np.zeros(0)
+
+    engine = CaptureEngine(CaptureConfig(), detector, Gate())
+    assert engine.verify_shot(image, claimed_view='front')['ok']
+    assert engine.verify_shot(image, claimed_view='front')['reasons'] == ['not_dog']
+
+
+def test_downstream_models_can_retrieve_only_server_accepted_originals(app_parts):
+    client, detector, _, _ = app_parts
+    session = start(client)
+    data, files = package(session, FULL, detector)
+    prefix = f'/v1/capture/sessions/{session["session_id"]}'
+    assert client.post(prefix + '/package', data=data, files=files).json()['status'] == 'accepted'
+    shot = json.loads(data['manifest'])['shots'][0]
+    assert client.get(prefix + '/shots/' + shot['id']).status_code == 401
+    response = client.get(prefix + '/shots/' + shot['id'], headers={'x-api-key': 'k'})
+    assert response.headers['content-type'] == 'image/jpeg'
+    assert hashlib.sha256(response.content).hexdigest() == shot['sha256']
+    assert client.get(prefix + '/shots/unknown', headers={'x-api-key': 'k'}).status_code == 404
+
+
+def test_policy_cannot_weaken_configured_capture_quality_floor():
+    from dog_capture.service.protocol import engine_config, policy
+    base = CaptureConfig().merged({'selection': {'min_level': 'high', 'good_enough': .75}})
+    effective = engine_config(base, policy('identify_quick'))
+    assert effective.selection.min_level == 'high' and effective.selection.good_enough == .75
+
+
+def test_served_models_use_hash_versioned_cache_keys(tmp_path):
+    path = tmp_path / 'face.onnx'
+    path.write_bytes(b'model reference')
+    router, _ = build_capture_router(base_config=CaptureConfig(), engine_factory=lambda _: None,
+                                      model_files={'face': path})
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    session = client.post('/v1/capture/sessions', json={'purpose': 'identify'}).json()
+    info = client.get(session['config_path']).json()['models']['face']
+    assert info['sha256'] in info['url']
+    response = client.get(info['url'])
+    assert response.content == path.read_bytes() and 'immutable' in response.headers['cache-control']
+    assert client.get('/v1/capture/models/face.onnx?sha256=old').status_code == 409
+    assert client.get('/v1/capture/models/face.onnx').headers['cache-control'] == 'no-cache'

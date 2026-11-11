@@ -1,0 +1,5 @@
+{
+  "runtime": {"providers": "cpu", "threads": 4, "rotate": "auto"},
+  "body_gate": {"enabled": "on"},
+  "selection": {"min_level": "high", "good_enough": 0.75}
+}

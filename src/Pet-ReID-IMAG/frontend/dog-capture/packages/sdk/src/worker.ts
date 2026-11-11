@@ -46,6 +46,7 @@ function frameFrom(bitmap: ImageBitmap): Frame {
 
 async function handle(message: MessageEvent) {
   const data = message.data;
+  const reply = (value: object) => postMessage({ ...value, requestId: data.requestId });
   try {
     if (data.type === 'init') {
       // WASM-only build (~11 MB runtime, served from wasmPaths); 'onnxruntime-web/webgpu' is the opt-in GPU build.
@@ -57,17 +58,17 @@ async function handle(message: MessageEvent) {
       sessionConfig = data.config as SessionConfig;
       recorder = new SignalRecorder();
       providers = created.providers;
-      postMessage({ type: 'ready', providers });
+      reply({ type: 'ready', providers });
     } else if (data.type === 'frame') {
       if (!engine) throw new Error('engine not initialised');
       const result = await engine.process(frameFrom(data.bitmap), data.t, data.index);
       if (result) recorder.add(result);
       const primary = engine.primaryId !== null ? engine.contexts.get(engine.primaryId) : undefined;
       const counts = primary ? Object.fromEntries(engine.viewNames.map((v) => [v, primary.shots.slots[v].length])) : null;
-      postMessage({ type: 'result', result: result ? serialiseResult(result) : null, complete: engine.complete(), counts });
+      reply({ type: 'result', result: result ? serialiseResult(result) : null, complete: engine.complete(), counts });
     } else if (data.type === 'retake') {
       engine?.retake(data.views);
-      postMessage({ type: 'retaken', views: data.views });
+      reply({ type: 'retaken', views: data.views });
     } else if (data.type === 'finish') {
       if (!engine) throw new Error('engine not initialised');
       const bundle = engine.finalize();
@@ -93,14 +94,14 @@ async function handle(message: MessageEvent) {
           }
         }
       }
-      postMessage({ type: 'shots', shots, complete: engine.complete(), providers,
+      reply({ type: 'shots', shots, complete: engine.complete(), providers,
         signals: recorder.toJSON(sessionConfig?.policy.view_order ?? []), frames: recorder.frames,
         views: bundle ? bundle.viewNames : [], captured: bundle ? bundle.captured() : [] });
     } else if (data.type === 'reset') {
       engine = null;
     }
   } catch (error) {
-    postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+    reply({ type: 'error', message: error instanceof Error ? error.message : String(error) });
   }
 }
 

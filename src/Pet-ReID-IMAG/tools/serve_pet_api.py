@@ -265,6 +265,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="reject capture shots whose recognizer similarity to the others is below this (report-only if unset)",
     )
+    parser.add_argument("--capture-config", type=Path, help="JSON/YAML capture quality/runtime configuration")
     return parser
 
 
@@ -460,12 +461,14 @@ def main() -> None:
     app = create_app(service, api_key=args.api_key)
     if args.enable_capture:
         from dog_capture.service import mount_capture
+        from dog_capture.engine import CaptureConfig
 
         mount_capture(
             app,
             service,
             api_key=args.api_key,
             models_dir=args.capture_models,
+            config=CaptureConfig.load(args.capture_config) if args.capture_config else None,
             consistency_threshold=args.capture_consistency_threshold,
         )
     uvicorn.run(

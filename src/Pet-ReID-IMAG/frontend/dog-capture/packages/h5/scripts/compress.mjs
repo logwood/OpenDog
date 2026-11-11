@@ -3,9 +3,10 @@
 // runtime goes over the wire as ~2.8 MB (br) / 3.8 MB (gzip).
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 
-const root = new URL('../dist/', import.meta.url).pathname;
+const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const exts = /\.(wasm|m?js|css|html|json|svg)$/;
 let before = 0, after = 0;
 function walk(dir) {

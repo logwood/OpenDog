@@ -1,0 +1,9 @@
+{
+  "kind": "yolo_pose",
+  "schema": "dogface6",
+  "kpt_shape": [6, 3],
+  "input_size": 320,
+  "source_weights": "/tmp/claude-0/-home-user-OpenDog/e43a0a33-2b4a-5e73-809a-6ec999a35337/scratchpad/models/dogface6_e12_best.pt",
+  "sha256": "48c2b9f580a6b29f6ec92f81d58bffcb06c609b4da4d77e4c85f259dc1b8d74c",
+  "license": "Trained with Ultralytics (AGPL-3.0) on StanfordExtra/Stanford Dogs (research use)"
+}

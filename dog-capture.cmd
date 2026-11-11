@@ -7,4 +7,6 @@ if "%~1"=="" (
   exit /b 1
 )
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\dog-capture.ps1" %*
+set "DOG_CAPTURE_EXIT=%ERRORLEVEL%"
 pause
+exit /b %DOG_CAPTURE_EXIT%

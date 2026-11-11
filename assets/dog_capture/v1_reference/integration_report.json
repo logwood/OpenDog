@@ -1,0 +1,538 @@
+{
+  "schema": "dog-capture-local-integration/1",
+  "date": "2026-11-11",
+  "base_commit": "e2588193abd25e157d87aec87aec550133690cc2",
+  "integration_passed": true,
+  "model_release_acceptance_passed": false,
+  "known_limitations": [
+    "User video: compatibility configuration falsely selects frame 865 as front and misses left. Quality profile returns no qualifying views.",
+    "Wolfhound natural video: right view missed.",
+    "Browser camera fixtures are photo jitter/mirror sequences, not natural motion or liveness tests.",
+    "Real Re-ID integration uses one dog in a new isolated gallery; not a recognition-accuracy benchmark."
+  ],
+  "models": {
+    "dog_face_pose.json": {
+      "bytes": 415,
+      "sha256": "36938e9995f20259bd67e5e5eca4d7a236c857d07cdb508d5814cac54855d6db"
+    },
+    "dog_face_pose.onnx": {
+      "bytes": 10845283,
+      "sha256": "48c2b9f580a6b29f6ec92f81d58bffcb06c609b4da4d77e4c85f259dc1b8d74c"
+    },
+    "yolox_nano.onnx": {
+      "bytes": 3659407,
+      "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d"
+    }
+  },
+  "onnx_checker_passed": true,
+  "environment": {
+    "os": "Windows-11-10.0.26300-SP0",
+    "python": "3.12.13",
+    "node": "24.13.1",
+    "native_packages": {
+      "numpy": "2.5.4",
+      "opencv-python": "5.0.0.93",
+      "onnxruntime": "1.23.2",
+      "onnx": "1.23.2",
+      "PyYAML": "6.0.3",
+      "fastapi": "0.162.4",
+      "uvicorn": "0.54.0",
+      "pytest": "9.2.0"
+    },
+    "browser_ort": "1.31.1",
+    "recognition_server_ort": "1.26.0",
+    "recognition_server_torch": "2.11.0+cu126",
+    "providers": "CPUExecutionProvider and browser WASM"
+  },
+  "checks": {
+    "python_tests_passed": 83,
+    "sdk_tests_passed": 25,
+    "sdk_real_onnx_test_executed": true,
+    "typecheck": "passed",
+    "h5_build": "passed",
+    "windows_setup": "passed",
+    "windows_cli_exit_codes": [
+      0,
+      2
+    ],
+    "standalone_service": {
+      "passed": true,
+      "quality_floor": "high",
+      "client_commit": false,
+      "face_sha256": "48c2b9f580a6b29f6ec92f81d58bffcb06c609b4da4d77e4c85f259dc1b8d74c",
+      "cross_origin_isolation": true
+    }
+  },
+  "native": {
+    "cases": [
+      {
+        "case": "user",
+        "source": "data/dog_capture/user/2611101816341481.mp4",
+        "frames": 1314,
+        "capture": {
+          "front": [
+            {
+              "frame": 865,
+              "quality": 0.5847,
+              "level": "medium"
+            }
+          ]
+        },
+        "missing_views": [
+          "left",
+          "right"
+        ],
+        "acceptance": {
+          "checked": true,
+          "passed": false,
+          "reasons": [
+            "missing:left",
+            "rejected_frame:865"
+          ]
+        },
+        "timings_ms": {
+          "p50": 18.414,
+          "p95": 47.702,
+          "max": 131.019
+        }
+      },
+      {
+        "case": "dog_whimpering",
+        "source": "data/dog_capture/public/dog_whimpering.webm",
+        "frames": 334,
+        "capture": {},
+        "missing_views": [
+          "front",
+          "left",
+          "right"
+        ],
+        "acceptance": {
+          "checked": false,
+          "passed": null,
+          "reasons": []
+        },
+        "timings_ms": {
+          "p50": 16.659,
+          "p95": 44.326,
+          "max": 186.078
+        }
+      },
+      {
+        "case": "labrador_barking",
+        "source": "data/dog_capture/public/labrador_barking.ogv",
+        "frames": 201,
+        "capture": {
+          "front": [
+            {
+              "frame": 53,
+              "quality": 0.8639,
+              "level": "high"
+            }
+          ]
+        },
+        "missing_views": [
+          "left",
+          "right"
+        ],
+        "acceptance": {
+          "checked": false,
+          "passed": null,
+          "reasons": []
+        },
+        "timings_ms": {
+          "p50": 15.189,
+          "p95": 36.169,
+          "max": 58.807
+        }
+      },
+      {
+        "case": "lurcher_lick",
+        "source": "data/dog_capture/public/lurcher_lick.webm",
+        "frames": 390,
+        "capture": {
+          "front": [
+            {
+              "frame": 6,
+              "quality": 0.7796,
+              "level": "high"
+            }
+          ],
+          "left": [
+            {
+              "frame": 18,
+              "quality": 0.749,
+              "level": "high"
+            }
+          ]
+        },
+        "missing_views": [
+          "right"
+        ],
+        "acceptance": {
+          "checked": false,
+          "passed": null,
+          "reasons": []
+        },
+        "timings_ms": {
+          "p50": 19.107,
+          "p95": 58.141,
+          "max": 197.793
+        }
+      },
+      {
+        "case": "shepherd_apple",
+        "source": "data/dog_capture/public/shepherd_apple.webm",
+        "frames": 743,
+        "capture": {
+          "left": [
+            {
+              "frame": 389,
+              "quality": 0.7219,
+              "level": "high"
+            }
+          ]
+        },
+        "missing_views": [
+          "front",
+          "right"
+        ],
+        "acceptance": {
+          "checked": false,
+          "passed": null,
+          "reasons": []
+        },
+        "timings_ms": {
+          "p50": 20.974,
+          "p95": 63.993,
+          "max": 249.317
+        }
+      },
+      {
+        "case": "wolfhound_panting",
+        "source": "data/dog_capture/public/wolfhound_panting.ogv",
+        "frames": 1212,
+        "capture": {
+          "front": [
+            {
+              "frame": 686,
+              "quality": 0.8801,
+              "level": "high"
+            }
+          ],
+          "left": [
+            {
+              "frame": 778,
+              "quality": 0.9184,
+              "level": "high"
+            }
+          ]
+        },
+        "missing_views": [
+          "right"
+        ],
+        "acceptance": {
+          "checked": true,
+          "passed": false,
+          "reasons": [
+            "missing:right"
+          ]
+        },
+        "timings_ms": {
+          "p50": 20.994,
+          "p95": 33.473,
+          "max": 225.741
+        }
+      },
+      {
+        "case": "blurred_front_fixture",
+        "source": "data/dog_capture/fixtures/blurred_front_fixture.mp4",
+        "frames": 72,
+        "capture": {},
+        "missing_views": [
+          "front",
+          "left",
+          "right"
+        ],
+        "acceptance": {
+          "checked": true,
+          "passed": true,
+          "reasons": []
+        },
+        "timings_ms": {
+          "p50": 15.75,
+          "p95": 52.374,
+          "max": 138.499
+        }
+      },
+      {
+        "case": "empty_scene_fixture",
+        "source": "data/dog_capture/fixtures/empty_scene_fixture.mp4",
+        "frames": 72,
+        "capture": {},
+        "missing_views": [
+          "front",
+          "left",
+          "right"
+        ],
+        "acceptance": {
+          "checked": true,
+          "passed": true,
+          "reasons": []
+        },
+        "timings_ms": {
+          "p50": 15.572,
+          "p95": 59.225,
+          "max": 110.185
+        }
+      },
+      {
+        "case": "frozen_front_fixture",
+        "source": "data/dog_capture/fixtures/frozen_front_fixture.mp4",
+        "frames": 72,
+        "capture": {
+          "front": [
+            {
+              "frame": 40,
+              "quality": 0.7247,
+              "level": "high"
+            }
+          ]
+        },
+        "missing_views": [
+          "left",
+          "right"
+        ],
+        "acceptance": {
+          "checked": true,
+          "passed": true,
+          "reasons": []
+        },
+        "timings_ms": {
+          "p50": 14.708,
+          "p95": 27.056,
+          "max": 134.206
+        }
+      },
+      {
+        "case": "ordered_turn_fixture",
+        "source": "data/dog_capture/fixtures/ordered_turn_fixture.mp4",
+        "frames": 173,
+        "capture": {
+          "front": [
+            {
+              "frame": 161,
+              "quality": 0.8563,
+              "level": "high"
+            }
+          ],
+          "left": [
+            {
+              "frame": 70,
+              "quality": 0.8538,
+              "level": "high"
+            }
+          ]
+        },
+        "missing_views": [
+          "right"
+        ],
+        "acceptance": {
+          "checked": false,
+          "passed": null,
+          "reasons": []
+        },
+        "timings_ms": {
+          "p50": 20.919,
+          "p95": 48.947,
+          "max": 180.484
+        }
+      }
+    ],
+    "frames_total": 4583,
+    "user_quality_profile": {
+      "frames": 1314,
+      "captured_views": [],
+      "quality_floor": "high"
+    }
+  },
+  "browser": [
+    {
+      "scenario": "identify_front",
+      "model_load_ms": 1196,
+      "capture_ms": 1819,
+      "cross_origin_isolated": true,
+      "state": "committed",
+      "outcome": "最相近：e2e-dog（相似度 1.00）",
+      "server_shots": [
+        {
+          "id": "front-1",
+          "accepted": true,
+          "reasons": [],
+          "server": {
+            "view": "front",
+            "box_iou": 0.9962763786315918,
+            "faces": 1,
+            "quality": 0.8839,
+            "level": "high"
+          }
+        },
+        {
+          "id": "front-2",
+          "accepted": true,
+          "reasons": [],
+          "server": {
+            "view": "front",
+            "box_iou": 0.9963762164115906,
+            "faces": 1,
+            "quality": 0.8789,
+            "level": "high"
+          }
+        }
+      ],
+      "console_errors": [],
+      "recognition": {
+        "available": true,
+        "per_shot": {
+          "front-1": {
+            "stability": 0.999,
+            "consistency": 0.9941
+          },
+          "front-2": {
+            "stability": 0.9942,
+            "consistency": 0.9941
+          }
+        },
+        "consistency_threshold": null,
+        "stability_threshold": null,
+        "pairwise_min": 0.9941
+      },
+      "transfers": [
+        {
+          "path": "/v1/capture/models/dog_face_pose.onnx",
+          "status": 200,
+          "encoding": null,
+          "type": "application/octet-stream",
+          "wire_bytes": 10845283
+        },
+        {
+          "path": "/v1/capture/models/yolox_nano.onnx",
+          "status": 200,
+          "encoding": null,
+          "type": "application/octet-stream",
+          "wire_bytes": 3659407
+        },
+        {
+          "path": "/capture/ort/ort-wasm-simd-threaded.wasm",
+          "status": 200,
+          "encoding": "br",
+          "type": "application/wasm",
+          "wire_bytes": 2798035
+        }
+      ],
+      "reid": {
+        "decision": "closed_set_top1",
+        "accepted": true,
+        "predicted_pet_id": "e2e-dog",
+        "top1_score": 0.9959511756896973,
+        "model_fingerprint": "2db41b25d770eb285cd313f4e81a1f77c2017e70d827c0b9a1e48cf74edaf8a5"
+      }
+    },
+    {
+      "scenario": "enroll_sides",
+      "model_load_ms": 1781,
+      "capture_ms": 5726,
+      "cross_origin_isolated": true,
+      "state": "committed",
+      "outcome": "已为 e2e-dog 建档，录入 2 张照片。",
+      "server_shots": [
+        {
+          "id": "left-1",
+          "accepted": true,
+          "reasons": [],
+          "server": {
+            "view": "left",
+            "box_iou": 0.9960941076278687,
+            "faces": 1,
+            "quality": 0.8836,
+            "level": "high"
+          }
+        },
+        {
+          "id": "right-1",
+          "accepted": true,
+          "reasons": [],
+          "server": {
+            "view": "right",
+            "box_iou": 0.996369481086731,
+            "faces": 1,
+            "quality": 0.837,
+            "level": "high"
+          }
+        }
+      ],
+      "console_errors": [],
+      "recognition": {
+        "available": true,
+        "per_shot": {
+          "left-1": {
+            "stability": 0.9939,
+            "consistency": 0.9759
+          },
+          "right-1": {
+            "stability": 0.9913,
+            "consistency": 0.9759
+          }
+        },
+        "consistency_threshold": null,
+        "stability_threshold": null,
+        "pairwise_min": 0.9759
+      },
+      "transfers": [
+        {
+          "path": "/v1/capture/models/dog_face_pose.onnx",
+          "status": 200,
+          "encoding": null,
+          "type": "application/octet-stream",
+          "wire_bytes": 10845283
+        },
+        {
+          "path": "/v1/capture/models/yolox_nano.onnx",
+          "status": 200,
+          "encoding": null,
+          "type": "application/octet-stream",
+          "wire_bytes": 3659407
+        },
+        {
+          "path": "/capture/ort/ort-wasm-simd-threaded.wasm",
+          "status": 200,
+          "encoding": "br",
+          "type": "application/wasm",
+          "wire_bytes": 2798035
+        }
+      ],
+      "reid": {
+        "added_image_ids": [
+          "3e069d7952d6932091846b9f27ed5a9808230b451107fbd8f0baa01c0100ad1d",
+          "56bdf70c533ef2201d522efc35143707e043b62438666811d961d8f7fe2b1d74"
+        ],
+        "duplicate_image_ids": []
+      }
+    }
+  ],
+  "browser_gallery_calls": [
+    [
+      "identify",
+      "cap_oNfUTg2ufFhEVhF9-front-1.jpg"
+    ],
+    [
+      "enroll",
+      "e2e-dog",
+      2
+    ]
+  ],
+  "artifacts": {
+    "local_evidence": "artifacts/runs/dog_capture/v1_integration",
+    "local_delivery": "delivery/dog_capture_onnx_v1",
+    "zip": "delivery/dog_capture_onnx_v1.zip"
+  }
+}

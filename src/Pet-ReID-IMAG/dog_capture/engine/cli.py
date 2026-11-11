@@ -240,18 +240,23 @@ def cmd_bench(args):
 
 def cmd_models(args):
     from . import zoo
+    if args.import_face:
+        print(f'Imported reference: {zoo.import_face(args.import_face, args.metadata)}')
+    elif args.metadata:
+        raise ValueError('--metadata requires --import-face')
     if args.download:
         names = [e['name'] for e in zoo.manifest()['models'] if e.get('url')] if args.download == 'all' else [args.download]
         for name in names:
             print(f'{name}: {zoo.download(name)}')
     print(f'Model directory: {zoo.model_dir()}')
-    for row in zoo.status():
+    rows = zoo.status()
+    for row in rows:
         mark = 'OK ' if row['present'] and row.get('hash_ok', True) else ('BAD' if row['present'] else '-- ')
         print(f'[{mark}] {row["role"]:4} {row["name"]:18} {row["kind"]:9} {row["file"]}')
         if not row['present']:
             print(f'       get: {row.get("url") or row["obtain"]}')
         print(f'       license: {row["license"]}')
-    return 0
+    return 1 if any(row.get('hash_ok') is False for row in rows) else 0
 
 
 def cmd_doctor(args):
@@ -273,7 +278,7 @@ def cmd_doctor(args):
         kind = None
     gate = zoo.build_body_gate(config, kind) if kind else None
     print(f'  body gate: {gate.model_path if gate else "none (faces are not species-checked)"}')
-    return 0
+    return 0 if kind else 1
 
 
 def cmd_config(args):
@@ -338,8 +343,10 @@ def main(argv=None):
     bench.add_argument('--no-body-gate', action='store_true')
     bench.add_argument('--mirror', action='store_true')
     bench.set_defaults(func=cmd_bench)
-    models = sub.add_parser('models', help='list, verify and download models')
+    models = sub.add_parser('models', help='list, verify, import and download models')
     models.add_argument('--download', help='model name from the list, or "all" for downloadable ones')
+    models.add_argument('--import-face', help='install the registered dog_face_pose.onnx reference')
+    models.add_argument('--metadata', help='JSON sidecar for --import-face (default: same basename)')
     models.set_defaults(func=cmd_models)
     doctor = sub.add_parser('doctor', help='check dependencies, providers and models')
     doctor.set_defaults(func=cmd_doctor)

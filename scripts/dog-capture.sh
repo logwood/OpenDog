@@ -8,10 +8,10 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 env_dir="$root/.tmp/dog-capture-v1-env"
 if [ ! -x "$env_dir/bin/python" ]; then
   "${PYTHON:-python3}" -m venv "$env_dir"
+fi
+if ! "$env_dir/bin/python" -c 'import numpy, cv2, onnxruntime, yaml' 2>/dev/null; then
   "$env_dir/bin/python" -m pip install -r "$root/requirements-dog-capture-v1.txt"
 fi
 export PYTHONPATH="$root/src/Pet-ReID-IMAG${PYTHONPATH:+:$PYTHONPATH}"
-if [ ! -f "$root/models/pretrained/dog_capture_v1/yolox_nano.onnx" ]; then
-  "$env_dir/bin/python" -m dog_capture models --download yolox_nano >/dev/null
-fi
+"$env_dir/bin/python" -m dog_capture models --download yolox_nano >/dev/null
 exec "$env_dir/bin/python" -m dog_capture run "$@"

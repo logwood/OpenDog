@@ -563,7 +563,11 @@ class CaptureEngine:
         if not found:
             return {'ok': False, 'reasons': ['no_face'], 'faces': 0}
         if self.body_gate is not None:
-            self.body_checked = -math.inf  # every upload is independent
+            # Every upload is independent: a body box from the preceding JPEG
+            # must not authorise a face in this one when its gate finds no dog.
+            self.body_time = self.body_checked = -math.inf
+            self.body_boxes = np.zeros((0, 4), np.float32)
+            self.body_scores = np.zeros((0,), np.float32)
             found = [d for d in found if self._check_dog(frame, d, self.previous_time or 0.0, timings)]
             if not found:
                 return {'ok': False, 'reasons': ['not_dog'], 'faces': 0}

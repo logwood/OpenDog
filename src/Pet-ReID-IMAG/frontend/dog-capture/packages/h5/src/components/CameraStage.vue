@@ -38,6 +38,7 @@ onMounted(async () => {
     props.session.start(video.value!);
     timer = window.setInterval(() => {
       now.value = Date.now();
+      if (state.phase === 'error') { emit('error', state.error); return; }
       if (state.complete || remaining.value <= 0) emit('finish');
     }, 250);
   } catch (error) {

@@ -7,6 +7,7 @@ recognition-readiness plumbing (embedding, consistency, stability, commit to
 enroll/identify) is exercised end to end without the production Re-ID model.
 """
 import argparse
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -19,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 from fastapi import FastAPI  # noqa: E402
 from dog_capture.service import POLICIES, mount_capture  # noqa: E402
 from dog_capture.service.protocol import _LEFT, _RIGHT  # noqa: E402
+from dog_capture.engine import CaptureConfig  # noqa: E402
 
 # test-only policy: both sides required (mirror pair of one real dog)
 POLICIES['sides_only'] = {'views': [{**_LEFT, 'shots': 1, 'required': True}, {**_RIGHT, 'shots': 1, 'required': True}],
@@ -54,13 +56,53 @@ class StandInService:
         return {'matches': [], 'stand_in': True, 'query_bytes': len(payload.data)}
 
 
+def real_service(model, gallery_path, seed):
+    """Opt-in integration with the existing deployed recognizer, in a NEW test gallery."""
+    from pet_id.gallery_service import (MultimodalPipelineEncoder, PetGalleryStore,
+                                         PetIdentificationService, UploadPayload)
+    from pet_id.unified_runtime import UnifiedONNXRuntimePipeline
+    gallery_path = Path(gallery_path).resolve()
+    if gallery_path.exists():
+        raise ValueError('E2E_GALLERY must be a new directory; production galleries are never reused')
+    pipeline = UnifiedONNXRuntimePipeline(model, provider='cpu', device='cpu', warmup_batches=[1])
+    encoder = MultimodalPipelineEncoder(pipeline)
+    delegate = PetIdentificationService(PetGalleryStore(gallery_path), encoder,
+                                         model_fingerprint=encoder.backend_info()['model_sha256'])
+    data = Path(seed).read_bytes()
+    delegate.enroll('e2e-dog', [UploadPayload(filename=Path(seed).name, content_type='image/png', data=data)])
+
+    class RecordingService:
+        store = delegate.store
+        encoder = delegate.encoder
+        _inference_lock = delegate._inference_lock
+
+        def __init__(self):
+            self.calls = []
+
+        def enroll(self, pet_id, uploads, display_name=None):
+            value = delegate.enroll(pet_id, uploads, display_name=display_name)
+            self.calls.append(['enroll', pet_id, len(uploads)])
+            return value
+
+        def identify(self, payload, top_k=5):
+            value = delegate.identify(payload, top_k=top_k)
+            self.calls.append(['identify', payload.filename])
+            return value
+
+    return RecordingService()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8765)
     args = parser.parse_args()
-    service = StandInService()
+    model = os.environ.get('E2E_REID_MODEL')
+    service = real_service(model, os.environ['E2E_GALLERY'], os.environ['E2E_SEED']) if model else StandInService()
     app = FastAPI()
-    mount_capture(app, service)
+    config_path = os.environ.get('E2E_CAPTURE_CONFIG')
+    config = CaptureConfig.load(config_path) if config_path else CaptureConfig().merged(
+        {'runtime': {'providers': 'cpu', 'threads': 4}, 'body_gate': {'enabled': 'on'}})
+    mount_capture(app, service, config=config)
 
     @app.get('/e2e/calls')
     def calls():

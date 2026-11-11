@@ -166,6 +166,10 @@ token 提交进入建档 / 比对；控制台零报错；WASM 运行时以 br �
 
 ## 9. 还需要在本地补跑的验证
 
+2026-11-11 更新：用户提供的 320 输入 ONNX 已完成本机集成、第 1 项用户视频回归和真实 Re-ID 联调。
+用户视频及 Wolfhound 三视角的效果验收仍未通过，不能用前面的云端照片指标替代这个结论。
+详情、失败记录及质量优先配置见 [`DOG_CAPTURE_V1_INTEGRATION_CN.md`](DOG_CAPTURE_V1_INTEGRATION_CN.md)。
+
 1. 用户视频的新旧对比：
    `dog-capture.cmd data\dog_capture\user\2611101816341481.mp4`，与 v0.3 的结果（正面第 271 帧、左侧第 282 帧）比较。
 2. 导出本地 AnyFace 权重后，在同一视频上比较三种检测器：

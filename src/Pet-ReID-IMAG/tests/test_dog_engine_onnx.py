@@ -181,3 +181,27 @@ def test_yolo_pose_schema_from_ultralytics_kpt_names(tmp_path):
     assert dets[0].validate() is None
     engine = CaptureEngine(CaptureConfig().merged({'runtime': {'rotate': '0'}}))
     assert engine.process(np.zeros((480, 640, 3), np.uint8), 0.0, 0, detections=dets) is not None
+
+
+def test_model_integrity_and_metadata_disagreement_fail_before_capture(tmp_path):
+    from dog_capture.engine.zoo import sha256
+    model = constant_model(tmp_path / 'pose.onnx', 'images', 320,
+                           [('output0', np.zeros((1, 23, 10)))], {'kpt_shape': '[6, 3]'})
+    sidecar = model.with_suffix('.json')
+    sidecar.write_text(json.dumps({'sha256': '0' * 64}), encoding='utf8')
+    with pytest.raises(ValueError, match='SHA-256 mismatch'):
+        YoloPoseDetector(model, providers='cpu')
+    sidecar.write_text(json.dumps({'sha256': sha256(model), 'kpt_shape': [5, 3]}), encoding='utf8')
+    with pytest.raises(ValueError, match='kpt_shape disagrees'):
+        YoloPoseDetector(model, providers='cpu')
+    sidecar.write_text(json.dumps({'sha256': sha256(model), 'input_size': 640}), encoding='utf8')
+    with pytest.raises(ValueError, match='input_size disagrees'):
+        YoloPoseDetector(model, providers='cpu')
+
+
+def test_corrupt_default_is_not_silently_replaced_by_another_detector(tmp_path, monkeypatch):
+    from dog_capture.engine import zoo
+    monkeypatch.setenv('DOG_CAPTURE_MODELS', str(tmp_path))
+    (tmp_path / 'dog_face_pose.onnx').write_bytes(b'incomplete download')
+    with pytest.raises(ValueError, match='SHA-256 mismatch'):
+        zoo.find_face_model(CaptureConfig())

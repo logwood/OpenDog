@@ -41,10 +41,10 @@ def read_sidecar(model_path):
     """Optional ``<model>.json`` written by the export/training tools."""
     sidecar = Path(model_path).with_suffix('.json')
     if sidecar.is_file():
-        try:
-            return json.loads(sidecar.read_text(encoding='utf8'))
-        except (OSError, ValueError):
-            return {}
+        value = json.loads(sidecar.read_text(encoding='utf8'))
+        if not isinstance(value, dict):
+            raise ValueError(f'{sidecar}: model metadata must be a JSON object')
+        return value
     return {}
 
 
@@ -54,6 +54,8 @@ class OnnxDetector:
     def __init__(self, model, *, input_size=640, score_threshold=0.35, nms_iou=0.45, max_faces=8,
                  providers='auto', threads=0, cache_dir=''):
         self.model_path = Path(model)
+        from .zoo import verify_model
+        self.sha256, self.sidecar = verify_model(model)
         self.session, self.runtime = create_session(model, providers, threads, cache_dir)
         self.input = self.session.get_inputs()[0]
         self.outputs = [o.name for o in self.session.get_outputs()]
@@ -64,7 +66,8 @@ class OnnxDetector:
             raise ValueError(f'Only square detector inputs are supported, got {shape}')
         self.score_threshold, self.nms_iou, self.max_faces = score_threshold, nms_iou, max_faces
         self.metadata = dict(self.session.get_modelmeta().custom_metadata_map or {})
-        self.sidecar = read_sidecar(model)
+        if fixed and self.sidecar.get('input_size', self.size) != self.size:
+            raise ValueError(f'{model}: sidecar input_size disagrees with ONNX input {shape}')
         self.dtype = np.float16 if 'float16' in self.input.type else np.float32
 
     def warmup(self, runs=2):
@@ -76,7 +79,7 @@ class OnnxDetector:
         return self.session.run(self.outputs, {self.input.name: tensor.astype(self.dtype, copy=False)})
 
     def describe(self):
-        return {'kind': self.kind, 'model': str(self.model_path), 'input_size': self.size,
+        return {'kind': self.kind, 'model': str(self.model_path), 'sha256': self.sha256, 'input_size': self.size,
                 'score_threshold': self.score_threshold, 'runtime': self.runtime,
                 'license': self.sidecar.get('license')}
 
@@ -113,6 +116,9 @@ class YoloPoseDetector(OnnxDetector):
         kpt = self.sidecar.get('kpt_shape') or self.metadata.get('kpt_shape')
         if isinstance(kpt, str):
             kpt = ast.literal_eval(kpt)
+        embedded_kpt = self.metadata.get('kpt_shape')
+        if embedded_kpt and list(ast.literal_eval(embedded_kpt)) != list(kpt):
+            raise ValueError(f'{model}: sidecar kpt_shape disagrees with ONNX metadata')
         if not kpt:
             raise ValueError(f'{model}: no kpt_shape in ONNX metadata or sidecar JSON; not a YOLO pose export?')
         self.num_kpts, self.kpt_dims = int(kpt[0]), int(kpt[1])
@@ -125,6 +131,8 @@ class YoloPoseDetector(OnnxDetector):
             self.schema = get_schema({6: 'dogface6', 5: 'anyface5', 3: 'core3'}.get(self.num_kpts, ''))
         if len(self.schema) != self.num_kpts:
             raise ValueError(f'{model}: {self.num_kpts} keypoints do not fit schema {self.schema.name}')
+        if named is not None and self.schema.names != named.names:
+            raise ValueError(f'{model}: keypoint names/order disagree with schema {self.schema.name}')
         names = self.metadata.get('names')
         self.num_classes = len(ast.literal_eval(names)) if names else int(self.sidecar.get('num_classes', 1))
 

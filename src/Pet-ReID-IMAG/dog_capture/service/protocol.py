@@ -74,7 +74,11 @@ def policy(name):
 
 def engine_config(base_config, chosen):
     """CaptureConfig for this session: base thresholds + the policy's views/selection."""
-    return base_config.merged({'pose': {'views': chosen['views']}, 'selection': chosen['selection']})
+    from ..engine.selection import LEVEL_ORDER
+    selection = dict(chosen['selection'])
+    selection['min_level'] = max((base_config.selection.min_level, selection['min_level']), key=LEVEL_ORDER.get)
+    selection['good_enough'] = max(base_config.selection.good_enough, selection['good_enough'])
+    return base_config.merged({'pose': {'views': chosen['views']}, 'selection': selection})
 
 
 def view_order(chosen, rng=secrets.SystemRandom()):

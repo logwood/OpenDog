@@ -8,15 +8,16 @@ $envDir = Join-Path $root '.tmp/dog-capture-v1-env'
 $python = Join-Path $envDir 'Scripts/python.exe'
 if (-not (Test-Path -LiteralPath $python)) {
     $base = if (Test-Path 'D:/CondaData/envs/torch312/python.exe') { 'D:/CondaData/envs/torch312/python.exe' } else { 'python' }
-    & $base -m venv $envDir
-    if ($LASTEXITCODE -ne 0) { throw 'Could not create the Python environment' }
-    & $python -m pip install -r (Join-Path $root 'requirements-dog-capture-v1.txt')
-    if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+    & (Join-Path $PSScriptRoot 'setup-dog-capture-v1.ps1') -Python $base
 }
 $env:PYTHONPATH = Join-Path $root 'src/Pet-ReID-IMAG'
-$gate = Join-Path $root 'models/pretrained/dog_capture_v1/yolox_nano.onnx'
-if (-not (Test-Path -LiteralPath $gate)) { & $python -m dog_capture models --download yolox_nano | Out-Null }
+& $python -c 'import numpy, cv2, onnxruntime, yaml' 2>$null
+if ($LASTEXITCODE -ne 0) { & (Join-Path $PSScriptRoot 'setup-dog-capture-v1.ps1') -Repair }
+& $python -m dog_capture models --download yolox_nano | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Species gate preparation failed.' }
 if (Test-Path -LiteralPath $Source) { $Source = (Resolve-Path -LiteralPath $Source).Path }
 & $python -m dog_capture run $Source @Rest
+$captureExit = $LASTEXITCODE
 if ($LASTEXITCODE -eq 2) { Write-Host 'No qualifying view was captured; see the guidance lines above.' }
 elseif ($LASTEXITCODE -ne 0) { throw 'dog_capture failed; see the output above' }
+exit $captureExit

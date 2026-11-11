@@ -248,6 +248,11 @@ E2E_MEDIA=<媒体目录> DOG_CAPTURE_MODELS=<模型目录> PYTHON=python node sr
 
 ## 12. 局限
 
+2026-11-11 本机补充：用户 ONNX 导入、Windows 构建、独立采集服务、真实 Re-ID 联调与现有模型效果缺口，见
+[`DOG_CAPTURE_V1_INTEGRATION_CN.md`](DOG_CAPTURE_V1_INTEGRATION_CN.md)。新增
+`GET /v1/capture/sessions/{id}/shots/{shot_id}` 向业务后端提供已通过复检的 JPEG 原图，沿用 API Key 鉴权。
+`serve_pet_api.py --capture-config` 可设置质量下限，采集会话策略不能降低此下限。
+
 - 会话和 token 状态在单进程内存里：多实例部署要么会话粘滞，要么把 `SessionStore` 换成 Redis 实现（接口很小）。
 - 活体只记录信号，不做判定；目前挡不住“拿一张狗的照片对着镜头转”。
 - 浏览器端到端用的是由静态照片做成的视频，真实狗狗的连续转头、抖动和光照变化还需要真机试拍。

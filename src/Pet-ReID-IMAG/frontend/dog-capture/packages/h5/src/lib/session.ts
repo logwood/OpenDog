@@ -4,6 +4,7 @@
  * UI components only observe `state` and call the methods.
  */
 import { reactive, shallowRef } from 'vue';
+import { WorkerRPC } from './worker-rpc';
 import {
   fetchModel, fetchSessionConfig, PROTOCOL, SDK_VERSION, commitSession,
   type Guidance, type SessionConfig, type VerificationResult,
@@ -33,20 +34,15 @@ export function createCaptureSession(options: { apiBase: string; sessionId: stri
   const shots = shallowRef<CapturedShot[]>([]);
   const result = shallowRef<VerificationResult | null>(null);
   let worker: Worker | null = null;
+  let rpc: WorkerRPC | null = null;
   let busy = false, running = false, index = 0, t0 = 0, lastFps = 0, frameCount = 0;
   let signals: unknown = null, framesProcessed = 0;
   let video: HTMLVideoElement | null = null;
   const listeners = new Set<(r: LiveResult) => void>();
 
-  function call<T>(message: object, transfer: Transferable[] = [], expect?: string): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const handler = (event: MessageEvent) => {
-        if (event.data.type === 'error') { worker!.removeEventListener('message', handler); reject(new Error(event.data.message)); }
-        else if (!expect || event.data.type === expect) { worker!.removeEventListener('message', handler); resolve(event.data); }
-      };
-      worker!.addEventListener('message', handler);
-      worker!.postMessage(message, transfer);
-    });
+  function call<T>(message: object, transfer: Transferable[] = [], expect?: string, timeoutMs?: number): Promise<T> {
+    if (!rpc) return Promise.reject(new Error('Capture worker is not ready'));
+    return rpc.call<T>(message, transfer, expect, timeoutMs);
   }
 
   async function load() {
@@ -54,6 +50,7 @@ export function createCaptureSession(options: { apiBase: string; sessionId: stri
     state.message = '正在获取采集配置…';
     try {
       const cfg = await fetchSessionConfig(options.apiBase, options.sessionId, options.nonce);
+      if (!cfg.models.face) throw new Error('Server has no capture face model configured');
       config.value = cfg;
       state.counts = Object.fromEntries(cfg.policy.views.map((v) => [v.name, 0]));
       state.message = '正在下载识别模型（首次约 15 MB，之后会缓存）…';
@@ -63,9 +60,10 @@ export function createCaptureSession(options: { apiBase: string; sessionId: stri
       state.progress = 0.8;
       state.message = '正在初始化推理引擎…';
       worker = new Worker(new URL('../../../sdk/src/worker.ts', import.meta.url), { type: 'module' });
+      rpc = new WorkerRPC(worker);
       const ready = await call<{ providers: unknown }>({ type: 'init', config: cfg, models: { face, gate },
         wasmPaths: `${import.meta.env.BASE_URL}ort/`, providers: ['wasm'] },
-      [face, ...(gate ? [gate] : [])], 'ready');
+      [face, ...(gate ? [gate] : [])], 'ready', 120_000);
       state.providers = ready.providers;
       state.progress = 1;
       state.phase = 'ready';
@@ -95,6 +93,8 @@ export function createCaptureSession(options: { apiBase: string; sessionId: stri
         const now = performance.now();
         if (now - lastFps > 1000) { state.fps = (frameCount * 1000) / (now - lastFps); frameCount = 0; lastFps = now; }
       } catch (error) {
+        running = false;
+        state.phase = 'error';
         state.error = error instanceof Error ? error.message : String(error);
       } finally {
         busy = false;
@@ -104,9 +104,11 @@ export function createCaptureSession(options: { apiBase: string; sessionId: stri
   }
 
   function start(el: HTMLVideoElement) {
+    if (running) return;
     video = el;
     running = true;
     if (!t0) { t0 = performance.now() / 1000; state.startedAt = Date.now(); lastFps = performance.now(); }
+    state.startedAt = Date.now();
     state.phase = 'capturing';
     void pump();
   }
@@ -129,7 +131,7 @@ export function createCaptureSession(options: { apiBase: string; sessionId: stri
     await call({ type: 'retake', views }, [], 'retaken');
     for (const v of views) state.counts[v] = 0;
     state.complete = false;
-    if (video) start(video);
+    // CameraStage remounts and starts with a fresh video element after the retake is ready.
   }
 
   async function upload() {
@@ -170,7 +172,8 @@ export function createCaptureSession(options: { apiBase: string; sessionId: stri
 
   function dispose() {
     running = false;
-    worker?.terminate();
+    rpc?.close();
+    rpc = null;
     worker = null;
     for (const s of shots.value) if (s.thumbUrl) URL.revokeObjectURL(s.thumbUrl);
   }

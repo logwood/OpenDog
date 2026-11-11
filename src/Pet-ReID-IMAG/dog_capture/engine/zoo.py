@@ -12,6 +12,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
+import tempfile
 import urllib.request
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -30,6 +32,53 @@ def manifest():
 def sha256(path):
     with Path(path).open('rb') as f:
         return hashlib.file_digest(f, 'sha256').hexdigest()
+
+
+def verify_model(path, expected=None, metadata=None):
+    """Verify a pinned model and its sidecar before creating a runtime session.
+
+    Explicit custom models use their own sidecar pin. Auto discovery additionally
+    requires the catalog pin, so a corrupted default never silently falls back.
+    """
+    path = Path(path)
+    if metadata is None:
+        sidecar = path.with_suffix('.json')
+        metadata = json.loads(sidecar.read_text(encoding='utf8')) if sidecar.is_file() else {}
+    if not isinstance(metadata, dict):
+        raise ValueError(f'{path}: model metadata must be a JSON object')
+    digest = sha256(path)
+    for pinned in (expected, metadata.get('sha256')):
+        if pinned and digest != str(pinned).lower():
+            raise ValueError(f'{path}: SHA-256 mismatch (expected {pinned}, got {digest})')
+    return digest, metadata
+
+
+def import_face(source, metadata=None):
+    """Install the registered reference pair only after hash and runtime validation."""
+    from .detectors import YoloPoseDetector
+
+    source = Path(source)
+    sidecar = Path(metadata) if metadata else source.with_suffix('.json')
+    meta = json.loads(sidecar.read_text(encoding='utf8'))
+    entry = next(e for e in manifest()['models'] if e['name'] == 'dog_face_pose')
+    verify_model(source, entry['sha256'], meta)
+    for key in ('kind', 'schema', 'kpt_shape', 'input_size', 'sha256'):
+        if meta.get(key) != entry.get(key):
+            raise ValueError(f'{sidecar}: {key} does not match the registered dog_face_pose reference')
+    directory = model_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    # Stage in the destination filesystem; bad metadata/graphs never replace a working pair.
+    with tempfile.TemporaryDirectory(prefix='.import-', dir=directory) as temporary:
+        candidate = Path(temporary) / entry['file']
+        shutil.copyfile(source, candidate)
+        shutil.copyfile(sidecar, candidate.with_suffix('.json'))
+        detector = YoloPoseDetector(candidate, providers='cpu', threads=1)
+        detector.warmup(1)
+        del detector
+        target = directory / entry['file']
+        candidate.replace(target)
+        candidate.with_suffix('.json').replace(target.with_suffix('.json'))
+    return target
 
 
 def status():
@@ -91,6 +140,8 @@ def find_face_model(config):
         path = Path(d.model)
         if not path.exists():
             raise FileNotFoundError(f'detector.model not found: {path}')
+        if path.is_file():
+            verify_model(path)
         return (d.kind if d.kind != 'auto' else ('dogflw' if path.is_dir() else _guess_kind(path))), path
     entries = [e for e in manifest()['models'] if e['role'] == 'face']
     for entry in sorted(entries, key=lambda e: e['priority']):
@@ -102,9 +153,11 @@ def find_face_model(config):
             continue
         path = model_dir() / entry['file']
         if path.is_file():
+            verify_model(path, entry.get('sha256'))
             return entry['kind'], path
     raise FileNotFoundError(
         f'No dog face model found in {model_dir()} (kind={d.kind}). Options (`python -m dog_capture models`): '
+        'import the reference with `models --import-face dog_face_pose.onnx --metadata dog_face_pose.json`; '
         'export the local AnyFace weights with tools/export_anyface_onnx.py; train the 6-point edge model with '
         'tools/train_dog_face_pose.py; or use the v0.x DogFLW models in models/pretrained/dog_face_landmarks_v1 '
         '(tools/prepare_dog_capture_assets.py --models, needs ai-edge-litert); or pass --model PATH.')
@@ -148,6 +201,8 @@ def build_body_gate(config, detector_kind):
             raise FileNotFoundError('body_gate.enabled=on but no YOLOX model found; run '
                                     '`python -m dog_capture models --download yolox_nano`')
         return None
+    entry = next((e for e in manifest()['models'] if e['file'] == path.name and e['role'] == 'body'), {})
+    verify_model(path, entry.get('sha256') if not g.model else None)
     return detectors.YoloxBodyGate(path, class_id=g.class_id, input_size=g.input_size,
                                    score_threshold=g.score_threshold, providers=r.providers,
                                    threads=r.threads, cache_dir=r.cache_dir)

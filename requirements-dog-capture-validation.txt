@@ -1,0 +1,6 @@
+-r requirements-dog-capture-service.txt
+pytest>=8,<10
+onnx>=1.17
+httpx>=0.27,<1
+jsonschema>=4.20,<5
+brotli>=1.1

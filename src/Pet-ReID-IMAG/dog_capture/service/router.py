@@ -16,7 +16,7 @@ from typing import Annotated
 
 import numpy as np
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .protocol import (DEFAULT_POLICY, PROTOCOL, UPLOAD, ProtocolError, check_manifest, engine_config, policy,
                        view_order)
@@ -86,7 +86,7 @@ def build_capture_router(*, base_config, engine_factory, model_files, gallery=No
             config = engine_config(base_config, chosen).to_dict()
             session = store.create(purpose=purpose, policy_name=name, policy=chosen, view_order=view_order(chosen),
                                    config=config, pet_id=body.get('pet_id'), display_name=body.get('display_name'),
-                                   client_commit=bool(body.get('client_commit', client_commit_default)))
+                                   client_commit=gallery is not None and bool(body.get('client_commit', client_commit_default)))
         except ProtocolError as error:
             return fail(error)
         return {'protocol': PROTOCOL, 'session_id': session.id, 'nonce': session.nonce,
@@ -102,7 +102,7 @@ def build_capture_router(*, base_config, engine_factory, model_files, gallery=No
             return fail(error)
         if session.state == 'created':
             session.state = 'capturing'
-        models = {item['role']: {'url': f'/v1/capture/models/{name}', 'sha256': item['sha256'],
+        models = {item['role']: {'url': f'/v1/capture/models/{name}?sha256={item["sha256"]}', 'sha256': item['sha256'],
                                  'bytes': item['bytes'], **{k: item['meta'][k] for k in
                                                             ('kind', 'schema', 'input_size', 'kpt_shape')
                                                             if k in item['meta']}}
@@ -113,12 +113,15 @@ def build_capture_router(*, base_config, engine_factory, model_files, gallery=No
                 'client_commit': session.client_commit, 'state': session.state}
 
     @router.get('/models/{name}')
-    def model_file(name: str):
+    def model_file(name: str, sha256: str | None = None):
         item = served.get(name)
         if item is None:
             raise HTTPException(status_code=404, detail={'code': 'model_not_found', 'message': name})
+        if sha256 is not None and sha256 != item['sha256']:
+            raise HTTPException(status_code=409, detail={'code': 'model_changed', 'message': 'Start a new capture session'})
         return FileResponse(item['path'], media_type='application/octet-stream',
-                            headers={'Cache-Control': 'public, max-age=86400, immutable', 'ETag': item['sha256']})
+                            headers={'Cache-Control': 'public, max-age=86400, immutable' if sha256 else 'no-cache',
+                                     'ETag': f'"{item["sha256"]}"'})
 
     @router.post('/sessions/{session_id}/package')
     async def upload_package(session_id: str,
@@ -129,6 +132,8 @@ def build_capture_router(*, base_config, engine_factory, model_files, gallery=No
         except ValueError:
             return fail(ProtocolError('bad_manifest', 'manifest is not JSON'))
         try:
+            if not isinstance(data, dict) or not isinstance(data.get('nonce'), str) or not data['nonce']:
+                raise ProtocolError('bad_nonce', 'capture nonce is required', 403)
             session = store.get(session_id, data.get('nonce') if isinstance(data, dict) else None)
             if session.state in ('accepted', 'committed'):
                 raise ProtocolError('already_accepted', 'this session already has an accepted package', 409)
@@ -198,6 +203,19 @@ def build_capture_router(*, base_config, engine_factory, model_files, gallery=No
                                                               'message': str(error)})
         session.state, session.commit_result = 'committed', result
         return result
+
+    @router.get('/sessions/{session_id}/shots/{shot_id}', dependencies=[Depends(require_key)])
+    def accepted_image(session_id: str, shot_id: str):
+        """Verified original JPEG for downstream models; same backend auth as session status."""
+        try:
+            session = store.get(session_id)
+        except ProtocolError as error:
+            return fail(error)
+        for shot, data in session.accepted:
+            if shot['id'] == shot_id:
+                return Response(data, media_type='image/jpeg', headers={
+                    'Cache-Control': 'no-store', 'Content-Disposition': 'attachment; filename="capture.jpg"'})
+        return fail(ProtocolError('shot_not_found', 'no accepted image with this id', 404))
 
     return router, store
 
