@@ -263,5 +263,18 @@ def mount_capture(app, service=None, *, api_key=None, models_dir=None, config=No
     app.include_router(router)
     if H5_DIST.is_dir():
         app.mount('/capture', StaticFiles(directory=str(H5_DIST), html=True), name='dog-capture-h5')
+
+    @app.middleware('http')
+    async def capture_isolation(request, call_next):
+        # Cross-origin isolation lets the H5 use multi-threaded WASM inference
+        # (SharedArrayBuffer); only the capture paths get these headers.
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith('/capture'):
+            response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+            response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
+        if path.startswith('/capture') or path.startswith('/v1/capture'):
+            response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
+        return response
     app.state.capture_store = store
     return store

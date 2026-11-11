@@ -2,7 +2,7 @@
   "name": "dog-capture",
   "private": true,
   "description": "dog-capture/1 guided dog-face capture: portable TypeScript SDK + Vue 3 H5",
-  "workspaces": ["packages/sdk"],
+  "workspaces": ["packages/sdk", "packages/h5"],
   "scripts": {
     "test": "npm -w @opendog/dog-capture-sdk run test",
     "typecheck": "npm -w @opendog/dog-capture-sdk run typecheck && npm -w @opendog/dog-capture-h5 run typecheck",

@@ -140,4 +140,10 @@ export class TrackShots {
   }
 
   finalize() { for (const v of this.viewNames) this.pending[v] = []; }
+
+  /** Operator retake: forget a view so it is captured again. */
+  clear(view: string) {
+    if (!(view in this.slots)) return;
+    this.slots[view] = []; this.pending[view] = []; this.firstGood[view] = null; this.locked.delete(view);
+  }
 }

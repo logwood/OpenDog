@@ -9,9 +9,13 @@
 import { CaptureEngine, type FrameResult } from './engine';
 import { alignFace } from './alignment';
 import type { Frame } from './image';
-import { createEngine, encodeJpegBrowser, type SessionConfig } from './session';
+import { detectionToJSON } from './schema';
+import { createEngine, encodeJpegBrowser, sha256Hex, SignalRecorder, type SessionConfig } from './session';
 
 let engine: CaptureEngine | null = null;
+let recorder = new SignalRecorder();
+let sessionConfig: SessionConfig | null = null;
+let providers: unknown = null;
 let canvas: OffscreenCanvas | null = null;
 
 export function serialiseResult(r: FrameResult) {
@@ -44,16 +48,26 @@ async function handle(message: MessageEvent) {
   const data = message.data;
   try {
     if (data.type === 'init') {
-      const ort = await import('onnxruntime-web');
+      // WASM-only build (~11 MB runtime, served from wasmPaths); 'onnxruntime-web/webgpu' is the opt-in GPU build.
+      const ort = data.webgpu ? await import('onnxruntime-web/webgpu') : await import('onnxruntime-web/wasm');
       if (data.wasmPaths) ort.env.wasm.wasmPaths = data.wasmPaths;
       ort.env.wasm.numThreads = data.threads ?? Math.min(4, (self.navigator?.hardwareConcurrency ?? 2));
       const created = await createEngine(data.config as SessionConfig, data.models, ort, data.providers);
       engine = created.engine;
-      postMessage({ type: 'ready', providers: created.providers });
+      sessionConfig = data.config as SessionConfig;
+      recorder = new SignalRecorder();
+      providers = created.providers;
+      postMessage({ type: 'ready', providers });
     } else if (data.type === 'frame') {
       if (!engine) throw new Error('engine not initialised');
       const result = await engine.process(frameFrom(data.bitmap), data.t, data.index);
-      postMessage({ type: 'result', result: result ? serialiseResult(result) : null, complete: engine.complete() });
+      if (result) recorder.add(result);
+      const primary = engine.primaryId !== null ? engine.contexts.get(engine.primaryId) : undefined;
+      const counts = primary ? Object.fromEntries(engine.viewNames.map((v) => [v, primary.shots.slots[v].length])) : null;
+      postMessage({ type: 'result', result: result ? serialiseResult(result) : null, complete: engine.complete(), counts });
+    } else if (data.type === 'retake') {
+      engine?.retake(data.views);
+      postMessage({ type: 'retaken', views: data.views });
     } else if (data.type === 'finish') {
       if (!engine) throw new Error('engine not initialised');
       const bundle = engine.finalize();
@@ -63,19 +77,24 @@ async function handle(message: MessageEvent) {
           for (const [rank, shot] of bundle.slots[view].entries()) {
             if (!shot.frame || !shot.geometry) continue;
             const thumb = alignFace(shot.frame, shot.geometry.points, 224).image;
+            const id = `${view}-${rank + 1}`;
+            const jpeg = await encodeJpegBrowser(shot.frame, sessionConfig?.upload.jpeg_quality ?? 0.95);
             shots.push({
-              id: `${view}-${rank + 1}`, view, rank: rank + 1, timeS: shot.timeS, frameIndex: shot.frameIndex,
-              trackId: shot.trackId, width: shot.frame.width, height: shot.frame.height,
-              jpeg: await encodeJpegBrowser(shot.frame, data.jpegQuality ?? 0.95),
-              thumbnail: await encodeJpegBrowser(thumb, 0.9),
-              detection: shot.detection, geometry: { yaw: shot.geometry.yaw, pitch: shot.geometry.pitch,
-                roll_deg: shot.geometry.roll_deg, iod: shot.geometry.iod, approx_deg: shot.geometry.approx_deg },
-              quality: shot.quality ? { score: shot.quality.score, level: shot.quality.level, factors: shot.quality.factors } : null,
+              id, view, rank: rank + 1, jpeg, thumbnail: await encodeJpegBrowser(thumb, 0.9),
+              level: shot.quality?.level ?? 'low', score: shot.quality?.score ?? 0,
+              // manifest entry (dog-capture/1 capture-package shot): the upload is the ORIGINAL frame
+              entry: { id, view, rank: rank + 1, file: `${id}.jpg`, sha256: await sha256Hex(jpeg),
+                width: shot.frame.width, height: shot.frame.height, time_s: shot.timeS, frame_index: shot.frameIndex,
+                track_id: shot.trackId, detection: shot.detection ? detectionToJSON(shot.detection) : null,
+                pose: { yaw: shot.geometry.yaw, pitch: shot.geometry.pitch, roll_deg: shot.geometry.roll_deg,
+                  iod: shot.geometry.iod, approx_deg: shot.geometry.approx_deg },
+                quality: shot.quality ? { score: shot.quality.score, level: shot.quality.level, factors: shot.quality.factors } : null },
             });
           }
         }
       }
-      postMessage({ type: 'shots', shots, complete: engine.complete(),
+      postMessage({ type: 'shots', shots, complete: engine.complete(), providers,
+        signals: recorder.toJSON(sessionConfig?.policy.view_order ?? []), frames: recorder.frames,
         views: bundle ? bundle.viewNames : [], captured: bundle ? bundle.captured() : [] });
     } else if (data.type === 'reset') {
       engine = null;

@@ -409,6 +409,12 @@ export class CaptureEngine {
     return this.bundles()[0] ?? null;
   }
 
+  /** Clear views on every track (operator asked to retake them, or the server rejected them). */
+  retake(views: string[]) {
+    for (const ctx of this.contexts.values()) for (const v of views) ctx.shots.clear(v);
+    for (const shots of this.finished) for (const v of views) shots.clear(v);
+  }
+
   finalize(): TrackShots | null {
     for (const ctx of this.contexts.values()) ctx.shots.finalize();
     return this.bestBundle();

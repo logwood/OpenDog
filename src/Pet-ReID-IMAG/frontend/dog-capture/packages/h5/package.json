@@ -1,0 +1,26 @@
+{
+  "name": "@opendog/dog-capture-h5",
+  "version": "1.0.0",
+  "description": "Vue 3 guided dog-face capture (dog-capture/1): embeddable <DogCapture> component + standalone H5 page",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {".": "./src/index.ts"},
+  "scripts": {
+    "prepare-assets": "node scripts/copy-ort.mjs",
+    "dev": "node scripts/copy-ort.mjs && vite",
+    "build": "node scripts/copy-ort.mjs && vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@opendog/dog-capture-sdk": "1.0.0",
+    "onnxruntime-web": "1.31.1",
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.10",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "vue-tsc": "3.3.13"
+  }
+}
