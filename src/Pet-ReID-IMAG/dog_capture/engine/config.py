@@ -25,6 +25,8 @@ class ViewSpec:
     lower: float
     upper: float
     max_roll_deg: float = 30.0
+    shots: int = 0          # images kept for this view; 0 = selection.top_k
+    required: bool = True   # coverage needs this view (capture protocol policies)
 
 
 DEFAULT_VIEWS = (ViewSpec('front', 0.0, -0.13, 0.13),
@@ -210,6 +212,7 @@ class CaptureConfig:
             check(v.name.isidentifier(), f'view name {v.name!r} must be an identifier')
             check(all(math.isfinite(x) for x in (v.lower, v.center, v.upper, v.max_roll_deg))
                   and v.lower < v.center < v.upper and v.max_roll_deg > 0, f'view band {v.name}')
+            check(0 <= v.shots <= 8, f'view {v.name}: shots must be 0..8')
         ordered = sorted(p.views, key=lambda v: v.lower)
         check(all(a.upper < b.lower for a, b in zip(ordered, ordered[1:])), 'view bands must not overlap')
         check(0 <= p.exit_margin < 0.5 and p.min_dwell_s >= 0 and p.min_dwell_obs >= 1
@@ -251,7 +254,8 @@ def _build(cls, value, where):
         missing = {'name', 'center', 'lower', 'upper'} - set(value)
         if missing:
             raise ValueError(f'{where} is missing {sorted(missing)}')
-        return ViewSpec(**{k: (str(v) if k == 'name' else float(v)) for k, v in value.items()})
+        cast = {'name': str, 'shots': int, 'required': bool}
+        return ViewSpec(**{k: cast.get(k, float)(v) for k, v in value.items()})
     kwargs = {}
     defaults = cls()
     for name, item in value.items():

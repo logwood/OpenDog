@@ -564,3 +564,18 @@ def test_soak_memory_stays_bounded_with_dogs_coming_and_going():
         for view in shots.view_names:
             assert len(shots.slots[view]) <= 1 and len(shots.pending[view]) <= 1
     assert engine.frames == 3000
+
+
+def test_per_view_shot_counts_and_required_views():
+    views = [{'name': 'front', 'center': 0, 'lower': -.13, 'upper': .13, 'shots': 2},
+             {'name': 'left', 'center': -.45, 'lower': -.75, 'upper': -.25},
+             {'name': 'right', 'center': .45, 'lower': .25, 'upper': .75, 'required': False}]
+    config = CaptureConfig().merged({'pose': {'views': views},
+                                     'selection': {'mode': 'fast', 'min_gap_s': .3, 'good_enough': .5}})
+    assert config.pose.views[0].shots == 2 and config.pose.views[2].required is False
+    engine = CaptureEngine(config)
+    run(engine, turn_sequence([0] * 25 + [-.5] * 12))
+    shots = engine.contexts[engine.primary_id].shots
+    front = shots.slots['front']
+    assert len(front) == 2 and abs(front[0].time_s - front[1].time_s) >= .3
+    assert engine.complete()  # right is optional

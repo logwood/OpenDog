@@ -173,7 +173,8 @@ class _TrackContext:
         self.classifier = ViewClassifier(engine.config.pose, still=still)
         # A photo set has no time axis: fast/hybrid locking would ignore later, better photos.
         selection = replace(engine.config.selection, mode='best') if still else engine.config.selection
-        self.shots = TrackShots(track_id, engine.view_names, selection)
+        self.shots = TrackShots(track_id, engine.view_names, selection,
+                                {v.name: v.shots for v in engine.config.pose.views})
 
 
 class CaptureEngine:
@@ -539,6 +540,56 @@ class CaptureEngine:
         self.shown_code = code
         return next(item for _, item in reversed(self.guidance_history) if item['code'] == code)
 
+    # ---- server-side verification ---------------------------------------
+    def verify_shot(self, frame, claimed_box=None, claimed_view=None, exit_margin=None):
+        """Independently re-check one uploaded frame (no tracking, no dwell).
+
+        Re-detects faces, keeps dog faces, picks the one overlapping the
+        client's claimed box (else the largest), and recomputes geometry, view
+        band and quality with this engine's configuration.  Returns a dict
+        with ``ok`` and machine-readable ``reasons``.
+        """
+        frame = as_bgr(frame)
+        timings = {}
+        if self.detector is None:
+            raise RuntimeError('verify_shot needs a face detector')
+        found = [d for d in self.detector.detect(frame) if d.validate() is None]
+        reasons = []
+        if not found:
+            return {'ok': False, 'reasons': ['no_face'], 'faces': 0}
+        if self.body_gate is not None:
+            self.body_checked = -math.inf  # every upload is independent
+            found = [d for d in found if self._check_dog(frame, d, self.previous_time or 0.0, timings)]
+            if not found:
+                return {'ok': False, 'reasons': ['not_dog'], 'faces': 0}
+        iou = 0.0
+        if claimed_box is not None:
+            overlaps = box_iou_matrix(np.asarray(claimed_box, np.float32)[None], np.stack([d.box for d in found]))[0]
+            best = int(overlaps.argmax())
+            iou = float(overlaps[best])
+            if iou < 0.3:
+                reasons.append('claimed_face_not_found')
+            det = found[best]
+        else:
+            det = max(found, key=lambda d: d.width * d.height * d.score)
+        geometry = face_geometry(det, self.config.pose)
+        margin = self.config.pose.exit_margin if exit_margin is None else exit_margin
+        view = None
+        for spec in self.config.pose.views:
+            if (spec.lower - margin <= geometry.yaw <= spec.upper + margin
+                    and abs(geometry.roll_deg) <= spec.max_roll_deg):
+                view = spec.name
+                break
+        target = self.views.get(claimed_view) if claimed_view else self.views.get(view)
+        quality, _ = self.assessor.assess(frame, det, geometry, target, 0.0)
+        reasons += quality.reasons
+        if claimed_view is not None and view != claimed_view:
+            reasons.append('view_mismatch')
+        if quality.passed and not TrackShots.level_ok(quality.level, self.config.selection.min_level):
+            reasons.append('quality_too_low')
+        return {'ok': not reasons, 'reasons': reasons, 'faces': len(found), 'box_iou': iou, 'view': view,
+                'detection': det.to_dict(), 'pose': geometry.to_dict(), 'quality': quality.to_dict()}
+
     # ---- results ------------------------------------------------------
     def bundles(self):
         """All per-track results (active and finished), best first."""
@@ -556,9 +607,10 @@ class CaptureEngine:
         if context is None:
             return False
         shots = context.shots
-        if len(shots.captured()) < len(self.view_names):
+        required = [v.name for v in self.config.pose.views if v.required]
+        if not all(shots.full(v) for v in required):
             return False
-        return self.config.selection.mode == 'best' or len(shots.locked) == len(self.view_names)
+        return self.config.selection.mode == 'best' or all(v in shots.locked for v in required)
 
     def best_bundle(self):
         bundles = self.bundles()

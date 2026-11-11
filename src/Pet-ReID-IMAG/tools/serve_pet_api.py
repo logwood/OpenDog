@@ -249,6 +249,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="explicitly permit a non-loopback bind without an API key",
     )
     parser.add_argument("--log-level", default="info")
+    parser.add_argument(
+        "--enable-capture",
+        action="store_true",
+        help="mount the dog-capture/1 guided capture protocol (/v1/capture) and H5 (/capture/)",
+    )
+    parser.add_argument(
+        "--capture-models",
+        default=None,
+        help="directory with dog_face_pose.onnx and yolox_nano.onnx (default models/pretrained/dog_capture_v1)",
+    )
+    parser.add_argument(
+        "--capture-consistency-threshold",
+        type=float,
+        default=None,
+        help="reject capture shots whose recognizer similarity to the others is below this (report-only if unset)",
+    )
     return parser
 
 
@@ -442,6 +458,16 @@ def main() -> None:
     import uvicorn
 
     app = create_app(service, api_key=args.api_key)
+    if args.enable_capture:
+        from dog_capture.service import mount_capture
+
+        mount_capture(
+            app,
+            service,
+            api_key=args.api_key,
+            models_dir=args.capture_models,
+            consistency_threshold=args.capture_consistency_threshold,
+        )
     uvicorn.run(
         app, host=args.host, port=args.port, log_level=args.log_level, workers=1
     )

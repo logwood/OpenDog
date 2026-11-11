@@ -51,10 +51,12 @@ class Shot:
 
 
 class TrackShots:
-    def __init__(self, track_id, view_names, config):
+    def __init__(self, track_id, view_names, config, shots=None):
         self.track_id = track_id
         self.view_names = tuple(view_names)
         self.config = config
+        # images kept per view (ViewSpec.shots), default selection.top_k
+        self.k = {v: int((shots or {}).get(v) or config.top_k) for v in self.view_names}
         self.slots = {v: [] for v in self.view_names}
         self.pending = {v: [] for v in self.view_names}
         self.first_good = {v: None for v in self.view_names}
@@ -63,14 +65,18 @@ class TrackShots:
         self.first_time = self.last_time = None
 
     # ---- queries ------------------------------------------------------
+    @staticmethod
+    def level_ok(level, minimum):
+        return LEVEL_ORDER[level] >= LEVEL_ORDER[minimum]
+
     def eligible_level(self, level):
-        return LEVEL_ORDER[level] >= LEVEL_ORDER[self.config.min_level]
+        return self.level_ok(level, self.config.min_level)
 
     def wants(self, view, score):
         """Cheap pre-check so a full-frame copy is only made when it can matter."""
         if view not in self.slots or view in self.locked:
             return False
-        k = self.config.top_k
+        k = self.k[view]
         for bucket in (self.slots[view], self.pending[view]):
             if len(bucket) >= k and score <= min(s.score for s in bucket):
                 return False  # could never enter the slot (or the pending buffer)
@@ -78,6 +84,9 @@ class TrackShots:
 
     def captured(self):
         return [v for v in self.view_names if self.slots[v]]
+
+    def full(self, view):
+        return len(self.slots[view]) >= self.k[view]
 
     def best(self, view):
         return self.slots[view][0] if self.slots.get(view) else None
@@ -114,7 +123,7 @@ class TrackShots:
             bucket = self.pending[shot.view]
             bucket.append(shot)
             bucket.sort(key=lambda s: -s.score)
-            del bucket[self.config.top_k:]
+            del bucket[self.k[shot.view]:]
             return [], shot in bucket
         shot.confirmed_at = timestamp
         events = self._insert(shot, timestamp)
@@ -128,7 +137,8 @@ class TrackShots:
         slot = self.slots[shot.view]
         was_empty = not slot
         previous_best = slot[0].score if slot else None
-        if c.top_k > 1:
+        k = self.k[shot.view]
+        if k > 1:
             near = [s for s in slot if abs(s.time_s - shot.time_s) < c.min_gap_s]
             if near:
                 if shot.score <= max(s.score for s in near):
@@ -137,7 +147,7 @@ class TrackShots:
                     slot.remove(s)
         slot.append(shot)
         slot.sort(key=lambda s: -s.score)
-        del slot[c.top_k:]
+        del slot[k:]
         if shot not in slot:
             return []
         events = []
@@ -150,7 +160,7 @@ class TrackShots:
         elif previous_best is not None and shot.score > previous_best + 0.01:
             events.append({'event': 'view_improved', 'view': shot.view, 'track_id': self.track_id,
                            'frame_index': shot.frame_index, 'time_s': shot.time_s, 'score': shot.score})
-        if c.mode == 'fast' and good:
+        if c.mode == 'fast' and len(slot) >= k and min(s.score for s in slot) >= c.good_enough:
             self.locked.add(shot.view)
             events.append({'event': 'view_locked', 'view': shot.view, 'track_id': self.track_id,
                            'time_s': timestamp})
@@ -160,7 +170,8 @@ class TrackShots:
         if self.config.mode != 'hybrid':
             return
         for view, first in self.first_good.items():
-            if first is not None and view not in self.locked and timestamp - first >= self.config.improve_window_s:
+            if (first is not None and view not in self.locked and self.full(view)
+                    and timestamp - first >= self.config.improve_window_s):
                 self.locked.add(view)
 
     def finalize(self, timestamp=None):
