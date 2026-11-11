@@ -243,7 +243,7 @@ class CaptureEngine:
                     timings['head_gate'] = timings.get('head_gate', 0) + (time.perf_counter() - started) * 1000
                     lx, ly = cx - x1, cy - y1
                     for box, score in zip(boxes, scores):
-                        if box[0] <= lx <= box[2] and box[1] <= ly <= box[3]:
+                        if score >= g.head_score_threshold and box[0] <= lx <= box[2] and box[1] <= ly <= box[3]:
                             best, best_score = box + np.array([x1, y1, x1, y1], np.float32), float(score)
                             self.head_cache.append((det.box.copy(), timestamp))
                             break
@@ -382,7 +382,9 @@ class CaptureEngine:
                 rotated = rotate_frame(frame, degrees)
                 found = [d for d in self.detector.detect(rotated) if d.validate() is None]
                 self.body_checked = self.head_checked = -math.inf  # body boxes are per orientation
-                found, _ = self._species_gate(rotated, found, timestamp, timings)
+                found, not_dog = self._species_gate(rotated, found, timestamp, timings)
+                if not_dog:
+                    rejected['not_dog'] = rejected.get('not_dog', 0) + not_dog
                 if found:
                     frame, detections, rotation = rotated, found, degrees
                     break

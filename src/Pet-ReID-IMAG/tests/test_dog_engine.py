@@ -495,3 +495,27 @@ def test_primary_dog_survives_a_one_frame_miss():
     for i in range(7, 30):
         result = engine.process(small_only[0], i / 30, i, detections=small_only[1])
     assert result.primary_track != primary  # gone for good: switch
+
+
+class HeadOnlyGate:
+    """No dog body in the full frame; the head crop scores ``score`` as dog."""
+
+    def __init__(self, score):
+        self.score = score
+
+    def detect(self, frame):
+        if frame.shape[:2] == (720, 1280):
+            return np.zeros((0, 4), np.float32), np.zeros(0, np.float32)
+        h, w = frame.shape[:2]
+        return np.array([[0, 0, w, h]], np.float32), np.array([self.score], np.float32)
+
+    def describe(self):
+        return {'kind': 'head-only'}
+
+
+@pytest.mark.parametrize('score,kept', [(0.44, False), (0.8, True)])
+def test_head_crop_fallback_needs_stronger_evidence(score, kept):
+    image, dets = render()
+    engine = CaptureEngine(body_gate=HeadOnlyGate(score))
+    result = engine.process(image, 0.0, 0, detections=dets)
+    assert ('not_dog' not in result.rejected) == kept

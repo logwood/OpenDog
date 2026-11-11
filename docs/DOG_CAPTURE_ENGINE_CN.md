@@ -145,7 +145,7 @@ Ultralytics 还能直接导出 TFLite / CoreML / NCNN / RKNN / OpenVINO / Tensor
 | 树莓派等 ARM | `onnxruntime` | `cpu`（可配合 INT8，前提是经过对照验证） |
 
 `auto` 按 TensorRT → CUDA → DirectML → CoreML → OpenVINO → CPU 的顺序选择，失败时自动回退，并在 `result.json` 里记录实际使用的执行器和回退原因。
-引擎逻辑（跟踪、对齐、质量、抓拍、引导）约 1 500 行纯 NumPy/OpenCV 代码，不依赖框架，可以按原样移植到 Kotlin / C++。
+引擎逻辑（跟踪、对齐、质量、抓拍、引导，含注释）约 1 900 行纯 NumPy/OpenCV 代码，不依赖框架，可以按原样移植到 Kotlin / C++。
 
 ## 8. 配置要点
 

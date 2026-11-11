@@ -8,8 +8,8 @@
       "priority": 1,
       "file": "dog_face_pose.onnx",
       "schema": "dogface6",
-      "obtain": "python src/Pet-ReID-IMAG/tools/train_dog_face_pose.py --data <dog-pose root> --export (trains YOLO11n-pose on the face subset of the Ultralytics dog-pose / StanfordExtra keypoints)",
-      "license": "Weights you train with Ultralytics are subject to AGPL-3.0 unless you hold an Ultralytics Enterprise license; StanfordExtra annotations are for research use.",
+      "obtain": "tools/train_dog_face_pose.py prepare -> pseudolabel (teacher eyes) -> train -> export; see docs/DOG_CAPTURE_ENGINE_CN.md section 6",
+      "license": "Ultralytics AGPL-3.0 unless you hold an Enterprise licence; StanfordExtra/Stanford Dogs are research data; a DogFLW teacher adds its CC BY-NC 4.0 terms",
       "edge": "~3 M parameters at 640 or 480 input; exports to ONNX, TFLite, CoreML, NCNN, RKNN, TensorRT via Ultralytics"
     },
     {

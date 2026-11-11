@@ -104,7 +104,12 @@ def cmd_run(args):
     show = None
     if args.show:
         import cv2
-        show = cv2
+        try:  # opencv-python-headless has no GUI: warn and continue without a window
+            cv2.namedWindow('dog_capture (Esc to stop)', cv2.WINDOW_NORMAL)
+            show = cv2
+        except cv2.error:
+            print('warning: this OpenCV build has no GUI support (opencv-python-headless?); '
+                  'install opencv-python for --show. Continuing without a window.', file=sys.stderr)
     try:
         for frame, timestamp, index in source:
             if args.max_seconds and timestamp > args.max_seconds:
@@ -264,5 +269,12 @@ def main(argv=None):
     config = sub.add_parser('config', help='print or write the default configuration')
     config.add_argument('--write', help='file to write (.json or .yaml)')
     config.set_defaults(func=cmd_config)
+    parser.add_argument('--debug', action='store_true', help='show Python tracebacks')
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (FileNotFoundError, ValueError, RuntimeError, ImportError) as exc:
+        if args.debug:
+            raise
+        print(f'error: {exc}', file=sys.stderr)
+        return 1

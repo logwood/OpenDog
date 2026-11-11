@@ -54,6 +54,7 @@ class BodyGateConfig:
     period_s: float = 0.25        # body detection refresh period
     hold_s: float = 0.75          # a body box stays valid this long
     margin: float = 0.15          # body box expansion before the face-centre test
+    head_score_threshold: float = 0.50  # stricter: a head crop alone is weaker evidence (cats)
 
 
 @dataclass
@@ -195,6 +196,8 @@ class CaptureConfig:
         check(32 <= d.input_size <= 2048 and d.input_size % 32 == 0, 'detector.input_size must be a multiple of 32')
         check(0 < d.score_threshold < 1 and 0 < d.nms_iou < 1 and d.max_faces >= 1, 'detector thresholds')
         check(self.body_gate.enabled in ('auto', 'on', 'off'), 'body_gate.enabled must be auto/on/off')
+        check(0 < self.body_gate.score_threshold <= self.body_gate.head_score_threshold < 1,
+              'body_gate thresholds (head_score_threshold >= score_threshold)')
         check(0 <= t.low_score <= t.high_score <= 1 and 0 < t.new_track_score <= 1, 'tracker score thresholds')
         check(all(0 < v < 1 for v in (t.match_iou, t.low_match_iou, t.unconfirmed_match_iou)), 'tracker IoU thresholds')
         check(t.max_lost_s > 0 and t.max_tracks >= 1 and t.nominal_fps > 0, 'tracker limits')

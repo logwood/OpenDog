@@ -104,9 +104,10 @@ def find_face_model(config):
         if path.is_file():
             return entry['kind'], path
     raise FileNotFoundError(
-        f'No dog face model found in {model_dir()} (kind={d.kind}). Run `python -m dog_capture models` to see '
-        'the options: export AnyFace with tools/export_anyface_onnx.py, train the 6-point model with '
-        'tools/train_dog_face_pose.py, or install ai-edge-litert to use the legacy DogFLW cascade.')
+        f'No dog face model found in {model_dir()} (kind={d.kind}). Options (`python -m dog_capture models`): '
+        'export the local AnyFace weights with tools/export_anyface_onnx.py; train the 6-point edge model with '
+        'tools/train_dog_face_pose.py; or use the v0.x DogFLW models in models/pretrained/dog_face_landmarks_v1 '
+        '(tools/prepare_dog_capture_assets.py --models, needs ai-edge-litert); or pass --model PATH.')
 
 
 def build_detector(config, kind=None, path=None):

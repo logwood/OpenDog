@@ -436,13 +436,16 @@ def write_review(directory, report):
             f'<p>{links}</p><details><summary>质量分项</summary><table>{factors}</table></details></article>')
     stats = report['stats']
     frame_link = ' · <a href="frames.jsonl">frames.jsonl</a>' if report.get('frame_log') else ''
-    guidance = ''.join(f'<li>{html.escape(k)}: {v}</li>' for k, v in report['guidance_counts'].items())
+    from .guidance import MESSAGES
+    guidance = ''.join(f'<li>{html.escape(MESSAGES.get(k, k).replace("：{view}", ""))} '
+                       f'<span class="muted">({html.escape(k)})</span>：{v} 帧</li>'
+                       for k, v in report['guidance_counts'].items())
     body = f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>犬脸优选抓拍</title>
 <style>:root{{color-scheme:light dark;--bg:#f3f5f6;--card:#fff;--fg:#17313a;--muted:#5d7178}}
 @media (prefers-color-scheme:dark){{:root{{--bg:#11181b;--card:#1b2428;--fg:#e4ecee;--muted:#9fb1b6}}}}
 body{{font:15px/1.6 system-ui,"Microsoft YaHei",sans-serif;background:var(--bg);color:var(--fg);margin:0}}
-main{{max-width:1080px;margin:0 auto;padding:24px 16px}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}}
+main{{max-width:1080px;margin:0 auto;padding:24px 16px}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:16px 0}}
 article,.stats{{background:var(--card);border-radius:12px;padding:16px}}img{{width:100%;aspect-ratio:1;object-fit:contain;background:#0002;border-radius:8px}}
 .empty{{aspect-ratio:1;display:grid;place-items:center;color:var(--muted);background:#0001;border-radius:8px}}
 .muted{{color:var(--muted);overflow-wrap:anywhere}}a{{color:#0a8a8c}}td{{padding:0 12px 0 0}}</style>

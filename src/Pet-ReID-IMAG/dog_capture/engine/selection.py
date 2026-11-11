@@ -70,10 +70,11 @@ class TrackShots:
         """Cheap pre-check so a full-frame copy is only made when it can matter."""
         if view not in self.slots or view in self.locked:
             return False
-        bucket = self.pending[view] + self.slots[view]
-        if len(self.slots[view]) < self.config.top_k or len(self.pending[view]) < self.config.top_k:
-            return True
-        return score > min(s.score for s in bucket)
+        k = self.config.top_k
+        for bucket in (self.slots[view], self.pending[view]):
+            if len(bucket) >= k and score <= min(s.score for s in bucket):
+                return False  # could never enter the slot (or the pending buffer)
+        return True
 
     def captured(self):
         return [v for v in self.view_names if self.slots[v]]
