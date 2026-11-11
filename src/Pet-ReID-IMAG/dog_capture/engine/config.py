@@ -43,6 +43,7 @@ class DetectorConfig:
     schema: str = ''              # keypoint schema override for yolo_pose models
     roi_zoom: bool = True         # no face found but a dog body is: re-detect on a crop of the dog
     roi_min_zoom: float = 1.5     # only if the crop magnifies the dog at least this much
+    roi_period_s: float = 0.10    # at most 10 zoomed re-detections per second (bounded extra cost)
 
 
 @dataclass

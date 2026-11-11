@@ -26,6 +26,10 @@ class KeypointSchema:
     names: tuple[str, ...]
     # Pairs swapped by a horizontal mirror / by the engine's eye re-ordering.
     pairs: tuple[tuple[str, str], ...] = ()
+    # Raw yaw cue of this schema's nose point / yaw cue of the reference nose
+    # (DogFLW nose-pad centre, in which the default view bands are defined).
+    # The engine divides by it so one set of view bands fits every model.
+    yaw_scale: float = 1.0
 
     def __len__(self):
         return len(self.names)
@@ -40,10 +44,12 @@ class KeypointSchema:
 ANYFACE5 = KeypointSchema(
     'anyface5', ('left_eye', 'right_eye', 'nose', 'left_mouth', 'right_mouth'),
     (('left_eye', 'right_eye'), ('left_mouth', 'right_mouth')))
-# Face subset of the StanfordExtra / Ultralytics dog-pose 24 keypoints.
+# Face subset of the StanfordExtra / Ultralytics dog-pose 24 keypoints.  Its
+# nose is the nose *tip*: on 347 validation faces the tip-based yaw cue was
+# 1.90 x the nose-centre cue (correlation 0.95).
 DOGFACE6 = KeypointSchema(
     'dogface6', ('left_eye', 'right_eye', 'nose', 'chin', 'left_ear_base', 'right_ear_base'),
-    (('left_eye', 'right_eye'), ('left_ear_base', 'right_ear_base')))
+    (('left_eye', 'right_eye'), ('left_ear_base', 'right_ear_base')), yaw_scale=1.90)
 # Minimal schema: eye centres and nose (e.g. reduced DogFLW 46-point output).
 CORE3 = KeypointSchema('core3', ('left_eye', 'right_eye', 'nose'), (('left_eye', 'right_eye'),))
 

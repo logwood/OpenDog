@@ -9,6 +9,9 @@ Geometry
 Yaw cue
     ``yaw = (nose - eye midpoint) . eye_axis / eye_span``, the same
     dimensionless cue as the v0.x selector, so existing view bands still apply.
+    Each keypoint schema declares ``yaw_scale`` (its nose point's cue relative
+    to the DogFLW nose-pad centre the bands were defined in), so the same bands
+    mean the same head turn with every detector.
     Under a pinhole model with eyes at +-e and the nose tip protruding by d,
     ``yaw = (d / 2e) * tan(theta)``; ``approx_deg`` inverts this with a fixed
     snout factor k = d / 2e.  Snout length differs by breed, so the degree
@@ -82,14 +85,15 @@ def face_geometry(detection, config) -> FaceGeometry:
     horizontal = axis / span
     mid = (a + b) / 2
     offset = nose - mid
-    yaw = float(offset @ horizontal / span)
+    scale = detection.schema.yaw_scale  # express the cue in reference (nose-centre) units
+    yaw = float(offset @ horizontal / span) / scale
     pitch = float(offset @ normal / span)
     roll = math.degrees(math.atan2(horizontal[1], horizontal[0]))
     lower = None
     if 'left_mouth' in points and 'right_mouth' in points:
-        lower = float(((points['left_mouth'] + points['right_mouth']) / 2 - mid) @ horizontal / span)
+        lower = float(((points['left_mouth'] + points['right_mouth']) / 2 - mid) @ horizontal / span) / scale
     elif 'chin' in points and (not scores or scores.get('chin', 1) >= 0.3):
-        lower = float((points['chin'] - mid) @ horizontal / span)
+        lower = float((points['chin'] - mid) @ horizontal / span) / scale
     geometry = FaceGeometry(points, scores, span, roll, yaw, pitch, lower,
                             math.degrees(math.atan2(yaw, config.snout_factor)), swapped)
     box_w = max(detection.width, detection.height)

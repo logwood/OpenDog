@@ -458,11 +458,12 @@ def test_orientation_lock_uses_keypoint_roll_hint():
 def test_still_image_mode_picks_best_photo_per_view():
     config = CaptureConfig().merged({'runtime': {'still_images': True}})
     engine = CaptureEngine(config)
-    photos = [render(blur=1.5), render(), render(yaw=.45), render(blur=6)]
+    photos = [render(blur=1.5), render(yaw=.45), render(blur=6), render(blur=.8), render(), render(gain=.9)]
     for i, (image, dets) in enumerate(photos):
         engine.process(image, float(i), i, detections=dets)
     best = engine.finalize()
-    assert best.best('front').frame_index == 1 and best.best('right').frame_index == 2
+    # the sharpest front is photo 4, seconds after the first good one: photo sets never lock early
+    assert best.best('front').frame_index == 4 and best.best('right').frame_index == 1
 
 
 def test_output_size_is_independent_of_quality_crop():

@@ -227,8 +227,8 @@ def cmd_bench(args):
     for i, frame in enumerate(frames * max(1, args.runs // len(frames))):
         result = engine.process(frame, i / 30.0, i)
         totals.append(result.timings_ms['total'])
-        overhead.append(result.timings_ms['total'] - result.timings_ms.get('detector', 0)
-                        - result.timings_ms.get('body_gate', 0) - result.timings_ms.get('head_gate', 0))
+        overhead.append(result.timings_ms['total'] - sum(result.timings_ms.get(k, 0) for k in
+                                                         ('detector', 'roi_detector', 'body_gate', 'head_gate')))
     report['pipeline_ms'] = {'p50': round(float(np.median(totals)), 2), 'p95': round(float(np.percentile(totals, 95)), 2),
                              'fps_at_p50': round(1000 / max(float(np.median(totals)), 1e-6), 1)}
     report['engine_overhead_ms'] = {'p50': round(float(np.median(overhead)), 2),

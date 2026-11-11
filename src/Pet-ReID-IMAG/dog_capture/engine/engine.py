@@ -15,7 +15,7 @@ from a single worker with capture timestamps.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import math
 import time
 
@@ -169,8 +169,11 @@ def as_bgr(frame):
 
 class _TrackContext:
     def __init__(self, track_id, engine):
-        self.classifier = ViewClassifier(engine.config.pose, still=engine.config.runtime.still_images)
-        self.shots = TrackShots(track_id, engine.view_names, engine.config.selection)
+        still = engine.config.runtime.still_images
+        self.classifier = ViewClassifier(engine.config.pose, still=still)
+        # A photo set has no time axis: fast/hybrid locking would ignore later, better photos.
+        selection = replace(engine.config.selection, mode='best') if still else engine.config.selection
+        self.shots = TrackShots(track_id, engine.view_names, selection)
 
 
 class CaptureEngine:
@@ -196,6 +199,7 @@ class CaptureEngine:
         self.body_scores = np.zeros((0,), np.float32)
         self.body_time = -math.inf
         self.body_checked = -math.inf
+        self.roi_checked = -math.inf
         self._external = False
         self.guidance_history = deque()
         self.shown_code = None
@@ -266,6 +270,9 @@ class CaptureEngine:
         d = self.config.detector
         if not d.roi_zoom or self.body_gate is None or self.detector is None:
             return []
+        if timestamp - self.roi_checked < d.roi_period_s and timestamp >= self.roi_checked:
+            return []
+        self.roi_checked = timestamp
         self._refresh_bodies(frame, timestamp, timings)
         if timestamp - self.body_time > self.config.body_gate.hold_s or not len(self.body_boxes):
             return []
