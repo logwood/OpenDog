@@ -219,11 +219,10 @@ class DogFaceModels:
 
     def infer(self, frame, timestamp):
         begin = time.perf_counter()
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        scale = min(1.0, 640 / max(frame.shape[:2]))
-        gray = cv2.cvtColor(cv2.resize(frame, (round(frame.shape[1] * scale), round(frame.shape[0] * scale))), cv2.COLOR_BGR2GRAY)
+        rgb = None
         discontinuity = False
         if timestamp - self.last_detection >= self.period:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             old = self.body_box
             dogs = self.detect_dogs(rgb)
             self.last_detection = timestamp
@@ -244,6 +243,10 @@ class DogFaceModels:
             return {'valid': False, 'reason': self.last_reason,
                     'discontinuity': discontinuity, 'inference_mode': 'retry_wait',
                     'timings_ms': {'detector': detection_ms}}
+        # No-dog and retry-wait frames need neither a tracking image nor a
+        # full-size RGB copy. Build the same pixels only when they are consumed.
+        scale = min(1.0, 640 / max(frame.shape[:2]))
+        gray = cv2.cvtColor(cv2.resize(frame, (round(frame.shape[1] * scale), round(frame.shape[0] * scale))), cv2.COLOR_BGR2GRAY)
         if not discontinuity and timestamp - self.last_landmarks < self.landmark_period:
             tracked = self.track(gray, scale)
             if tracked is not None:
@@ -275,6 +278,8 @@ class DogFaceModels:
                             "dog_score": self.body_score, "body_box": self.body_box, "discontinuity": False,
                             "inference_mode": "optical_flow", "timings_ms": {"detector": detection_ms,
                             "tracking": (time.perf_counter() - begin) * 1000 - detection_ms}}
+        if rgb is None:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         bx1, by1, bx2, by2 = clip_box(self.body_box, rgb.shape, margin=0.12)
         body = rgb[by1:by2, bx1:bx2]
         local, mapping = letterbox(body, 224)

@@ -13,6 +13,9 @@ import os
 from pathlib import Path
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from dog_capture.windows_runtime import ensure_driver_profile_environment
+
 U, P, W = c.c_uint32, c.c_void_p, c.c_wchar * 2048
 
 
@@ -46,6 +49,7 @@ def configure(application, action):
     application = Path(application).resolve(strict=True)
     if application.name.lower() != 'dog_capture_trt.exe':
         raise ValueError('Only the dedicated dog_capture_trt.exe may be configured')
+    ensure_driver_profile_environment()
     dll = c.CDLL('nvapi64.dll')
     dll.nvapi_QueryInterface.argtypes, dll.nvapi_QueryInterface.restype = [U], P
     def fn(identifier, *types):
@@ -58,12 +62,14 @@ def configure(application, action):
         if status:
             buffer = c.create_string_buffer(64)
             error_message(status, buffer)
-            raise RuntimeError(f'NVAPI {status}: {buffer.value.decode()}; driver profile writes may require Windows administrator rights')
+            hint = '; driver profile writes may require Windows administrator rights' if status == -175 else ''
+            raise RuntimeError(f'NVAPI {status}: {buffer.value.decode()}{hint}')
     initialize, unload = fn(0x0150e828), fn(0xd22bdd7e)
     create, destroy = fn(0x0694d52e, c.POINTER(P)), fn(0xdad9cff8, P)
     load, save = fn(0x375dbd6b, P), fn(0xfcbc7e14, P)
     find_app = fn(0xeee566b2, P, c.c_wchar_p, c.POINTER(P), c.POINTER(Application))
     get_profile = fn(0x61cd6fd6, P, P, c.POINTER(Profile))
+    get_global = fn(0x617bff9f, P, c.POINTER(P))
     make_profile = fn(0xcc176068, P, c.POINTER(Profile), c.POINTER(P))
     make_app = fn(0x4347a9de, P, P, c.POINTER(Application))
     set_setting, get_setting = fn(0x577dd202, P, P, c.POINTER(Setting)), fn(0x73bf8338, P, P, U, c.POINTER(Setting))
@@ -74,6 +80,13 @@ def configure(application, action):
     try:
         check(create(c.byref(session)))
         check(load(session))
+        global_profile = P()
+        check(get_global(session, c.byref(global_profile)))
+        global_setting = structure(Setting)
+        global_status = get_setting(session, global_profile, 0x1057EB71, c.byref(global_setting))
+        if global_status not in (0, -160):  # No override: use the driver's default.
+            check(global_status)
+        global_value = global_setting.current.dword if global_status == 0 else None
         app = structure(Application)
         status = find_app(session, str(application), c.byref(profile), c.byref(app))
         if status not in (0, -166):  # NVAPI_EXECUTABLE_NOT_FOUND
@@ -87,7 +100,7 @@ def configure(application, action):
                 raise RuntimeError('This application belongs to another profile; no settings changed')
             check(get_setting(session, profile, 0x1057EB71, c.byref(setting)))
             value = setting.current.dword
-        if action == 'enable':
+        if action == 'enable' and (not exists or value != 1):
             if not exists:
                 info.name = profile_name
                 check(make_profile(session, c.byref(info), c.byref(profile)))
@@ -107,6 +120,7 @@ def configure(application, action):
             exists, value = False, None
         return {'application': str(application), 'action': action, 'profile_exists': exists,
                 'profile_name': info.name if exists else None, 'preferred_pstate': value,
+                'global_preferred_pstate': global_value,
                 'global_settings_changed': False}
     finally:
         if session:

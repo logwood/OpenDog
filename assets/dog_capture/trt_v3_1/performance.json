@@ -1,0 +1,787 @@
+{
+  "started_utc": "2026-11-11T11:41:17.633794+00:00",
+  "profile_before": {
+    "application": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+    "action": "status",
+    "profile_exists": true,
+    "profile_name": "DogCapture TensorRT ae711cccb02f",
+    "preferred_pstate": 1,
+    "global_preferred_pstate": null,
+    "global_settings_changed": false
+  },
+  "runs": [
+    {
+      "run": "live-user-dedicated-1",
+      "source_frames": 1314,
+      "frames_processed": 1313,
+      "source_frames_skipped": 0,
+      "frames_replaced_before_processing": 1,
+      "processing_fps": 29.861222255215772,
+      "capture_to_result_ms_p50": 0.80339999840362,
+      "capture_to_result_ms_p95": 39.875380000739796,
+      "capture_to_result_ms_max": 131.82919999962905,
+      "queue_wait_ms_p95": 5.039980000583308,
+      "queue_capacity": 3,
+      "peak_rss_mb": 638.578125,
+      "model_calls": {
+        "detector": 139,
+        "localizer": 76,
+        "landmarker": 196
+      },
+      "runtime_assets": {
+        "localizer": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "onnx_sha256": "8389fcc1e674ef4a36b3531f907fc503fa600f79d9402d5bf4763154f3c11e0a",
+          "engine_sha256": "aa774e7fd70ffc12386cac8948f0921cec17ac62e0848f6e95ae77698b14ed93",
+          "engine_bytes": 21354700,
+          "build_seconds": 169.1073733000003,
+          "output_names": [
+            "face_box"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows"
+        },
+        "landmarks": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "d9778c6c0db9ab31fd56d3565ce902d505877ab60f3cd78c4bc5ec0aade5adc9",
+          "engine_sha256": "fc25b0dab398b73ca1968e31325f184c6fc9ca382860a6848df5d7d443979d0b",
+          "engine_bytes": 18328636,
+          "build_seconds": 127.13205720000042,
+          "output_names": [
+            "landmarks",
+            "landmark_entropy"
+          ],
+          "protected_fp32_layers": [
+            "soft_argmax/contiguous/probabilities",
+            "soft_argmax/contiguous/weighted_x",
+            "soft_argmax/contiguous/weighted_y",
+            "soft_argmax/contiguous/x",
+            "soft_argmax/contiguous/y",
+            "soft_argmax/contiguous/clipped",
+            "soft_argmax/contiguous/log",
+            "soft_argmax/contiguous/weighted_log",
+            "soft_argmax/contiguous/negative_entropy",
+            "soft_argmax/contiguous/landmark_entropy"
+          ],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3
+        },
+        "detector": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "ee401a50dbc7d83337478caa7bf079b4a19ea2b9903d221fd03e2d9678d6b9b5",
+          "engine_sha256": "d9006bf2c2e0c080aa2cfc1991bb4969ca91900de5a1e1e51d4be9a1b8218ce5",
+          "engine_bytes": 12099892,
+          "build_seconds": 156.15062970000054,
+          "output_names": [
+            "detection_boxes",
+            "detection_scores",
+            "detection_classes"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "contract_sha256": "505fd0a595a9a47c99b6024f8089896494e140aedddb5e13d9c44253b7288210"
+        }
+      },
+      "groups": {
+        "all": {
+          "n": 1313,
+          "p50_ms": 0.80339999840362,
+          "p95_ms": 39.875380000739796,
+          "max_ms": 131.82919999962905
+        },
+        "neural": {
+          "n": 76,
+          "p50_ms": 49.50375000225904,
+          "p95_ms": 96.79457499805721,
+          "max_ms": 131.82919999962905
+        },
+        "accepted": {
+          "n": 29,
+          "p50_ms": 31.326299998909235,
+          "p95_ms": 69.0061000001151,
+          "max_ms": 79.20999999987544
+        }
+      },
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "input_sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06",
+      "missing_views": [
+        "right"
+      ],
+      "executable": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+      "wall_seconds_with_startup": 45.104342099999485
+    },
+    {
+      "run": "live-user-dedicated-2",
+      "source_frames": 1314,
+      "frames_processed": 1314,
+      "source_frames_skipped": 0,
+      "frames_replaced_before_processing": 0,
+      "processing_fps": 29.92026488497124,
+      "capture_to_result_ms_p50": 0.8356499984074617,
+      "capture_to_result_ms_p95": 36.47555999941682,
+      "capture_to_result_ms_max": 111.27499999929569,
+      "queue_wait_ms_p95": 3.3566500016604373,
+      "queue_capacity": 3,
+      "peak_rss_mb": 642.75,
+      "model_calls": {
+        "detector": 139,
+        "localizer": 77,
+        "landmarker": 197
+      },
+      "runtime_assets": {
+        "localizer": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "onnx_sha256": "8389fcc1e674ef4a36b3531f907fc503fa600f79d9402d5bf4763154f3c11e0a",
+          "engine_sha256": "aa774e7fd70ffc12386cac8948f0921cec17ac62e0848f6e95ae77698b14ed93",
+          "engine_bytes": 21354700,
+          "build_seconds": 169.1073733000003,
+          "output_names": [
+            "face_box"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows"
+        },
+        "landmarks": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "d9778c6c0db9ab31fd56d3565ce902d505877ab60f3cd78c4bc5ec0aade5adc9",
+          "engine_sha256": "fc25b0dab398b73ca1968e31325f184c6fc9ca382860a6848df5d7d443979d0b",
+          "engine_bytes": 18328636,
+          "build_seconds": 127.13205720000042,
+          "output_names": [
+            "landmarks",
+            "landmark_entropy"
+          ],
+          "protected_fp32_layers": [
+            "soft_argmax/contiguous/probabilities",
+            "soft_argmax/contiguous/weighted_x",
+            "soft_argmax/contiguous/weighted_y",
+            "soft_argmax/contiguous/x",
+            "soft_argmax/contiguous/y",
+            "soft_argmax/contiguous/clipped",
+            "soft_argmax/contiguous/log",
+            "soft_argmax/contiguous/weighted_log",
+            "soft_argmax/contiguous/negative_entropy",
+            "soft_argmax/contiguous/landmark_entropy"
+          ],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3
+        },
+        "detector": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "ee401a50dbc7d83337478caa7bf079b4a19ea2b9903d221fd03e2d9678d6b9b5",
+          "engine_sha256": "d9006bf2c2e0c080aa2cfc1991bb4969ca91900de5a1e1e51d4be9a1b8218ce5",
+          "engine_bytes": 12099892,
+          "build_seconds": 156.15062970000054,
+          "output_names": [
+            "detection_boxes",
+            "detection_scores",
+            "detection_classes"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "contract_sha256": "505fd0a595a9a47c99b6024f8089896494e140aedddb5e13d9c44253b7288210"
+        }
+      },
+      "groups": {
+        "all": {
+          "n": 1314,
+          "p50_ms": 0.8356499984074617,
+          "p95_ms": 36.47555999941682,
+          "max_ms": 111.27499999929569
+        },
+        "neural": {
+          "n": 77,
+          "p50_ms": 46.10849999880884,
+          "p95_ms": 100.99324000111666,
+          "max_ms": 111.27499999929569
+        },
+        "accepted": {
+          "n": 29,
+          "p50_ms": 22.461299999122275,
+          "p95_ms": 100.67839999901477,
+          "max_ms": 109.57290000078501
+        }
+      },
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "input_sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06",
+      "missing_views": [
+        "right"
+      ],
+      "executable": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+      "wall_seconds_with_startup": 44.73982579999938
+    },
+    {
+      "run": "live-user-dedicated-3",
+      "source_frames": 1314,
+      "frames_processed": 1314,
+      "source_frames_skipped": 0,
+      "frames_replaced_before_processing": 0,
+      "processing_fps": 29.907543900723084,
+      "capture_to_result_ms_p50": 0.7820499995432328,
+      "capture_to_result_ms_p95": 35.77777499958742,
+      "capture_to_result_ms_max": 99.52790000170353,
+      "queue_wait_ms_p95": 2.527584999006648,
+      "queue_capacity": 3,
+      "peak_rss_mb": 638.91796875,
+      "model_calls": {
+        "detector": 139,
+        "localizer": 77,
+        "landmarker": 197
+      },
+      "runtime_assets": {
+        "localizer": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "onnx_sha256": "8389fcc1e674ef4a36b3531f907fc503fa600f79d9402d5bf4763154f3c11e0a",
+          "engine_sha256": "aa774e7fd70ffc12386cac8948f0921cec17ac62e0848f6e95ae77698b14ed93",
+          "engine_bytes": 21354700,
+          "build_seconds": 169.1073733000003,
+          "output_names": [
+            "face_box"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows"
+        },
+        "landmarks": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "d9778c6c0db9ab31fd56d3565ce902d505877ab60f3cd78c4bc5ec0aade5adc9",
+          "engine_sha256": "fc25b0dab398b73ca1968e31325f184c6fc9ca382860a6848df5d7d443979d0b",
+          "engine_bytes": 18328636,
+          "build_seconds": 127.13205720000042,
+          "output_names": [
+            "landmarks",
+            "landmark_entropy"
+          ],
+          "protected_fp32_layers": [
+            "soft_argmax/contiguous/probabilities",
+            "soft_argmax/contiguous/weighted_x",
+            "soft_argmax/contiguous/weighted_y",
+            "soft_argmax/contiguous/x",
+            "soft_argmax/contiguous/y",
+            "soft_argmax/contiguous/clipped",
+            "soft_argmax/contiguous/log",
+            "soft_argmax/contiguous/weighted_log",
+            "soft_argmax/contiguous/negative_entropy",
+            "soft_argmax/contiguous/landmark_entropy"
+          ],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3
+        },
+        "detector": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "ee401a50dbc7d83337478caa7bf079b4a19ea2b9903d221fd03e2d9678d6b9b5",
+          "engine_sha256": "d9006bf2c2e0c080aa2cfc1991bb4969ca91900de5a1e1e51d4be9a1b8218ce5",
+          "engine_bytes": 12099892,
+          "build_seconds": 156.15062970000054,
+          "output_names": [
+            "detection_boxes",
+            "detection_scores",
+            "detection_classes"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "contract_sha256": "505fd0a595a9a47c99b6024f8089896494e140aedddb5e13d9c44253b7288210"
+        }
+      },
+      "groups": {
+        "all": {
+          "n": 1314,
+          "p50_ms": 0.7820499995432328,
+          "p95_ms": 35.77777499958742,
+          "max_ms": 99.52790000170353
+        },
+        "neural": {
+          "n": 77,
+          "p50_ms": 49.094999998487765,
+          "p95_ms": 83.11195999922349,
+          "max_ms": 99.52790000170353
+        },
+        "accepted": {
+          "n": 29,
+          "p50_ms": 24.638800001412164,
+          "p95_ms": 84.6282799997425,
+          "max_ms": 99.52790000170353
+        }
+      },
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "input_sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06",
+      "missing_views": [
+        "right"
+      ],
+      "executable": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+      "wall_seconds_with_startup": 45.01074850000077
+    },
+    {
+      "run": "live-wolfhound-dedicated-1",
+      "source_frames": 1212,
+      "frames_processed": 1212,
+      "source_frames_skipped": 0,
+      "frames_replaced_before_processing": 0,
+      "processing_fps": 23.956005625826517,
+      "capture_to_result_ms_p50": 16.817550000268966,
+      "capture_to_result_ms_p95": 42.87327499805542,
+      "capture_to_result_ms_max": 79.58599999983562,
+      "queue_wait_ms_p95": 1.7270050006118258,
+      "queue_capacity": 3,
+      "peak_rss_mb": 668.7421875,
+      "model_calls": {
+        "detector": 152,
+        "localizer": 242,
+        "landmarker": 344,
+        "candidate_verification": 33
+      },
+      "runtime_assets": {
+        "localizer": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "onnx_sha256": "8389fcc1e674ef4a36b3531f907fc503fa600f79d9402d5bf4763154f3c11e0a",
+          "engine_sha256": "aa774e7fd70ffc12386cac8948f0921cec17ac62e0848f6e95ae77698b14ed93",
+          "engine_bytes": 21354700,
+          "build_seconds": 169.1073733000003,
+          "output_names": [
+            "face_box"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows"
+        },
+        "landmarks": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "d9778c6c0db9ab31fd56d3565ce902d505877ab60f3cd78c4bc5ec0aade5adc9",
+          "engine_sha256": "fc25b0dab398b73ca1968e31325f184c6fc9ca382860a6848df5d7d443979d0b",
+          "engine_bytes": 18328636,
+          "build_seconds": 127.13205720000042,
+          "output_names": [
+            "landmarks",
+            "landmark_entropy"
+          ],
+          "protected_fp32_layers": [
+            "soft_argmax/contiguous/probabilities",
+            "soft_argmax/contiguous/weighted_x",
+            "soft_argmax/contiguous/weighted_y",
+            "soft_argmax/contiguous/x",
+            "soft_argmax/contiguous/y",
+            "soft_argmax/contiguous/clipped",
+            "soft_argmax/contiguous/log",
+            "soft_argmax/contiguous/weighted_log",
+            "soft_argmax/contiguous/negative_entropy",
+            "soft_argmax/contiguous/landmark_entropy"
+          ],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3
+        },
+        "detector": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "ee401a50dbc7d83337478caa7bf079b4a19ea2b9903d221fd03e2d9678d6b9b5",
+          "engine_sha256": "d9006bf2c2e0c080aa2cfc1991bb4969ca91900de5a1e1e51d4be9a1b8218ce5",
+          "engine_bytes": 12099892,
+          "build_seconds": 156.15062970000054,
+          "output_names": [
+            "detection_boxes",
+            "detection_scores",
+            "detection_classes"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "contract_sha256": "505fd0a595a9a47c99b6024f8089896494e140aedddb5e13d9c44253b7288210"
+        }
+      },
+      "groups": {
+        "all": {
+          "n": 1212,
+          "p50_ms": 16.817550000268966,
+          "p95_ms": 42.87327499805542,
+          "max_ms": 79.58599999983562
+        },
+        "neural": {
+          "n": 242,
+          "p50_ms": 33.743499998308835,
+          "p95_ms": 62.23307499985822,
+          "max_ms": 79.58599999983562
+        },
+        "accepted": {
+          "n": 752,
+          "p50_ms": 18.032250000032946,
+          "p95_ms": 40.94429499964462,
+          "max_ms": 79.58599999983562
+        }
+      },
+      "selected": {
+        "front": 192,
+        "right": 146,
+        "left": 398
+      },
+      "input_sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893",
+      "missing_views": [],
+      "executable": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+      "wall_seconds_with_startup": 51.81897179999942
+    },
+    {
+      "run": "live-wolfhound-dedicated-2",
+      "source_frames": 1212,
+      "frames_processed": 1212,
+      "source_frames_skipped": 0,
+      "frames_replaced_before_processing": 0,
+      "processing_fps": 23.951366536819958,
+      "capture_to_result_ms_p50": 17.556050001076073,
+      "capture_to_result_ms_p95": 47.09522999874025,
+      "capture_to_result_ms_max": 87.91629999905126,
+      "queue_wait_ms_p95": 4.057199999078878,
+      "queue_capacity": 3,
+      "peak_rss_mb": 669.8046875,
+      "model_calls": {
+        "detector": 152,
+        "localizer": 242,
+        "landmarker": 344,
+        "candidate_verification": 33
+      },
+      "runtime_assets": {
+        "localizer": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "onnx_sha256": "8389fcc1e674ef4a36b3531f907fc503fa600f79d9402d5bf4763154f3c11e0a",
+          "engine_sha256": "aa774e7fd70ffc12386cac8948f0921cec17ac62e0848f6e95ae77698b14ed93",
+          "engine_bytes": 21354700,
+          "build_seconds": 169.1073733000003,
+          "output_names": [
+            "face_box"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows"
+        },
+        "landmarks": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "d9778c6c0db9ab31fd56d3565ce902d505877ab60f3cd78c4bc5ec0aade5adc9",
+          "engine_sha256": "fc25b0dab398b73ca1968e31325f184c6fc9ca382860a6848df5d7d443979d0b",
+          "engine_bytes": 18328636,
+          "build_seconds": 127.13205720000042,
+          "output_names": [
+            "landmarks",
+            "landmark_entropy"
+          ],
+          "protected_fp32_layers": [
+            "soft_argmax/contiguous/probabilities",
+            "soft_argmax/contiguous/weighted_x",
+            "soft_argmax/contiguous/weighted_y",
+            "soft_argmax/contiguous/x",
+            "soft_argmax/contiguous/y",
+            "soft_argmax/contiguous/clipped",
+            "soft_argmax/contiguous/log",
+            "soft_argmax/contiguous/weighted_log",
+            "soft_argmax/contiguous/negative_entropy",
+            "soft_argmax/contiguous/landmark_entropy"
+          ],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3
+        },
+        "detector": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "ee401a50dbc7d83337478caa7bf079b4a19ea2b9903d221fd03e2d9678d6b9b5",
+          "engine_sha256": "d9006bf2c2e0c080aa2cfc1991bb4969ca91900de5a1e1e51d4be9a1b8218ce5",
+          "engine_bytes": 12099892,
+          "build_seconds": 156.15062970000054,
+          "output_names": [
+            "detection_boxes",
+            "detection_scores",
+            "detection_classes"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "contract_sha256": "505fd0a595a9a47c99b6024f8089896494e140aedddb5e13d9c44253b7288210"
+        }
+      },
+      "groups": {
+        "all": {
+          "n": 1212,
+          "p50_ms": 17.556050001076073,
+          "p95_ms": 47.09522999874025,
+          "max_ms": 87.91629999905126
+        },
+        "neural": {
+          "n": 242,
+          "p50_ms": 34.59329999895999,
+          "p95_ms": 65.319634998923,
+          "max_ms": 87.91629999905126
+        },
+        "accepted": {
+          "n": 752,
+          "p50_ms": 18.632549999892944,
+          "p95_ms": 47.68248500258775,
+          "max_ms": 87.91629999905126
+        }
+      },
+      "selected": {
+        "front": 192,
+        "right": 146,
+        "left": 398
+      },
+      "input_sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893",
+      "missing_views": [],
+      "executable": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+      "wall_seconds_with_startup": 51.899078700000246
+    },
+    {
+      "run": "live-wolfhound-dedicated-3",
+      "source_frames": 1212,
+      "frames_processed": 1212,
+      "source_frames_skipped": 0,
+      "frames_replaced_before_processing": 0,
+      "processing_fps": 23.93905855196289,
+      "capture_to_result_ms_p50": 16.170799999599694,
+      "capture_to_result_ms_p95": 40.160079998713634,
+      "capture_to_result_ms_max": 74.69289999789908,
+      "queue_wait_ms_p95": 1.4877849993354177,
+      "queue_capacity": 3,
+      "peak_rss_mb": 669.265625,
+      "model_calls": {
+        "detector": 152,
+        "localizer": 242,
+        "landmarker": 344,
+        "candidate_verification": 33
+      },
+      "runtime_assets": {
+        "localizer": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "onnx_sha256": "8389fcc1e674ef4a36b3531f907fc503fa600f79d9402d5bf4763154f3c11e0a",
+          "engine_sha256": "aa774e7fd70ffc12386cac8948f0921cec17ac62e0848f6e95ae77698b14ed93",
+          "engine_bytes": 21354700,
+          "build_seconds": 169.1073733000003,
+          "output_names": [
+            "face_box"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows"
+        },
+        "landmarks": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "d9778c6c0db9ab31fd56d3565ce902d505877ab60f3cd78c4bc5ec0aade5adc9",
+          "engine_sha256": "fc25b0dab398b73ca1968e31325f184c6fc9ca382860a6848df5d7d443979d0b",
+          "engine_bytes": 18328636,
+          "build_seconds": 127.13205720000042,
+          "output_names": [
+            "landmarks",
+            "landmark_entropy"
+          ],
+          "protected_fp32_layers": [
+            "soft_argmax/contiguous/probabilities",
+            "soft_argmax/contiguous/weighted_x",
+            "soft_argmax/contiguous/weighted_y",
+            "soft_argmax/contiguous/x",
+            "soft_argmax/contiguous/y",
+            "soft_argmax/contiguous/clipped",
+            "soft_argmax/contiguous/log",
+            "soft_argmax/contiguous/weighted_log",
+            "soft_argmax/contiguous/negative_entropy",
+            "soft_argmax/contiguous/landmark_entropy"
+          ],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3
+        },
+        "detector": {
+          "tensorrt_version": "10.7.0.post1",
+          "precision": "fp16",
+          "compute_capability": [
+            8,
+            9
+          ],
+          "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "platform": "Windows",
+          "onnx_sha256": "ee401a50dbc7d83337478caa7bf079b4a19ea2b9903d221fd03e2d9678d6b9b5",
+          "engine_sha256": "d9006bf2c2e0c080aa2cfc1991bb4969ca91900de5a1e1e51d4be9a1b8218ce5",
+          "engine_bytes": 12099892,
+          "build_seconds": 156.15062970000054,
+          "output_names": [
+            "detection_boxes",
+            "detection_scores",
+            "detection_classes"
+          ],
+          "protected_fp32_layers": [],
+          "workspace_mb": 512,
+          "builder_optimization_level": 3,
+          "contract_sha256": "505fd0a595a9a47c99b6024f8089896494e140aedddb5e13d9c44253b7288210"
+        }
+      },
+      "groups": {
+        "all": {
+          "n": 1212,
+          "p50_ms": 16.170799999599694,
+          "p95_ms": 40.160079998713634,
+          "max_ms": 74.69289999789908
+        },
+        "neural": {
+          "n": 242,
+          "p50_ms": 30.74210000158928,
+          "p95_ms": 56.33024000271688,
+          "max_ms": 74.69289999789908
+        },
+        "accepted": {
+          "n": 752,
+          "p50_ms": 17.483749999883003,
+          "p95_ms": 40.693384999758536,
+          "max_ms": 74.69289999789908
+        }
+      },
+      "selected": {
+        "front": 192,
+        "right": 146,
+        "left": 398
+      },
+      "input_sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893",
+      "missing_views": [],
+      "executable": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+      "wall_seconds_with_startup": 51.787971699999616
+    }
+  ],
+  "notes": [
+    "Complete videos paced at original frame rate, no preview window; jobs run sequentially.",
+    "Dedicated and generic controls use identical models, thresholds, DLL bootstrap and environment repair.",
+    "Only dog_capture_trt.exe matches the saved NVIDIA preference; the control is ordinary python.exe.",
+    "Latency starts at decoded-frame submission and excludes sensor, decoding, display and model startup.",
+    "This desktop measurement includes other desktop applications; no system-wide settings are changed."
+  ],
+  "profile_after": {
+    "application": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+    "action": "status",
+    "profile_exists": true,
+    "profile_name": "DogCapture TensorRT ae711cccb02f",
+    "preferred_pstate": 1,
+    "global_preferred_pstate": null,
+    "global_settings_changed": false
+  },
+  "finished_utc": "2026-11-11T11:46:08.334407+00:00"
+}

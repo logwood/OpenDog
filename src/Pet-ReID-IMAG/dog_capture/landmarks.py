@@ -142,14 +142,17 @@ def eye_evidence(frame, points):
     This is a conservative image check, not a learned visibility classifier.
     It can reject unusual eye coloration/illumination; diagnostics are emitted.
     """
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     evidence = []
     for indices in (EYE_A, EYE_B):
         eye = points[indices]
         center = eye.mean(0)
         radius = max(2, float(np.linalg.norm(eye[0] - eye[2])) * .22)
         x1, y1 = np.maximum(0, np.floor(center - radius).astype(int))
-        x2, y2 = np.minimum([gray.shape[1], gray.shape[0]], np.ceil(center + radius + 1).astype(int))
-        patch = gray[y1:y2, x1:x2]
+        x2, y2 = np.minimum([frame.shape[1], frame.shape[0]], np.ceil(center + radius + 1).astype(int))
+        patch = frame[y1:y2, x1:x2]
+        # Grayscale conversion is pixel-local. Crop first so each orientation
+        # checks only the two eye patches, retaining exactly the same pixels.
+        if patch.size:
+            patch = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
         evidence.append(float(np.percentile(patch, 20)) if patch.size else 255.0)
     return {'eye_dark_p20': evidence, 'accepted': max(evidence) <= 105}

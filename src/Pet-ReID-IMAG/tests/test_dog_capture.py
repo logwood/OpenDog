@@ -262,3 +262,33 @@ def test_confidence_export_preserves_pretrained_coordinates():
     np.testing.assert_allclose(actual, expected, atol=1e-5, rtol=1e-5)
     assert heatmap.shape == (1, 46, 36864)
     np.testing.assert_allclose(heatmap.sum(-1), 1, atol=1e-5)
+
+
+def test_bounded_transition_queue_keeps_chronology_and_limits_backlog():
+    from dog_capture.realtime import LatestFrameWorker
+    entered, release = threading.Event(), threading.Event()
+    seen = []
+    class Pipeline:
+        def process(self, image, timestamp, index):
+            if index == 0:
+                entered.set()
+                assert release.wait(3)
+            seen.append((index, timestamp, int(image[0, 0, 0])))
+            return {'frame_index': index, 'inference_mode': 'mock', 'tracking': {'stable_state': 'unknown'}}
+    worker = LatestFrameWorker(Pipeline(), queue_capacity=3)
+    image = np.full((8, 8, 3), 7, np.uint8)
+    worker.submit(image, 0, 0)
+    assert entered.wait(3)
+    try:
+        for index in range(1, 5):
+            worker.submit(image, index / 30, index)
+        image[:] = 99
+        assert worker.pending.qsize() == 3
+        assert worker.dropped == 1
+    finally:
+        release.set()
+        worker.close()
+    assert seen == [(0, 0, 7), (2, 2/30, 7), (3, 3/30, 7), (4, 4/30, 7)]
+    assert worker.processed + worker.dropped == worker.submitted
+    with pytest.raises(ValueError):
+        LatestFrameWorker(Pipeline(), queue_capacity=0)

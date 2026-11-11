@@ -1,0 +1,31 @@
+{
+  "before": {
+    "application": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+    "action": "status",
+    "profile_exists": true,
+    "profile_name": "DogCapture TensorRT ae711cccb02f",
+    "preferred_pstate": 1,
+    "global_preferred_pstate": null,
+    "global_settings_changed": false
+  },
+  "disabled": {
+    "application": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+    "action": "status",
+    "profile_exists": false,
+    "profile_name": null,
+    "preferred_pstate": null,
+    "global_preferred_pstate": null,
+    "global_settings_changed": false
+  },
+  "restored": {
+    "application": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\dog-trt-env\\Scripts\\dog_capture_trt.exe",
+    "action": "status",
+    "profile_exists": true,
+    "profile_name": "DogCapture TensorRT ae711cccb02f",
+    "preferred_pstate": 1,
+    "global_preferred_pstate": null,
+    "global_settings_changed": false
+  },
+  "only_owned_profile_changed": true,
+  "passed": true
+}

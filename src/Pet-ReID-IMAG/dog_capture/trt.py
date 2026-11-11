@@ -19,6 +19,8 @@ _dll_handles = []
 
 def load_cuda_dlls():
     """Find CUDA redistributables without changing system PATH or the driver."""
+    from .windows_runtime import ensure_driver_profile_environment
+    ensure_driver_profile_environment()
     if os.name != 'nt' or _dll_handles:
         return
     import site

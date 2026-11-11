@@ -46,6 +46,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Engine startup check failed. Re-run with -Rebu
 & $trtPython (Join-Path $trtRoot 'src/Pet-ReID-IMAG/tools/create_dog_trt_runtime.py')
 if ($LASTEXITCODE -ne 0) { throw 'Dedicated runtime setup failed.' }
 if ($EnableGpuPerformance) {
-    & $trtPython (Join-Path $trtRoot 'src/Pet-ReID-IMAG/tools/configure_dog_trt_windows.py') --enable
-    if ($LASTEXITCODE -ne 0) { throw 'NVIDIA application profile write failed. This optional action may require an administrator terminal.' }
+    & (Join-Path $trtRoot 'scripts/enable-dog-trt-performance.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'NVIDIA application profile write failed; see the profile evidence directory.' }
 }

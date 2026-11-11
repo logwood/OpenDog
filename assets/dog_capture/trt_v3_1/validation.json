@@ -1,0 +1,798 @@
+{
+  "scope": "Coarse human visual regression labels, reviewed from source-video contact sheets on 2026-11-10. User video and some public samples were used during development; these are not held-out accuracy claims. Pose labels use upright face coordinates; ambiguous transitions omitted. reject means unsuitable for a clear primary face image.",
+  "videos": [
+    {
+      "video": "labrador_barking.ogv",
+      "frames": 201,
+      "video_seconds": 8.375,
+      "analysis_fps": 107.72914834007003,
+      "compute_ms_p95": 16.8154000020877,
+      "sequence_complete": false,
+      "coverage_complete": false,
+      "missing_views": [
+        "left",
+        "right"
+      ],
+      "selected": {
+        "front": 79
+      },
+      "constructed_fixture": false,
+      "regression_points": {
+        "abstained": 2,
+        "correct_direction": 7
+      }
+    },
+    {
+      "video": "shepherd_apple.webm",
+      "frames": 743,
+      "video_seconds": 24.766666666666666,
+      "analysis_fps": 136.51527722628447,
+      "compute_ms_p95": 16.319490002570078,
+      "sequence_complete": false,
+      "coverage_complete": false,
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "selected": {},
+      "constructed_fixture": false,
+      "regression_points": {
+        "correct_rejection": 5
+      }
+    },
+    {
+      "video": "dog_whimpering.webm",
+      "frames": 334,
+      "video_seconds": 13.36,
+      "analysis_fps": 117.78959294377775,
+      "compute_ms_p95": 10.846394999134635,
+      "sequence_complete": false,
+      "coverage_complete": false,
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "selected": {},
+      "constructed_fixture": false,
+      "regression_points": {
+        "correct_rejection": 7
+      }
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frames": 1212,
+      "video_seconds": 50.5,
+      "analysis_fps": 78.787170577971,
+      "compute_ms_p95": 28.51542999869709,
+      "sequence_complete": false,
+      "coverage_complete": true,
+      "missing_views": [],
+      "selected": {
+        "front": 192,
+        "right": 146,
+        "left": 398
+      },
+      "constructed_fixture": false,
+      "regression_points": {
+        "abstained": 10,
+        "correct_direction": 14
+      }
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frames": 390,
+      "video_seconds": 13.0,
+      "analysis_fps": 218.12085416561013,
+      "compute_ms_p95": 15.943295001306973,
+      "sequence_complete": false,
+      "coverage_complete": false,
+      "missing_views": [
+        "left",
+        "right"
+      ],
+      "selected": {
+        "front": 148
+      },
+      "constructed_fixture": false,
+      "regression_points": {
+        "abstained": 12,
+        "correct_direction": 1
+      }
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frames": 1314,
+      "video_seconds": 43.8,
+      "analysis_fps": 166.74031665130914,
+      "compute_ms_p95": 12.626454997734962,
+      "sequence_complete": false,
+      "coverage_complete": false,
+      "missing_views": [
+        "right"
+      ],
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "constructed_fixture": false,
+      "regression_points": {
+        "correct_rejection": 14,
+        "abstained": 2
+      }
+    },
+    {
+      "video": "ordered_turn_fixture.mp4",
+      "frames": 173,
+      "video_seconds": 7.208333333333333,
+      "analysis_fps": 128.40906585814145,
+      "compute_ms_p95": 11.227160000998992,
+      "sequence_complete": false,
+      "coverage_complete": true,
+      "missing_views": [],
+      "selected": {
+        "front": 15,
+        "left": 45,
+        "right": 125
+      },
+      "constructed_fixture": true,
+      "regression_points": {}
+    },
+    {
+      "video": "frozen_front_fixture.mp4",
+      "frames": 72,
+      "video_seconds": 3.0,
+      "analysis_fps": 160.6999733734279,
+      "compute_ms_p95": 7.57885500061093,
+      "sequence_complete": false,
+      "coverage_complete": false,
+      "missing_views": [
+        "left",
+        "right"
+      ],
+      "selected": {
+        "front": 1
+      },
+      "constructed_fixture": true,
+      "regression_points": {}
+    },
+    {
+      "video": "blurred_front_fixture.mp4",
+      "frames": 72,
+      "video_seconds": 3.0,
+      "analysis_fps": 393.74384775065425,
+      "compute_ms_p95": 3.444129999661527,
+      "sequence_complete": false,
+      "coverage_complete": false,
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "selected": {},
+      "constructed_fixture": true,
+      "regression_points": {}
+    },
+    {
+      "video": "empty_scene_fixture.mp4",
+      "frames": 72,
+      "video_seconds": 3.0,
+      "analysis_fps": 233.27839411047532,
+      "compute_ms_p95": 4.767484998956206,
+      "sequence_complete": false,
+      "coverage_complete": false,
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "selected": {},
+      "constructed_fixture": true,
+      "regression_points": {}
+    }
+  ],
+  "regression_totals": {
+    "abstained": 26,
+    "correct_direction": 22,
+    "correct_rejection": 26
+  },
+  "regression_comparisons": [
+    {
+      "video": "labrador_barking.ogv",
+      "frame": 0,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": true,
+      "outcome": "abstained"
+    },
+    {
+      "video": "labrador_barking.ogv",
+      "frame": 24,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "labrador_barking.ogv",
+      "frame": 48,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "labrador_barking.ogv",
+      "frame": 72,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "labrador_barking.ogv",
+      "frame": 96,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "labrador_barking.ogv",
+      "frame": 120,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "labrador_barking.ogv",
+      "frame": 144,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "labrador_barking.ogv",
+      "frame": 168,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "labrador_barking.ogv",
+      "frame": 192,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "shepherd_apple.webm",
+      "frame": 0,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "shepherd_apple.webm",
+      "frame": 150,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "shepherd_apple.webm",
+      "frame": 300,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "shepherd_apple.webm",
+      "frame": 450,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "shepherd_apple.webm",
+      "frame": 600,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "dog_whimpering.webm",
+      "frame": 0,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "dog_whimpering.webm",
+      "frame": 50,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "dog_whimpering.webm",
+      "frame": 100,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "dog_whimpering.webm",
+      "frame": 150,
+      "expected": "reject",
+      "predicted": "front",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "dog_whimpering.webm",
+      "frame": 200,
+      "expected": "reject",
+      "predicted": "front",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "dog_whimpering.webm",
+      "frame": 250,
+      "expected": "reject",
+      "predicted": "front",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "dog_whimpering.webm",
+      "frame": 300,
+      "expected": "reject",
+      "predicted": "front",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 0,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": true,
+      "outcome": "abstained"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 48,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 96,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 144,
+      "expected": "right",
+      "predicted": "right",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 192,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 240,
+      "expected": "left",
+      "predicted": "unknown",
+      "quality_accepted": true,
+      "outcome": "abstained"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 288,
+      "expected": "left",
+      "predicted": "left",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 336,
+      "expected": "right",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 432,
+      "expected": "left",
+      "predicted": "left",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 480,
+      "expected": "left",
+      "predicted": "unknown",
+      "quality_accepted": true,
+      "outcome": "abstained"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 528,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": true,
+      "outcome": "abstained"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 576,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 624,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 672,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": false,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 720,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 768,
+      "expected": "left",
+      "predicted": "left",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 816,
+      "expected": "left",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 864,
+      "expected": "left",
+      "predicted": "left",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 912,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 960,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 1008,
+      "expected": "left",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 1056,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 1104,
+      "expected": "left",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "wolfhound_panting.ogv",
+      "frame": 1200,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 0,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 30,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 60,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 90,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 120,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": true,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 150,
+      "expected": "front",
+      "predicted": "front",
+      "quality_accepted": true,
+      "outcome": "correct_direction"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 180,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 210,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 240,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 270,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": true,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 300,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": true,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 330,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "lurcher_lick.webm",
+      "frame": 360,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 0,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 87,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 174,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 262,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "abstained"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 270,
+      "expected": "front",
+      "predicted": "unknown",
+      "quality_accepted": true,
+      "outcome": "abstained"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 437,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 524,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 612,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 699,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 787,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 874,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 962,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 1048,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 1137,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 1224,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    },
+    {
+      "video": "2611101816341481.mp4",
+      "frame": 1312,
+      "expected": "reject",
+      "predicted": "unknown",
+      "quality_accepted": false,
+      "outcome": "correct_rejection"
+    }
+  ],
+  "notes": [
+    "These manually reviewed coarse checkpoints are a regression aid, not an independent breed-level accuracy benchmark.",
+    "Unknown/abstained is counted separately, never counted as a correct head direction."
+  ]
+}

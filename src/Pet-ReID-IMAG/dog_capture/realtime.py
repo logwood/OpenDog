@@ -1,4 +1,4 @@
-"""One worker, one waiting frame: slow inference never builds a video backlog."""
+"""One worker and a bounded recent-frame queue, independent of live display."""
 from __future__ import annotations
 
 import argparse
@@ -20,9 +20,11 @@ from .runtime import peak_rss_mb
 
 
 class LatestFrameWorker:
-    def __init__(self, pipeline, on_record=None):
+    def __init__(self, pipeline, on_record=None, *, queue_capacity=1):
+        if not isinstance(queue_capacity, int) or not 1 <= queue_capacity <= 4:
+            raise ValueError('queue_capacity must be an integer from 1 to 4')
         self.pipeline = pipeline
-        self.pending = queue.Queue(maxsize=1)
+        self.pending = queue.Queue(maxsize=queue_capacity)
         self.ready = queue.Queue(maxsize=1)
         self.stopping = threading.Event()
         self.error = None
@@ -39,11 +41,12 @@ class LatestFrameWorker:
         if self.error:
             raise RuntimeError('Inference worker failed') from self.error
         item = (frame.copy(), timestamp, frame_index, time.perf_counter(), observation)
-        try:
-            self.pending.get_nowait()
-            self.dropped += 1
-        except queue.Empty:
-            pass
+        if self.pending.full():
+            try:
+                self.pending.get_nowait()
+                self.dropped += 1
+            except queue.Empty:
+                pass  # The worker consumed the oldest item concurrently.
         self.pending.put_nowait(item)
         self.submitted += 1
 
@@ -105,6 +108,8 @@ def main(default_mode='challenge'):
     parser.add_argument('--device', choices=['auto', 'cpu', 'gpu', 'trt'], default='auto')
     parser.add_argument('--trt-engines')
     parser.add_argument('--no-cuda-graph', action='store_true')
+    parser.add_argument('--queue-capacity', type=int, choices=range(1, 5),
+                        help='Waiting frames: default 3 for target views, 1 for the action challenge')
     parser.add_argument('--max-seconds', type=float, default=0)
     parser.add_argument('--show', action='store_true', help='Needs opencv-python (GUI variant); Esc stops')
     parser.add_argument('--mirror', action='store_true')
@@ -123,6 +128,7 @@ def main(default_mode='challenge'):
     if args.video and (not np.isfinite(fps) or fps <= 0):
         raise ValueError('Video must declare a valid frame rate')
     views_mode = args.mode == 'views'
+    queue_capacity = args.queue_capacity if args.queue_capacity is not None else (3 if views_mode else 1)
     model_dir = Path(args.models) if args.device == 'trt' else ensure_models(args.models, args.download_models)
     models = DogFaceModels(model_dir, args.threads, device=args.device, compact_confidence=views_mode,
                            trt_directory=args.trt_engines, trt_cuda_graph=not args.no_cuda_graph)
@@ -133,7 +139,8 @@ def main(default_mode='challenge'):
     else:
         pipeline = CapturePipeline(models)
     log = (output / 'frames.jsonl').open('w', encoding='utf8')
-    worker = LatestFrameWorker(pipeline, lambda record: log.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + '\n'))
+    worker = LatestFrameWorker(pipeline, lambda record: log.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + '\n'),
+                               queue_capacity=queue_capacity)
     index, source_skips, last, displays = 0, 0, None, 0
     started = time.perf_counter()
     try:
@@ -223,7 +230,7 @@ def main(default_mode='challenge'):
               'capture_to_result_ms_p95': float(np.percentile(latency, 95)),
               'capture_to_result_ms_max': max(latency),
               'queue_wait_ms_p95': float(np.percentile(wait, 95)),
-              'mode': args.mode, 'queue_capacity': 1, 'sequence_complete': snapshot['complete'] if not views_mode else False, 'selected': selected,
+              'mode': args.mode, 'queue_capacity': queue_capacity, 'sequence_complete': snapshot['complete'] if not views_mode else False, 'selected': selected,
               'recognition_input': {'image_path': str(output / selected['front']['frame_file']),
                                     'face_path': str(output / selected['front']['face_file']),
                                     'sequence_complete': snapshot['complete'] if not views_mode else False} if 'front' in selected else None,
@@ -232,6 +239,7 @@ def main(default_mode='challenge'):
               'stable_state_counts': dict(worker.state_counts),
               'events': list(pipeline.events if views_mode else pipeline.tracker.events), 'display_updates': displays,
               'notes': ['Capture-to-result starts when a decoded frame is submitted; camera sensor/driver latency is not included.',
+                        'A small bounded queue preserves turn-transition frames across short inference spikes; when full, the oldest waiting frame is replaced.',
                         'Skipped frames are explicit. This benchmark does not claim every input frame received inference.',
                         'Latency percentiles use the most recent 4096 results; per-frame JSONL contains the complete run.']}
     report['model_calls'] = dict(models.calls)

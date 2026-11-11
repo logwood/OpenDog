@@ -1,5 +1,6 @@
 """CPU-only postprocessing tests plus optional real TensorRT runtime checks."""
 import importlib.util
+import os
 from pathlib import Path
 import threading
 
@@ -7,6 +8,48 @@ import numpy as np
 import pytest
 
 from dog_capture.trt import fast_nms
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows NVIDIA profile environment')
+def test_windows_profile_environment_restores_missing_common_data(monkeypatch):
+    from dog_capture.windows_runtime import ensure_driver_profile_environment
+    monkeypatch.delenv('ALLUSERSPROFILE', raising=False)
+    assert ensure_driver_profile_environment()
+    assert Path(os.environ['ALLUSERSPROFILE']).is_dir()
+    assert os.environ['ALLUSERSPROFILE']
+    assert not ensure_driver_profile_environment()
+
+
+def test_windows_profile_environment_preserves_existing_value(monkeypatch):
+    from dog_capture.windows_runtime import ensure_driver_profile_environment
+    monkeypatch.setenv('ALLUSERSPROFILE', 'existing-launcher-value')
+    assert not ensure_driver_profile_environment()
+    assert os.environ['ALLUSERSPROFILE'] == 'existing-launcher-value'
+
+
+def test_eye_patch_conversion_matches_full_frame_reference():
+    import cv2
+    from dog_capture.landmarks import EYE_A, EYE_B, eye_evidence
+    rng = np.random.default_rng(112)
+    frame = rng.integers(0, 256, (720, 1280, 3), dtype=np.uint8)
+    full_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    for center, radius in [((400, 300), 20), ((0, 0), 18), ((1279, 719), 31), ((-100, -100), 2), ((600, 400), 1)]:
+        points = np.tile(center, (46, 1)).astype(np.float32)
+        for indices in (EYE_A, EYE_B):
+            points[indices[0], 0] -= radius
+            points[indices[2], 0] += radius
+        expected = []
+        for indices in (EYE_A, EYE_B):
+            eye = points[indices]
+            location = eye.mean(0)
+            size = max(2, float(np.linalg.norm(eye[0] - eye[2])) * .22)
+            x1, y1 = np.maximum(0, np.floor(location - size).astype(int))
+            x2, y2 = np.minimum([frame.shape[1], frame.shape[0]], np.ceil(location + size + 1).astype(int))
+            patch = full_gray[y1:y2, x1:x2]
+            expected.append(float(np.percentile(patch, 20)) if patch.size else 255.)
+        actual = eye_evidence(frame, points)
+        assert actual['eye_dark_p20'] == expected
+        assert actual['accepted'] == (max(expected) <= 105)
 
 
 def test_detector_keeps_winning_class_before_dog_filter():

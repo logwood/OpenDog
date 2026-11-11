@@ -1,0 +1,99 @@
+[
+  {
+    "run": "blurred_front_fixture",
+    "frames": 72,
+    "selected": {},
+    "exact_same_selection": true,
+    "non_timing_record_differences": 0,
+    "first_differences": []
+  },
+  {
+    "run": "dog_whimpering",
+    "frames": 334,
+    "selected": {},
+    "exact_same_selection": true,
+    "non_timing_record_differences": 0,
+    "first_differences": []
+  },
+  {
+    "run": "empty_scene_fixture",
+    "frames": 72,
+    "selected": {},
+    "exact_same_selection": true,
+    "non_timing_record_differences": 0,
+    "first_differences": []
+  },
+  {
+    "run": "frozen_front_fixture",
+    "frames": 72,
+    "selected": {
+      "front": 1
+    },
+    "exact_same_selection": true,
+    "non_timing_record_differences": 0,
+    "first_differences": []
+  },
+  {
+    "run": "labrador_barking",
+    "frames": 201,
+    "selected": {
+      "front": 79
+    },
+    "exact_same_selection": true,
+    "non_timing_record_differences": 0,
+    "first_differences": []
+  },
+  {
+    "run": "lurcher_lick",
+    "frames": 390,
+    "selected": {
+      "front": 148
+    },
+    "exact_same_selection": true,
+    "non_timing_record_differences": 0,
+    "first_differences": []
+  },
+  {
+    "run": "ordered_turn_fixture",
+    "frames": 173,
+    "selected": {
+      "front": 15,
+      "left": 45,
+      "right": 125
+    },
+    "exact_same_selection": true,
+    "non_timing_record_differences": 0,
+    "first_differences": []
+  },
+  {
+    "run": "shepherd_apple",
+    "frames": 743,
+    "selected": {},
+    "exact_same_selection": true,
+    "non_timing_record_differences": 0,
+    "first_differences": []
+  },
+  {
+    "run": "user",
+    "frames": 1314,
+    "selected": {
+      "front": 271,
+      "left": 282
+    },
+    "exact_same_selection": true,
+    "non_timing_record_differences": 0,
+    "first_differences": []
+  },
+  {
+    "run": "wolfhound_panting",
+    "frames": 1212,
+    "selected": {
+      "front": 192,
+      "right": 146,
+      "left": 398
+    },
+    "exact_same_selection": true,
+    "non_timing_record_differences": 0,
+    "first_differences": []
+  }
+]
