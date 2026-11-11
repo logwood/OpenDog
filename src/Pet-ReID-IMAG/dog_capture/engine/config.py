@@ -41,6 +41,8 @@ class DetectorConfig:
     nms_iou: float = 0.45
     max_faces: int = 8
     schema: str = ''              # keypoint schema override for yolo_pose models
+    roi_zoom: bool = True         # no face found but a dog body is: re-detect on a crop of the dog
+    roi_min_zoom: float = 1.5     # only if the crop magnifies the dog at least this much
 
 
 @dataclass
@@ -83,7 +85,7 @@ class PoseConfig:
     snout_factor: float = 0.8     # display-only cue -> approximate degrees
     min_iod_box_ratio: float = 0.12
     max_iod_box_ratio: float = 1.10
-    pitch_range: tuple = (0.10, 1.60)
+    pitch_range: tuple = (0.05, 2.20)  # nose drop / eye span; 4963 labelled dog faces: p0.5 0.04, p99.5 2.11
     max_abs_yaw: float = 1.20
 
 

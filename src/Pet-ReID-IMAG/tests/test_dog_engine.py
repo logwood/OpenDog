@@ -412,40 +412,47 @@ def test_species_gate_rejects_faces_outside_dog_bodies():
 
 
 class RotatingDetector:
-    """Finds the synthetic face only when the frame is upright (like a real detector)."""
+    """Finds the synthetic face only in the upright frame (like a real detector)."""
 
-    def __init__(self, engine_ref, upright_rotation, image, detection):
-        self.engine_ref, self.rotation = engine_ref, upright_rotation
-        self.image, self.detection = image, detection
+    def __init__(self, upright_image, detection):
+        self.upright, self.detection = upright_image, detection
+        self.calls = 0
 
     def detect(self, frame):
-        engine = self.engine_ref[0]
-        if engine.orientation.rotation != self.rotation:
-            return []
-        return [self.detection]
+        self.calls += 1
+        if frame.shape == self.upright.shape and np.array_equal(frame, self.upright):
+            return [self.detection]
+        return []
 
     def describe(self):
         return {'kind': 'rotating'}
 
 
-def test_orientation_search_locks_the_upright_rotation():
+def test_orientation_probe_finds_and_locks_the_upright_rotation():
     image, dets = render()
     sideways = np.ascontiguousarray(np.rot90(image, 1))  # content rotated 90 deg CCW
-    upright = rotate_frame(sideways, 90)
-    assert np.array_equal(upright, image)
-    holder = []
-    engine = CaptureEngine(detector=RotatingDetector(holder, 90, image, dets[0]))
-    holder.append(engine)
-    results = [engine.process(sideways, i / 30, i) for i in range(12)]
-    assert engine.orientation.locked and engine.orientation.rotation == 90
+    assert np.array_equal(rotate_frame(sideways, 90), image)
+    engine = CaptureEngine(detector=RotatingDetector(image, dets[0]))
+    results = [engine.process(sideways, i / 30, i) for i in range(90)]
+    assert engine.orientation.rotation == 90 and engine.orientation.locked
     assert results[-1].rotation_deg == 90 and results[-1].faces
+
+
+def test_orientation_never_rotates_an_upright_video_without_faces():
+    image, _ = render()
+    engine = CaptureEngine(detector=RotatingDetector(np.zeros((8, 8, 3), np.uint8), None))
+    results = [engine.process(image, i / 30, i) for i in range(90)]
+    assert all(r.rotation_deg == 0 for r in results)  # probes are internal, never shown
+    probes = sum('orientation_probe' in r.timings_ms for r in results)
+    assert 0 < probes <= 9  # at most one frame in ten, and only after 1 s without a face
 
 
 def test_orientation_lock_uses_keypoint_roll_hint():
     lock = OrientationLock('auto')
-    assert not lock.report(True, 0.0, 88)
-    assert lock.report(True, 0.04, 91) and lock.rotation == 270
-    assert not lock.report(True, 0.08, 2) and not lock.report(True, 0.12, -1) and lock.locked
+    assert not lock.report(0, False, True, 0.0, 88)
+    assert lock.report(0, False, True, 0.04, 91) and lock.rotation == 270
+    assert not lock.report(270, False, True, 0.08, 2) and not lock.report(270, False, True, 0.12, -1)
+    assert lock.locked
 
 
 def test_still_image_mode_picks_best_photo_per_view():

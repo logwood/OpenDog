@@ -129,6 +129,10 @@ def main():
                         weight_type=QuantType.QInt8,
                         calibrate_method={'minmax': CalibrationMethod.MinMax, 'entropy': CalibrationMethod.Entropy,
                                           'percentile': CalibrationMethod.Percentile}[args.calibration],
+                        # Quantise convolutions only: detection heads concatenate box coordinates
+                        # (0..input size) and scores (0..1) into one tensor, and a shared INT8 scale
+                        # for that tensor erases the scores (measured: 0 detections).
+                        op_types_to_quantize=['Conv'],
                         extra_options={'CalibPercentile': 99.99})
         prepared.unlink(missing_ok=True)
         if sidecar.is_file():

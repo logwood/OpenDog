@@ -8,6 +8,7 @@ from __future__ import annotations
 MESSAGES = {
     'no_face': '未检测到狗脸，请把镜头对准狗狗的脸',
     'not_dog': '检测到的脸不像狗，请只拍摄狗狗',
+    'dog_far': '看到狗狗了，但脸太小或没有对着镜头，请靠近并让它面向镜头',
     'face_too_small': '狗脸太小，请靠近一些',
     'face_clipped': '狗脸不完整，请让整张脸进入画面',
     'too_dark': '光线太暗，请换到明亮的地方',
@@ -28,7 +29,7 @@ POSE_REASONS = {'eyes_unresolved', 'implausible_eye_span', 'implausible_nose_pos
                 'extreme_pose', 'inconsistent_landmarks', 'eyes_coincide', 'alignment_failed'}
 
 
-def guidance(face, missing_views, *, rejected_species=False, speed_iod=0.0, motion_ref=3.0):
+def guidance(face, missing_views, *, rejected_species=False, speed_iod=0.0, motion_ref=3.0, dog_seen=False):
     """``face`` is the primary FaceResult (or None); returns {code, message, view}."""
     def result(code, view=None):
         message = MESSAGES[code]
@@ -39,6 +40,8 @@ def guidance(face, missing_views, *, rejected_species=False, speed_iod=0.0, moti
     if not missing_views:
         return result('done')
     if face is None:
+        if dog_seen:
+            return result('dog_far')
         return result('not_dog' if rejected_species else 'no_face')
     reasons = set(face.quality.reasons) if face.quality else set()
     for code in QUALITY_CODES:

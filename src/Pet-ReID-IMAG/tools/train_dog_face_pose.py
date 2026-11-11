@@ -25,7 +25,12 @@ in strong profiles) are discarded; eyes it cannot place stay unlabelled.
     python tools/train_dog_face_pose.py pseudolabel --data datasets/dog-face6 --teacher models/pretrained/dog_capture_v1/anyface_yolov5l6_640.onnx
     # 3) train (RTX 4060: ~1-2 h for 100 epochs at 640) and 4) export ONNX + sidecar for the engine
     python tools/train_dog_face_pose.py train --data datasets/dog-face6/dog-face6.yaml --epochs 100 --device 0
-    python tools/train_dog_face_pose.py export --weights runs/pose/dog_face6/weights/best.pt --imgsz 640
+    python tools/train_dog_face_pose.py export --weights runs/pose/dog_face6/weights/best.pt --imgsz 320
+
+Export size: a 12-epoch CPU model trained at 320 gave the same validation
+accuracy at 320 and 416 input (face recall 0.904 / 0.901) at 10.4 vs 17.0 ms,
+so 320 is the default; use 416/640 only for distant dogs, and measure with
+``python -m dog_capture bench``.
 
 Licences: Ultralytics is AGPL-3.0 (models you train with it are covered unless
 you hold an Enterprise licence); StanfordExtra / Stanford Dogs are research
@@ -255,7 +260,7 @@ def main():
     t.add_argument('--data', required=True)
     t.add_argument('--model', default='yolo11n-pose.pt', help='COCO-pose pretrained start point')
     t.add_argument('--epochs', type=int, default=100)
-    t.add_argument('--imgsz', type=int, default=640)
+    t.add_argument('--imgsz', type=int, default=416)
     t.add_argument('--batch', type=int, default=32)
     t.add_argument('--device', default='')
     t.add_argument('--workers', type=int, default=8)
@@ -265,7 +270,7 @@ def main():
     t.set_defaults(func=train)
     e = sub.add_parser('export')
     e.add_argument('--weights', required=True)
-    e.add_argument('--imgsz', type=int, default=640)
+    e.add_argument('--imgsz', type=int, default=320, help='network input; 320 = fastest at equal accuracy (measured)')
     e.add_argument('--opset', type=int, default=17)
     e.add_argument('--output')
     e.set_defaults(func=export)

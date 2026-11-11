@@ -77,54 +77,76 @@ class FrameResult:
 
 
 class OrientationLock:
-    """Find the frame rotation at which faces are upright, then keep it.
+    """Find the frame rotation at which faces are upright, cheaply and stably.
 
-    Detectors are trained on roughly upright faces; phones record sideways.
-    A confident face whose eye line is near-vertical gives the correction
-    directly (keypoints know where "up" is).  Otherwise, while no face is
-    seen, successive frames try 0/90/270/180 degrees.  Two upright confident
-    detections at one rotation lock it; a long absence unlocks.
+    Most videos are already upright (OpenCV applies container rotation
+    metadata), so the current rotation is always analysed.  Only after
+    ``probe_after_s`` without a face does one frame in ``probe_every`` try
+    another quarter turn; two successful probes switch to it.  A confident
+    face whose eye line is near-vertical gives the correction directly
+    (keypoints know where "up" is).  Two upright detections lock the
+    rotation; ``relock_after_s`` without a face unlocks it.
     """
 
-    def __init__(self, mode, relock_after_s=3.0):
+    def __init__(self, mode, probe_every=10, probe_after_s=1.0, relock_after_s=3.0):
         self.fixed = None if str(mode) == 'auto' else int(mode)
-        self.index = 0
         self.rotation = self.fixed or 0
         self.locked = self.fixed is not None
-        self.hits = 0
-        self.sideways = 0
-        self.last_face = None
-        self.relock_after = relock_after_s
+        self.probe_every, self.probe_after, self.relock_after = probe_every, probe_after_s, relock_after_s
+        self.frame = 0
+        self.probe_index = 0
+        self.start = self.last_face = None
+        self.hits = self.sideways = 0
+        self.probe_hits = {}
 
-    def report(self, found, timestamp, roll_deg=None):
-        """Returns True when the rotation for the next frame changed."""
+    def next(self, timestamp):
+        """(rotation, is_probe) to use for this frame."""
+        self.frame += 1
+        if self.fixed is not None:
+            return self.rotation, False
+        if self.start is None:
+            self.start = timestamp
+        since = timestamp - (self.last_face if self.last_face is not None else self.start)
+        if self.locked and since <= self.relock_after:
+            return self.rotation, False
+        if since >= self.probe_after and self.frame % self.probe_every == 0:
+            others = [r for r in ROTATION_SEARCH if r != self.rotation]
+            rotation = others[self.probe_index % len(others)]
+            self.probe_index += 1
+            return rotation, True
+        return self.rotation, False
+
+    def report(self, rotation, probe, found, timestamp, roll_deg=None):
+        """Feed back whether an upright confident face was found; True if the base rotation changed."""
         if self.fixed is not None:
             return False
-        if found:
-            self.last_face = timestamp
-            quarter = round(roll_deg / 90.0) % 4 if roll_deg is not None and abs(roll_deg) > 65 else 0
-            if quarter and not self.locked:
-                self.sideways += 1
-                if self.sideways >= 2:  # sustained sideways face: rotate it upright
-                    self.rotation = (self.rotation - 90 * quarter) % 360
-                    self.index = ROTATION_SEARCH.index(self.rotation)
-                    self.hits = self.sideways = 0
+        if probe:
+            if found:
+                self.probe_hits[rotation] = self.probe_hits.get(rotation, 0) + 1
+                if self.probe_hits[rotation] >= 2:
+                    self.rotation, self.locked, self.hits, self.probe_hits = rotation, False, 0, {}
+                    self.last_face = timestamp
                     return True
-                return False
+            return False
+        if not found:
             self.sideways = 0
-            if not self.locked:
-                self.hits += 1
-                self.locked = self.hits >= 2
+            if self.locked and self.last_face is not None and timestamp - self.last_face > self.relock_after:
+                self.locked, self.hits = False, 0
             return False
-        self.sideways = 0
-        if self.locked and self.last_face is not None and timestamp - self.last_face > self.relock_after:
-            self.locked, self.hits = False, 0
-        if self.locked:
+        self.last_face = timestamp
+        quarter = round(roll_deg / 90.0) % 4 if roll_deg is not None and abs(roll_deg) > 65 else 0
+        if quarter and not self.locked:
+            self.sideways += 1
+            if self.sideways >= 2:  # sustained sideways face: rotate it upright
+                self.rotation = (self.rotation - 90 * quarter) % 360
+                self.hits = self.sideways = 0
+                return True
             return False
-        self.hits = 0
-        self.index = (self.index + 1) % len(ROTATION_SEARCH)
-        previous, self.rotation = self.rotation, ROTATION_SEARCH[self.index]
-        return previous != self.rotation
+        self.sideways, self.probe_hits = 0, {}
+        if not self.locked:
+            self.hits += 1
+            self.locked = self.hits >= 2
+        return False
 
 
 def rotate_frame(frame, degrees_cw):
@@ -233,6 +255,47 @@ class CaptureEngine:
                 return True
         return False
 
+    def _roi_zoom(self, frame, timestamp, timings):
+        """Two-stage fallback for distant dogs (face SDK "detect in ROI").
+
+        No face in the full frame, but the body gate sees a dog: run the face
+        detector once more on a square crop around the largest dog, which
+        magnifies a small face.  Costs one extra detector call per frame only
+        while a dog is visible without a detectable face.
+        """
+        d = self.config.detector
+        if not d.roi_zoom or self.body_gate is None or self.detector is None:
+            return []
+        self._refresh_bodies(frame, timestamp, timings)
+        if timestamp - self.body_time > self.config.body_gate.hold_s or not len(self.body_boxes):
+            return []
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = max(self.body_boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
+        side = max(x2 - x1, y2 - y1) * 1.15
+        if max(h, w) / max(side, 1) < d.roi_min_zoom:
+            return []  # the dog already fills the frame: a crop would not magnify it
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+        left, top = int(max(0, cx - side / 2)), int(max(0, cy - side / 2))
+        right, bottom = int(min(w, cx + side / 2)), int(min(h, cy + side / 2))
+        if right - left < 32 or bottom - top < 32:
+            return []
+        started = time.perf_counter()
+        found = self.detector.detect(frame[top:bottom, left:right])
+        timings['roi_detector'] = (time.perf_counter() - started) * 1000
+        offset = np.array([left, top], np.float32)
+        kept = []
+        for det in found:
+            det.box = det.box + np.tile(offset, 2)
+            det.keypoints = det.keypoints + offset
+            det.source = 'roi_zoom'
+            if det.validate() is None:
+                kept.append(det)
+        return kept
+
+    def _dog_seen(self, timestamp):
+        return (self.body_gate is not None and len(self.body_boxes) > 0
+                and timestamp - self.body_time <= self.config.body_gate.hold_s)
+
     def _track_is_dog(self, frame, track, timestamp, timings):
         """Species verdict per *track*, not per frame (stable and cheap).
 
@@ -295,7 +358,12 @@ class CaptureEngine:
         timings = {}
         rejected = {}
         external = self._external = detections is not None
-        rotation = 0 if external else self.orientation.rotation
+        if external:
+            rotation, probe = 0, False
+        elif self.config.runtime.still_images:  # photos are searched per image instead
+            rotation, probe = self.orientation.fixed or 0, False
+        else:
+            rotation, probe = self.orientation.next(timestamp)
         work = rotate_frame(frame, rotation)
         if self.config.runtime.mirror and not external:
             work = np.ascontiguousarray(work[:, ::-1])
@@ -319,6 +387,11 @@ class CaptureEngine:
                 rejected[reason] = rejected.get(reason, 0) + 1
             else:
                 valid.append(det)
+        if probe:  # orientation probe: detection only, no tracking or species gate in these coordinates
+            return self._probe(valid, rotation, timestamp, index, rejected, timings, started)
+        if not external and not any(d.score >= self.config.tracker.high_score for d in valid):
+            # Only weak or unrelated faces (e.g. a person): look for the dog's face up close.
+            valid = valid + self._roi_zoom(work, timestamp, timings)
         if self.config.runtime.still_images:
             any_face = bool(valid)
             valid, not_dog = self._species_gate(work, valid, timestamp, timings)
@@ -326,15 +399,12 @@ class CaptureEngine:
                 rejected['not_dog'] = not_dog
             return self._process_still(work, valid, timestamp, index, rotation, rejected, timings, started,
                                        search=not any_face and not external)
-        confident = [d for d in valid if d.score >= self.config.tracker.new_track_score]
-        roll = None
-        if confident:
-            best = max(confident, key=lambda d: d.width * d.height)
-            roll = face_geometry(best, self.config.pose).roll_deg
-        if not external and self.orientation.report(bool(confident), timestamp, roll):
+        found, roll = self._upright_evidence(valid)
+        if not external and self.orientation.report(rotation, False, found, timestamp, roll):
             for track in self.tracker.tracks:  # coordinates change with rotation
                 self._archive(track.id, timestamp)
             self.tracker.reset()
+            self.body_time = self.body_checked = -math.inf
         t0 = time.perf_counter()
         tracks = self.tracker.update(valid, timestamp)
         for track in self.tracker.removed:
@@ -344,6 +414,8 @@ class CaptureEngine:
         if len(dogs) < len(tracks):
             rejected['not_dog'] = len(tracks) - len(dogs)
         tracks = dogs
+        if not tracks and self.body_gate is not None:
+            self._refresh_bodies(work, timestamp, timings)  # keeps "dog seen, face not found" current
         tracks = sorted(tracks, key=lambda t: -t.detection.width * t.detection.height)
         tracks = tracks[:self.config.detector.max_faces]
         self._choose_primary(tracks)
@@ -355,6 +427,25 @@ class CaptureEngine:
             events += new_events
         timings['analysis'] = (time.perf_counter() - t0) * 1000
         return self._result(faces, events, index, timestamp, rotation, rejected, timings, started)
+
+    def _upright_evidence(self, detections):
+        confident = [d for d in detections if d.score >= self.config.tracker.new_track_score]
+        if not confident:
+            return False, None
+        best = max(confident, key=lambda d: d.width * d.height)
+        return True, face_geometry(best, self.config.pose).roll_deg
+
+    def _probe(self, detections, rotation, timestamp, index, rejected, timings, started):
+        found, roll = self._upright_evidence(detections)
+        upright = found and roll is not None and abs(roll) <= 45
+        if self.orientation.report(rotation, True, upright, timestamp, roll):
+            for track in self.tracker.tracks:  # coordinates change with rotation
+                self._archive(track.id, timestamp)
+            self.tracker.reset()
+            self.body_time = self.body_checked = -math.inf
+        timings['orientation_probe'] = 1.0
+        # Report the base rotation: a probe frame shows nothing and must not look rotated.
+        return self._result([], [], index, timestamp, self.orientation.rotation, rejected, timings, started)
 
     def _analyse(self, frame, track, timestamp, index, rotation, still=False):
         context = self._context(track.id)
@@ -413,7 +504,8 @@ class CaptureEngine:
         missing = [v for v in self.view_names if v not in captured]
         advice = guidance(primary, missing, rejected_species=bool(rejected.get('not_dog')),
                           speed_iod=primary.speed_iod_per_s if primary else 0.0,
-                          motion_ref=self.config.quality.motion_ref_iod_per_s)
+                          motion_ref=self.config.quality.motion_ref_iod_per_s,
+                          dog_seen=primary is None and self._dog_seen(timestamp))
         advice = self._debounce(advice, timestamp)
         timings['total'] = (time.perf_counter() - started) * 1000
         mirrored = bool(self.config.runtime.mirror and not self._external)
