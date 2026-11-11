@@ -234,9 +234,42 @@ def _commit(gallery, session, body):
     return {'action': 'identify', 'query_shot': shots[best][0]['id'], 'gallery': result}
 
 
+def _static_files(directory):
+    """StaticFiles that also serves build-time ``.br`` / ``.gz`` siblings (like nginx
+    ``brotli_static`` / ``gzip_static``): the 14.8 MB WASM runtime goes out as ~2.8 MB."""
+    import mimetypes
+    import stat as stat_module
+
+    import anyio
+    from fastapi.staticfiles import StaticFiles
+
+    mimetypes.add_type('application/wasm', '.wasm')   # needed for streaming WASM compilation
+    mimetypes.add_type('text/javascript', '.mjs')
+
+    class PrecompressedStaticFiles(StaticFiles):
+        async def get_response(self, path, scope):
+            if scope['method'] in ('GET', 'HEAD'):
+                accept = dict(scope.get('headers') or []).get(b'accept-encoding', b'').decode('latin-1')
+                for encoding, suffix in (('br', '.br'), ('gzip', '.gz')):
+                    if encoding not in accept:
+                        continue
+                    try:
+                        full, found = await anyio.to_thread.run_sync(self.lookup_path, path + suffix)
+                    except (OSError, ValueError):
+                        break
+                    if found is not None and stat_module.S_ISREG(found.st_mode):
+                        response = self.file_response(full, found, scope)
+                        response.headers['content-type'] = mimetypes.guess_type(path)[0] or 'application/octet-stream'
+                        response.headers['content-encoding'] = encoding
+                        response.headers['vary'] = 'Accept-Encoding'
+                        return response
+            return await super().get_response(path, scope)
+
+    return PrecompressedStaticFiles(directory=str(directory), html=True)
+
+
 def mount_capture(app, service=None, *, api_key=None, models_dir=None, config=None, **kwargs):
     """Attach ``/v1/capture`` and the ``/capture/`` H5 to an existing FastAPI app."""
-    from fastapi.staticfiles import StaticFiles
     from ..engine import CaptureConfig
     from ..engine.zoo import build_body_gate, build_detector, find_face_model
 
@@ -262,7 +295,7 @@ def mount_capture(app, service=None, *, api_key=None, models_dir=None, config=No
         api_key=api_key, signer=signer, **kwargs)
     app.include_router(router)
     if H5_DIST.is_dir():
-        app.mount('/capture', StaticFiles(directory=str(H5_DIST), html=True), name='dog-capture-h5')
+        app.mount('/capture', _static_files(H5_DIST), name='dog-capture-h5')
 
     @app.middleware('http')
     async def capture_isolation(request, call_next):

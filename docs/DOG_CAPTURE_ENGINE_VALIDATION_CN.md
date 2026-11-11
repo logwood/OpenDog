@@ -156,6 +156,14 @@ YOLOX-nano 在 20 张狗照片上检出 18 张，平均 IoU 0.78；YOLOX-tiny �
 YOLOX-tiny 20.2 MB，分别为 92% 和 71.6%，耗时约是 nano 的 4 倍。相册模式下换用 tiny，被拒的脸只从 32 张减到 27 张，耗时却翻倍（P50 74 对 37 ms）。
 所以默认用 nano：门控按轨迹判断并会重试，视频场景能弥补它较低的单帧召回。
 
+## 8.1 浏览器 H5 端到端（采集协议 dog-capture/1）
+
+无头 Chromium + 由真实狗照片生成的 1280×720 / 30 fps 虚拟摄像头，H5 端 onnxruntime-web WASM 跑真实模型，
+服务端复检也跑真实模型（识别模型用替身）：比对场景 1.96 s 选好正面 2 张，建档场景（左右必选）5.7 s
+（受视频每侧 4 s 限制）；端上 10–15 fps；复检全部通过（与端上框 IoU 0.983–0.999，质量 0.84–0.91 / high）；
+token 提交进入建档 / 比对；控制台零报错；WASM 运行时以 br 传输 2.8 MB。
+详情和复现命令见 [`DOG_CAPTURE_PROTOCOL_CN.md`](DOG_CAPTURE_PROTOCOL_CN.md) 第 11 节。
+
 ## 9. 还需要在本地补跑的验证
 
 1. 用户视频的新旧对比：
@@ -165,3 +173,5 @@ YOLOX-tiny 20.2 MB，分别为 92% 和 71.6%，耗时约是 nano 的 4 倍。相
 3. 在 RTX 4060 上用 `--providers tensorrt` 和 `cuda` 测实时延迟（TensorRT 引擎首次运行时构建，之后从缓存加载）。
 4. 用 GPU 按第 6 节的配方训练 100 轮，以 640 输入导出；最好再用 AnyFace 做教师并人工抽检侧脸。
 5. 在目标手机上用 onnxruntime-android（NNAPI / XNNPACK）测延迟、温度和内存。
+6. 真机试拍 H5：Android Chrome、iOS Safari、微信内置浏览器各一台，经 HTTPS 打开 `/capture/`，
+   记录首开下载耗时、端上帧率、真实狗狗转头时的提示与选图结果，以及服务端复检通过率。

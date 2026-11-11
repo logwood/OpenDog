@@ -32,10 +32,15 @@ describe('CaptureEngine', () => {
       { name: 'front', center: 0, lower: -0.13, upper: 0.13, shots: 1 },
       { name: 'right', center: 0.45, lower: 0.25, upper: 0.75, shots: 1 }] } });
     const results = await run(engine, [...Array(8).fill('sharp'), ...Array(8).fill('side')]);
+    // right is captured but still inside its improve window and the dog faces it: hold, don't move on
+    expect(results.at(-1)!.guidance).toMatchObject({ code: 'hold_still', view: 'right' });
+    expect(engine.complete()).toBe(false);
+    const later = await run(engine, Array(64).fill('side'), 16);
+    expect(later.at(-1)!.guidance.code).toBe('done');
+    expect(engine.complete()).toBe(true);
     const bundle = engine.finalize()!;
     expect(bundle.captured()).toEqual(['front', 'right']);
     expect(bundle.best('front')!.frame!.width).toBe(320);
-    expect(results.at(-1)!.guidance.code).toBe('done');
     // the reference accepts the 'dark' frame (brightness 38.6 > 30); halve it to go below the limit
     const darker = { ...frames.dark.frame, data: frames.dark.frame.data.map((v, i) => (i % 4 === 3 ? v : v >> 1)) };
     const dark = new CaptureEngine();

@@ -27,7 +27,7 @@ from dog_capture.engine.guidance import guidance  # noqa: E402
 from dog_capture.engine.pose import ViewClassifier, face_geometry  # noqa: E402
 from dog_capture.engine.quality import QualityAssessor, _laplacian_energy, blur_effect  # noqa: E402
 from dog_capture.engine.schema import SCHEMAS, Detection  # noqa: E402
-from dog_capture.engine.selection import Shot, TrackShots  # noqa: E402
+from dog_capture.engine.selection import SETTLE_FACTOR, Shot, TrackShots  # noqa: E402
 from dog_capture.engine.tracking import ByteTracker, OneEuroFilter  # noqa: E402
 from dog_engine_synthetic import canonical_points, render  # noqa: E402
 
@@ -163,35 +163,49 @@ class _State:
         self.view, self.stable = view, stable
 
 
+def _run_selection(script, selection, shots):
+    ts = TrackShots(1, ('front', 'left'), selection, {'front': shots})
+    events, outstanding = [], []
+    for action, view, stable, t, score in script:
+        state = _State(view, stable)
+        if action == 'observe':
+            events += ts.observe(state, t)
+        else:
+            shot = Shot(view, 1, int(t * 30), t, score, None, None, None, np.zeros((1, 1, 3), np.uint8), None)
+            new, _ = ts.offer(shot, state, t)
+            events += new
+        outstanding.append(ts.outstanding({'front'}))
+    return {'expected_slots': {v: [r([s.time_s, s.score]) for s in ts.slots[v]] for v in ts.view_names},
+            'expected_locked': sorted(ts.locked),
+            'expected_events': [[e['event'], e['view'], r(e.get('time_s'))] for e in events],
+            # guidance targets after each step, with 'front' required and 'left' optional
+            'expected_outstanding': outstanding}
+
+
 def selection_cases(config):
-    out = {}
     script = [('observe', 'front', False, 0.0, None), ('offer', 'front', False, 0.0, 0.9),
               ('observe', 'front', True, 0.2, None), ('offer', 'front', True, 0.25, 0.5),
               ('offer', 'front', True, 0.9, 0.7), ('offer', 'front', True, 1.6, 0.95),
               ('observe', 'left', False, 1.7, None), ('offer', 'left', False, 1.7, 0.8),
               ('observe', None, False, 1.8, None), ('observe', 'left', True, 1.9, None),
               ('offer', 'left', True, 2.0, 0.6), ('offer', 'left', True, 4.5, 0.99)]
+    # Only mediocre shots (below good_enough): full views must still settle.
+    settle = [('offer', 'front', True, 0.0, 0.5), ('offer', 'front', True, 0.6, 0.55),
+              ('observe', 'front', True, 1.5, None), ('observe', 'front', True, 2.1, None),
+              ('offer', 'left', True, 2.2, 0.6), ('observe', 'left', True, 2.7, None),
+              ('observe', 'left', True, 4.3, None)]
+    out, settle_out = {}, {}
     for mode in ('fast', 'best', 'hybrid'):
         for shots in (1, 2):
             selection = config.merged({'selection': {'mode': mode, 'good_enough': .65, 'improve_window_s': 1.0,
                                                      'min_gap_s': .3}}).selection
-            ts = TrackShots(1, ('front', 'left'), selection, {'front': shots})
-            events = []
-            for action, view, stable, t, score in script:
-                state = _State(view, stable)
-                if action == 'observe':
-                    events += ts.observe(state, t)
-                else:
-                    shot = Shot(view, 1, int(t * 30), t, score, None, None, None, np.zeros((1, 1, 3), np.uint8), None)
-                    new, _ = ts.offer(shot, state, t)
-                    events += new
-            out[f'{mode}_front{shots}'] = {
-                'mode': mode, 'front_shots': shots,
-                'expected_slots': {v: [r([s.time_s, s.score]) for s in ts.slots[v]] for v in ts.view_names},
-                'expected_locked': sorted(ts.locked),
-                'expected_events': [[e['event'], e['view'], r(e.get('time_s'))] for e in events]}
+            out[f'{mode}_front{shots}'] = {'mode': mode, 'front_shots': shots,
+                                           **_run_selection(script, selection, shots)}
+            settle_out[f'{mode}_front{shots}'] = {'mode': mode, 'front_shots': shots,
+                                                  **_run_selection(settle, selection, shots)}
     return {'script': [list(s) for s in script], 'good_enough': .65, 'improve_window_s': 1.0, 'min_gap_s': .3,
-            'cases': out}
+            'settle_factor': SETTLE_FACTOR, 'required': ['front'], 'cases': out,
+            'settle_script': [list(s) for s in settle], 'settle_cases': settle_out}
 
 
 def quality_cases(config):
@@ -235,6 +249,7 @@ def guidance_cases():
              ({'face': {'reasons': []}, 'missing': ['left'], 'speed_iod': 5.0}, None),
              ({'face': {'reasons': [], 'view': 'left', 'stable': False}, 'missing': ['left', 'right']}, None),
              ({'face': {'reasons': [], 'view': 'front', 'stable': True}, 'missing': ['right']}, None),
+             ({'face': {'reasons': [], 'view': 'front', 'stable': True}, 'missing': ['left', 'front']}, None),
              ({'face': {'reasons': []}, 'missing': []}, None)]
     out = []
     for spec, _ in cases:

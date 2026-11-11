@@ -9,7 +9,17 @@ const result = computed(() => props.session.result.value!);
 const accepted = computed(() => result.value.status === 'accepted');
 const rejected = computed(() => result.value.shots.filter((s) => !s.accepted));
 const missingText = computed(() => result.value.missing_views.map((name: string) => VIEW_NAMES[name] ?? name).join('、'));
-const committed = ref<unknown>(null);
+const committed = ref<Record<string, any> | null>(null);
+// Readable outcome of the commit; the full response stays available under "详细数据".
+const outcome = computed(() => {
+  const c = committed.value;
+  if (!c) return '';
+  if (c.action === 'enroll') return `已为 ${c.pet_id} 建档，录入 ${c.gallery?.added ?? c.images?.length ?? 0} 张照片。`;
+  const top = c.gallery?.matches?.[0];
+  if (!top) return '比对已完成，没有找到足够相似的已建档狗狗。';
+  const score = typeof top.score === 'number' ? `（相似度 ${top.score.toFixed(2)}）` : '';
+  return `最相近：${top.display_name || top.pet_id}${score}`;
+});
 const committing = ref(false);
 const error = ref('');
 
@@ -39,7 +49,10 @@ async function commit() {
       </button>
       <button class="ghost" @click="emit('close')">关闭</button>
     </div>
-    <pre v-if="committed" class="json">{{ JSON.stringify(committed, null, 2) }}</pre>
+    <template v-if="committed">
+      <p class="outcome">{{ outcome }}</p>
+      <details><summary>详细数据</summary><pre class="json">{{ JSON.stringify(committed, null, 2) }}</pre></details>
+    </template>
     <p v-if="error" class="warn">{{ error }}</p>
   </section>
 </template>

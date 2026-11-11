@@ -1,4 +1,5 @@
 """Capture protocol service: sessions, server re-check, tokens, commit (no model files)."""
+import gzip
 import hashlib
 import json
 
@@ -198,3 +199,24 @@ def test_tokens_are_signed_and_expire():
         TokenSigner('other').verify(token)
     with pytest.raises(Exception):
         signer.verify(signer.sign({'sid': 'a', 'exp': 1}))
+
+
+def test_h5_static_serves_precompressed_assets(tmp_path):
+    from dog_capture.service.router import _static_files
+    (tmp_path / 'ort').mkdir()
+    raw = b'\0asm' + bytes(4096)
+    (tmp_path / 'ort' / 'rt.wasm').write_bytes(raw)
+    (tmp_path / 'ort' / 'rt.wasm.br').write_bytes(b'br-bytes')
+    (tmp_path / 'ort' / 'rt.wasm.gz').write_bytes(gzip.compress(raw))
+    (tmp_path / 'index.html').write_text('<!doctype html>', encoding='utf8')
+    app = FastAPI()
+    app.mount('/capture', _static_files(tmp_path), name='h5')
+    client = TestClient(app)
+    br = client.get('/capture/ort/rt.wasm', headers={'accept-encoding': 'gzip, br'})
+    assert br.headers['content-encoding'] == 'br' and br.headers['content-type'] == 'application/wasm'
+    assert br.headers['vary'] == 'Accept-Encoding'
+    gz = client.get('/capture/ort/rt.wasm', headers={'accept-encoding': 'gzip'})
+    assert gz.headers['content-encoding'] == 'gzip' and gz.content == raw  # client decodes back to the original
+    plain = client.get('/capture/ort/rt.wasm', headers={'accept-encoding': 'identity'})
+    assert 'content-encoding' not in plain.headers and plain.content == raw
+    assert client.get('/capture/', headers={'accept-encoding': 'br'}).text == '<!doctype html>'

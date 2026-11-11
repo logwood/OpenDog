@@ -114,6 +114,7 @@ export class CaptureEngine {
   readonly config: CaptureConfig;
   readonly views: Map<string, ViewSpec>;
   readonly viewNames: string[];
+  readonly requiredViews: ReadonlySet<string>;
   readonly assessor: QualityAssessor;
   readonly tracker: ByteTracker;
   readonly orientation: OrientationLock;
@@ -137,6 +138,7 @@ export class CaptureEngine {
     this.config = mergeConfig(defaultConfig(), config);
     this.views = new Map(this.config.pose.views.map((v) => [v.name, v]));
     this.viewNames = this.config.pose.views.map((v) => v.name);
+    this.requiredViews = new Set(this.config.pose.views.filter((v) => v.required).map((v) => v.name));
     this.assessor = new QualityAssessor(this.config.quality, mask);
     this.tracker = new ByteTracker(this.config.tracker);
     this.orientation = new OrientationLock(this.config.runtime.rotate);
@@ -379,7 +381,11 @@ export class CaptureEngine {
     const ctx = this.primaryId !== null ? this.contexts.get(this.primaryId) : undefined;
     const captured = ctx ? ctx.shots.captured() : [];
     const missing = this.viewNames.filter((v) => !captured.includes(v));
-    let advice = guidance(primary, missing, { rejectedSpecies: !!rejected.not_dog, speedIod: primary?.speedIodPerS ?? 0,
+    // Guide towards views that can still change (a captured view keeps improving until it locks),
+    // required ones first; "done" only once nothing is outstanding.
+    const targets = ctx ? ctx.shots.outstanding(this.requiredViews)
+      : [...this.viewNames].sort((a, b) => +!this.requiredViews.has(a) - +!this.requiredViews.has(b));
+    let advice = guidance(primary, targets, { rejectedSpecies: !!rejected.not_dog, speedIod: primary?.speedIodPerS ?? 0,
       motionRef: this.config.quality.motion_ref_iod_per_s, dogSeen: !primary && this.dogSeen(t) });
     advice = this.debounce(advice, t);
     timings.total = now() - started;

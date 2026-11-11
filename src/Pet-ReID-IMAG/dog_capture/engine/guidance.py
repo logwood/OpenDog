@@ -52,6 +52,7 @@ def guidance(face, missing_views, *, rejected_species=False, speed_iod=0.0, moti
     if speed_iod > motion_ref:
         return result('moving_fast')
     state = face.view_state
-    if state is not None and state.view in missing_views and not state.stable:
+    if state is not None and state.view in missing_views:
+        # Already in a view still being captured or improved: keep it there.
         return result('hold_still', state.view)
     return result('capture_view', missing_views[0])

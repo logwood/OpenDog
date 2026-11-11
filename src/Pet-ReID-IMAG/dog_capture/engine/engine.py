@@ -185,6 +185,7 @@ class CaptureEngine:
         self.body_gate = body_gate
         self.views = {v.name: v for v in self.config.pose.views}
         self.view_names = tuple(self.views)
+        self.required_views = frozenset(v.name for v in self.config.pose.views if v.required)
         self.template = load_template(self.config.output.template)
         self.assessor = QualityAssessor(self.config.quality, self.template)
         self.tracker = ByteTracker(self.config.tracker)
@@ -510,7 +511,11 @@ class CaptureEngine:
         context = self.contexts.get(self.primary_id)
         captured = context.shots.captured() if context else []
         missing = [v for v in self.view_names if v not in captured]
-        advice = guidance(primary, missing, rejected_species=bool(rejected.get('not_dog')),
+        # Guide towards views that can still change (a captured view keeps improving
+        # until it locks), required ones first; "done" only once nothing is outstanding.
+        targets = (context.shots.outstanding(self.required_views) if context
+                   else sorted(self.view_names, key=lambda v: v not in self.required_views))
+        advice = guidance(primary, targets, rejected_species=bool(rejected.get('not_dog')),
                           speed_iod=primary.speed_iod_per_s if primary else 0.0,
                           motion_ref=self.config.quality.motion_ref_iod_per_s,
                           dog_seen=primary is None and self._dog_seen(timestamp))

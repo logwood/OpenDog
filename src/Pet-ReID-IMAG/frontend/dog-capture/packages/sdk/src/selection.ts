@@ -6,6 +6,8 @@ import type { QualityReport } from './quality';
 import type { Detection } from './schema';
 
 export const LEVEL_ORDER = { reject: 0, low: 1, medium: 2, high: 3 } as const;
+/** A full view that never reaches good_enough locks this many improve windows after it filled. */
+export const SETTLE_FACTOR = 2;
 
 export interface Shot {
   view: string;
@@ -30,6 +32,7 @@ export class TrackShots {
   slots: Record<string, Shot[]> = {};
   pending: Record<string, Shot[]> = {};
   firstGood: Record<string, number | null> = {};
+  firstFull: Record<string, number | null> = {};
   locked = new Set<string>();
   k: Record<string, number> = {};
   visit: string | null = null;
@@ -39,7 +42,7 @@ export class TrackShots {
   constructor(public trackId: number, public viewNames: string[], private config: Selection,
     shots: Record<string, number> = {}) {
     for (const v of viewNames) {
-      this.slots[v] = []; this.pending[v] = []; this.firstGood[v] = null;
+      this.slots[v] = []; this.pending[v] = []; this.firstGood[v] = null; this.firstFull[v] = null;
       this.k[v] = shots[v] || config.top_k;
     }
   }
@@ -61,6 +64,15 @@ export class TrackShots {
   captured() { return this.viewNames.filter((v) => this.slots[v].length > 0); }
   full(view: string) { return this.slots[view].length >= this.k[view]; }
   best(view: string): Shot | null { return this.slots[view]?.[0] ?? null; }
+
+  /** No better shot will be taken for this view (locked; best mode: full). */
+  settled(view: string) { return this.locked.has(view) || (this.config.mode === 'best' && this.full(view)); }
+
+  /** Views guidance should still work on: uncaptured before still-improving, required before optional. */
+  outstanding(required: ReadonlySet<string> = new Set()) {
+    const key = (v: string) => (required.has(v) ? 0 : 2) + (this.slots[v].length ? 1 : 0);
+    return this.viewNames.filter((v) => !this.settled(v)).sort((a, b) => key(a) - key(b));
+  }
 
   rank(): [number, number, number] {
     const views = this.captured();
@@ -117,6 +129,7 @@ export class TrackShots {
     slot.sort((a, b) => b.score - a.score);
     slot.length = Math.min(slot.length, k);
     if (!slot.includes(shot)) return [];
+    if (slot.length >= k && this.firstFull[shot.view] === null) this.firstFull[shot.view] = t;
     const events: CaptureEvent[] = [];
     const good = shot.score >= c.good_enough;
     if (good && this.firstGood[shot.view] === null) this.firstGood[shot.view] = t;
@@ -131,11 +144,13 @@ export class TrackShots {
   }
 
   private updateLocks(t: number) {
-    if (this.config.mode !== 'hybrid') return;
-    for (const [view, first] of Object.entries(this.firstGood)) {
-      if (first !== null && !this.locked.has(view) && this.full(view) && t - first >= this.config.improve_window_s) {
-        this.locked.add(view);
-      }
+    const c = this.config;
+    if (c.mode === 'best') return;
+    for (const view of this.viewNames) {
+      if (this.locked.has(view) || !this.full(view)) continue;
+      const first = this.firstGood[view];
+      if ((c.mode === 'hybrid' && first !== null && t - first >= c.improve_window_s)
+        || t - this.firstFull[view]! >= SETTLE_FACTOR * c.improve_window_s) this.locked.add(view);
     }
   }
 
@@ -144,6 +159,7 @@ export class TrackShots {
   /** Operator retake: forget a view so it is captured again. */
   clear(view: string) {
     if (!(view in this.slots)) return;
-    this.slots[view] = []; this.pending[view] = []; this.firstGood[view] = null; this.locked.delete(view);
+    this.slots[view] = []; this.pending[view] = []; this.firstGood[view] = null; this.firstFull[view] = null;
+    this.locked.delete(view);
   }
 }

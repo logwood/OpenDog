@@ -8,6 +8,10 @@ emit it according to a policy:
 ``hybrid``  emit at the first good-enough frame, keep upgrading for
             ``improve_window_s``, then lock (the common default).
 
+A full view whose shots never reach ``good_enough`` still settles (locks)
+``SETTLE_FACTOR * improve_window_s`` after it filled, so a mediocre but usable
+view cannot hold a guided capture open until its timeout.
+
 Here this is done per target view.  A shot only enters a view slot while the
 debounced view is that view *and* the frame's own pose is in the band.  Shots
 seen before the dwell is confirmed wait in a pending buffer and are promoted
@@ -22,6 +26,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 LEVEL_ORDER = {'reject': 0, 'low': 1, 'medium': 2, 'high': 3}
+SETTLE_FACTOR = 2.0
 
 
 @dataclass
@@ -60,6 +65,7 @@ class TrackShots:
         self.slots = {v: [] for v in self.view_names}
         self.pending = {v: [] for v in self.view_names}
         self.first_good = {v: None for v in self.view_names}
+        self.first_full = {v: None for v in self.view_names}
         self.locked = set()
         self.visit = None
         self.first_time = self.last_time = None
@@ -90,6 +96,16 @@ class TrackShots:
 
     def best(self, view):
         return self.slots[view][0] if self.slots.get(view) else None
+
+    def settled(self, view):
+        """No better shot will be taken for this view (locked; best mode: full)."""
+        return view in self.locked or (self.config.mode == 'best' and self.full(view))
+
+    def outstanding(self, required=()):
+        """Views guidance should still work on: uncaptured before still-improving,
+        required before optional, otherwise in view order."""
+        views = [v for v in self.view_names if not self.settled(v)]
+        return sorted(views, key=lambda v: (v not in required, bool(self.slots[v])))
 
     def rank(self):
         views = self.captured()
@@ -150,6 +166,8 @@ class TrackShots:
         del slot[k:]
         if shot not in slot:
             return []
+        if len(slot) >= k and self.first_full[shot.view] is None:
+            self.first_full[shot.view] = timestamp
         events = []
         good = shot.score >= c.good_enough
         if good and self.first_good[shot.view] is None:
@@ -167,11 +185,15 @@ class TrackShots:
         return events
 
     def _update_locks(self, timestamp):
-        if self.config.mode != 'hybrid':
+        c = self.config
+        if c.mode == 'best':
             return
-        for view, first in self.first_good.items():
-            if (first is not None and view not in self.locked and self.full(view)
-                    and timestamp - first >= self.config.improve_window_s):
+        for view in self.view_names:
+            if view in self.locked or not self.full(view):
+                continue
+            first = self.first_good[view]
+            if ((c.mode == 'hybrid' and first is not None and timestamp - first >= c.improve_window_s)
+                    or timestamp - self.first_full[view] >= SETTLE_FACTOR * c.improve_window_s):
                 self.locked.add(view)
 
     def finalize(self, timestamp=None):

@@ -329,11 +329,14 @@ def turn_sequence(yaws, **kwargs):
 
 def test_engine_collects_views_in_any_order_from_one_track():
     engine = CaptureEngine()
-    yaws = [.45] * 10 + list(np.linspace(.45, -.5, 10)) + [-.5] * 10 + [0] * 10
+    yaws = [.45] * 10 + list(np.linspace(.45, -.5, 10)) + [-.5] * 10 + [0] * 80
     results = run(engine, turn_sequence(yaws))
+    # front was just captured and is still improving while the dog faces it: hold, don't move on
+    assert not results[39].missing_views
+    assert results[39].guidance['code'] == 'hold_still' and results[39].guidance['view'] == 'front'
+    assert results[-1].guidance['code'] == 'done' and engine.complete()
     best = engine.finalize()
     assert set(best.captured()) == {'front', 'left', 'right'}
-    assert results[-1].guidance['code'] == 'done' and not results[-1].missing_views
     shot = best.best('left')
     assert shot.aligned.shape == (224, 224, 3) and shot.frame.shape == (720, 1280, 3)
     assert -0.75 <= shot.geometry.yaw <= -0.25

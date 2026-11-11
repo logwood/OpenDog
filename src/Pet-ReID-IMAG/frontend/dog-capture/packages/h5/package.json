@@ -8,7 +8,7 @@
   "scripts": {
     "prepare-assets": "node scripts/copy-ort.mjs",
     "dev": "node scripts/copy-ort.mjs && vite",
-    "build": "node scripts/copy-ort.mjs && vue-tsc --noEmit && vite build",
+    "build": "node scripts/copy-ort.mjs && vue-tsc --noEmit && vite build && node scripts/compress.mjs",
     "typecheck": "vue-tsc --noEmit",
     "preview": "vite preview"
   },

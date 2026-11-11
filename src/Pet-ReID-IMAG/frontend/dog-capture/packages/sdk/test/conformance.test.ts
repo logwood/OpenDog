@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
-  ByteTracker, blurEffect, coreMask, defaultConfig, eyePatches, faceGeometry, fromBGR, getSchema, guidance,
+  ByteTracker, SETTLE_FACTOR, blurEffect, coreMask, defaultConfig, eyePatches, faceGeometry, fromBGR, getSchema, guidance,
   laplacianEnergy, mergeConfig, OneEuroFilter, QualityAssessor, similarity, toGray, TrackShots, ViewClassifier,
   type Detection, type Point,
 } from '../src';
@@ -94,26 +94,34 @@ describe('tracking', () => {
 });
 
 describe('selection', () => {
-  it('matches fast / best / hybrid with one and two front shots', () => {
-    const c = load('selection.json');
-    for (const [name, spec] of Object.entries(c.cases as Record<string, any>)) {
+  const c = load('selection.json');
+  const run = (script: any[], cases: Record<string, any>) => {
+    for (const [name, spec] of Object.entries(cases)) {
       const selection = { ...config.selection, mode: spec.mode, good_enough: c.good_enough,
         improve_window_s: c.improve_window_s, min_gap_s: c.min_gap_s };
       const ts = new TrackShots(1, ['front', 'left'], selection, { front: spec.front_shots });
       const events: [string, string, number][] = [];
-      for (const [action, view, stable, t, score] of c.script) {
+      const outstanding: string[][] = [];
+      for (const [action, view, stable, t, score] of script) {
         const state = { view, stable };
         if (action === 'observe') ts.observe(state, t).forEach((e) => events.push([e.event, e.view, e.time_s]));
         else ts.offer({ view, trackId: 1, frameIndex: Math.trunc(t * 30), timeS: t, score, quality: null, geometry: null,
           detection: null, frame: null, rotationDeg: 0, confirmedAt: null }, state, t)[0]
           .forEach((e) => events.push([e.event, e.view, e.time_s]));
+        outstanding.push(ts.outstanding(new Set(c.required)));
       }
       for (const view of ['front', 'left']) {
         expect(ts.slots[view].map((s) => [s.timeS, s.score]), `${name}.${view}`).toEqual(spec.expected_slots[view]);
       }
       expect([...ts.locked].sort(), name).toEqual(spec.expected_locked);
       expect(events, name).toEqual(spec.expected_events);
+      expect(outstanding, `${name} outstanding`).toEqual(spec.expected_outstanding);
     }
+  };
+  it('matches fast / best / hybrid with one and two front shots', () => run(c.script, c.cases));
+  it('settles full views that never reach good_enough', () => {
+    expect(SETTLE_FACTOR).toBe(c.settle_factor);
+    run(c.settle_script, c.settle_cases);
   });
 });
 

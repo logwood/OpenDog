@@ -188,6 +188,11 @@ YOLOX 物种门控、ByteTrack 多目标跟踪、PetFace 五点对齐、FIQA 式
 [`docs/DOG_CAPTURE_ENGINE_VALIDATION_CN.md`](docs/DOG_CAPTURE_ENGINE_VALIDATION_CN.md)。
 v0.x 的 `run-dog-*.cmd` 入口保持不变，可并行对照。
 
+手机 / 浏览器端的引导采集（类似人脸认证 H5：会话 → 端上选图 → 服务端复检 → 一次性 token → 建档 / 比对）
+在 `src/Pet-ReID-IMAG/frontend/dog-capture`（TypeScript SDK + Vue 3 H5），服务端用
+`serve_pet_api.py --enable-capture` 挂载；协议、接口、嵌入方式（跳转 / 组件 / iframe / Android / iOS）和端到端实测见
+[`docs/DOG_CAPTURE_PROTOCOL_CN.md`](docs/DOG_CAPTURE_PROTOCOL_CN.md)。
+
 ## 关键内容
 
 - `environment.repro.yml` / `requirements-modern.txt`：已验证的现代 CUDA 环境锁；

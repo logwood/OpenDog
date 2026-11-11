@@ -43,6 +43,7 @@ export function guidance(face: GuidanceFace | null, missing: string[], opts: {
   if ([...reasons].some((r) => POSE_REASONS.has(r)) || (face.geometry && !face.geometry.valid)) return result('pose_unresolved');
   if ((opts.speedIod ?? 0) > (opts.motionRef ?? 3)) return result('moving_fast');
   const state = face.viewState;
-  if (state && state.view && missing.includes(state.view) && !state.stable) return result('hold_still', state.view);
+  // Already in a view still being captured or improved: keep it there.
+  if (state && state.view && missing.includes(state.view)) return result('hold_still', state.view);
   return result('capture_view', missing[0]);
 }

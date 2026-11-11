@@ -189,6 +189,15 @@ selection:
   mode: hybrid                   # fast=首张达标即锁定；best=整条轨迹最好；hybrid=达标后再优化 2 s
   good_enough: 0.65
   top_k: 1
+```
+
+引导与锁定的关系（2026-11-11 补充）：引导只认“已定稿”的视角，不再以“已拍到”为准。某个视角拍满后，
+hybrid 还会继续优化 `improve_window_s`，这期间狗狗如果仍朝着这个视角，提示保持“很好，请保持这个角度”，
+不会提前让它转头，以免丢掉更好的一张；必选视角排在可选视角前面。另外，拍满后始终没有达到 `good_enough`
+的视角，会在拍满 `2 × improve_window_s` 后自动定稿（`SETTLE_FACTOR`），否则流程会一直等到超时。
+Python 参考实现与 TS SDK 的这部分行为由 `selection.json` / `guidance.json` 一致性向量约束。
+
+```yaml
 quality:
   min_iod_px: 18                 # 原图眼距下限
   min_sharpness: 0.15
