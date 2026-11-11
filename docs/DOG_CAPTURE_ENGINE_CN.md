@@ -21,10 +21,13 @@ v0.x 的模块、入口和验证记录全部保留（`run-dog-*.cmd`、`TargetVi
 
 ```
 帧（采集时间戳）
- └─ 方向锁：关键点判断画面是否侧放 → 0/90/180/270° 转正（auto，可固定）
+ └─ 方向锁：始终分析当前方向；连续 1 s 无脸时每 10 帧试探一个 90° 方向，两次命中才切换；
+           关键点判断出侧放的脸时直接转正（auto，可固定）
  └─ 人脸式检测器：所有狗脸的框 + 关键点(+可见度)            [ONNX Runtime]
- └─ 物种门控：YOLOX 狗身体框包含脸心；特写时对头部裁剪复核     [可选，Apache-2.0]
+ └─ 远距离兜底：整图没有可信狗脸但看到狗身时，在狗身裁剪上再检测一次（最多 10 Hz）
  └─ ByteTrack：高/低分两阶段 IoU 关联，Kalman 按真实时间预测
+ └─ 物种门控（按轨迹）：狗身体框包含脸心，或头部裁剪被判为狗（≥0.5）；
+           确认后整条轨迹有效，未确认的每 0.25 s 重试     [YOLOX-nano，Apache-2.0]
  └─ 每条轨迹：
       几何：眼睛按“鼻在下”重排 → yaw / pitch / roll / 眼距，口或下巴线索做一致性检查
       视角：One-Euro 平滑 + 进入带/退出带 + 最短驻留（时间与观测数）
@@ -36,7 +39,32 @@ v0.x 的模块、入口和验证记录全部保留（`run-dog-*.cmd`、`TargetVi
 
 默认视角沿用 v0.x 的鼻眼比例带：正面 `[-0.13, 0.13]`，左 `[-0.75, -0.25]`，右 `[0.25, 0.75]`。
 `yaw` 是无量纲线索，不是角度。结果里的 `approx_deg` 按固定口鼻长度换算，只用于显示，判定从不使用它。
-不同检测器对“鼻子”的定义不同（DogFLW 取鼻垫中心，StanfordExtra 取鼻尖），换模型后可以在配置里调整视角带。
+不同检测器对“鼻子”的定义不同：DogFLW 取鼻垫中心，StanfordExtra 取鼻尖。所以每种关键点格式都带一个实测的
+`yaw_scale`，引擎会先换算成 DogFLW 鼻垫中心的单位，再与视角带比较。dog-face6（鼻尖）在 347 张验证脸上测得
+1.90（相关系数 0.95），因此同一组视角带在不同模型上对应同样的转头幅度。AnyFace 的“鼻顶”还没有测过，暂按 1.0 处理。
+
+## 2.1 更快、更小、更稳：做了什么，测到多少
+
+数字来自云端 4 核 CPU，没有 GPU；详细数据见验证文档。
+
+| 目标 | 做法 | 实测 |
+|---|---|---|
+| 更快 | 单阶段学生模型，输入 320 | 检测 P50 10.6 ms / P90 12.8 ms；v0.x 三模型级联为 74.7 / 229 ms |
+| 更快 | 引擎逻辑只做必要计算：只在能入选或需要引导的脸上算像素质量；只在可能更好时才复制整帧 | 引擎自身开销 P50 0.12 ms / P95 0.21 ms（720p） |
+| 更快 | 物种门控按轨迹做一次；方向搜索最多每 10 帧一次；远距离兜底最多 10 Hz；采集齐后可自动结束（`--until-done`，摄像头默认开启） | 压力视频整条流水线 P50 17.7 ms；实时回放从提交到出结果 P50 20.6 ms |
+| 更小 | YOLO11n-pose 学生 2.7M 参数；YOLOX-nano 门控 | 10.9 MB（FP16 5.5 MB，INT8 3.2 MB）+ 3.7 MB；v0.x 为 33.4 MB TFLite 外加 49 MB TensorRT 引擎 |
+| 更小 | 运行时只需 NumPy + OpenCV + onnxruntime | 不需要 torch / TensorFlow / TensorRT SDK |
+| 更稳 | 按轨迹判断物种、主目标粘性、0.6 s 引导防抖、进入带/退出带/最短驻留、绝不把旧帧坐标画到新帧上 | 3000 帧进出场压测中所有缓冲有界；真实视频连续 4 轮共 1156 帧，0 错误，常驻内存 216→222 MB 后不再增长 |
+| 更稳 | 坏输入（异常检测结果、灰度/BGRA 帧、倒退时间戳）计数而不崩溃；摄像头断线重连 | 全部有测试覆盖 |
+
+用 `python -m dog_capture bench [视频]` 可以在任何设备上复测检测器、门控和引擎各自的耗时与模型大小。
+
+精度取舍（都是实测）：
+- 输入 416 和 320 精度相同（脸召回 0.901 / 0.904），耗时 17.0 / 10.4 ms，所以默认 320。
+- FP16 与 FP32 结果一致，适合 GPU 和 NPU；在 x86 CPU 上反而更慢。
+- INT8 只量化卷积层后，准确率与 FP32 基本相同，体积缩小到原来的 1/3.4；但在 x86 CPU 上不比 FP32 快，只适合 ARM / NPU，而且要在目标设备上验证。
+  如果把检测头也一起量化，输出会归零，这一点已经测出并在工具里规避。
+- YOLOX-nano 的 INT8 会丢掉约 35% 的狗，所以门控保持 FP32 或 FP16。
 
 ## 3. 使用
 
@@ -99,7 +127,7 @@ for view in best.captured():
 
 | 名称 | 类型 | 关键点 | 体量 | 许可 | 获取 |
 |---|---|---|---|---|---|
-| `dog_face_pose` | YOLO11n-pose | 双眼、鼻、下巴、双耳根（带可见度） | 2.7M 参数，320–640 输入 | Ultralytics AGPL-3.0；StanfordExtra 仅限研究；用 DogFLW 做教师时还继承其非商用条件 | `tools/train_dog_face_pose.py`（见第 6 节） |
+| `dog_face_pose` | YOLO11n-pose | 双眼、鼻、下巴、双耳根（带可见度） | 2.7M 参数，默认 320 输入，10.9 MB | Ultralytics AGPL-3.0；StanfordExtra 仅限研究；用 DogFLW 做教师时还继承其非商用条件 | `tools/train_dog_face_pose.py`（见第 6 节） |
 | `anyface_yolov5l6` | YOLOv5-face | 双眼、鼻、双嘴角 | 约 76M 参数，适合桌面 GPU | AnyFace 代码 MIT、YOLOv5-face 代码 GPL-3.0；训练数据为研究数据集 | `tools/export_anyface_onnx.py --weights models/pretrained/anyface/yolov5l6_best.pt`（本地已有 .pt） |
 | `scrfd_dog` | SCRFD | 5 点 | 0.5–2.5 GFLOPs | 取决于训练数据 | 用 InsightFace SCRFD 在犬脸 5 点数据上训练 |
 | `dogflw_legacy` | v0.x 三模型 TFLite 级联 | 46 点简化为双眼 + 鼻 | 约 33 MB | CC BY-NC 4.0，禁止商用 | 已有 v0.x 资产；需要 `ai-edge-litert` |
@@ -122,8 +150,8 @@ for view in best.captured():
 ```bash
 python tools/train_dog_face_pose.py prepare --source datasets/dog-pose --output datasets/dog-face6
 python tools/train_dog_face_pose.py pseudolabel --data datasets/dog-face6 --teacher <AnyFace.onnx 或 DogFLW 目录>
-python tools/train_dog_face_pose.py train --data datasets/dog-face6/dog-face6.yaml --epochs 100 --imgsz 640 --device 0
-python tools/train_dog_face_pose.py export --weights runs/pose/dog_face6/weights/best.pt --imgsz 640
+python tools/train_dog_face_pose.py train --data datasets/dog-face6/dog-face6.yaml --epochs 100 --imgsz 416 --device 0
+python tools/train_dog_face_pose.py export --weights runs/pose/dog_face6/weights/best.pt --imgsz 320   # 远距离场景再试 416
 python tools/evaluate_dog_face_detector.py --data datasets/dog-face6 --model models/pretrained/dog_capture_v1/dog_face_pose.onnx
 python tools/optimize_dog_onnx.py --model models/pretrained/dog_capture_v1/dog_face_pose.onnx --fp16 --int8 --calib <你的相机帧>
 python tools/calibrate_dog_quality.py --data datasets/dog-face6        # 在你的数据上重新标定清晰度常数
@@ -164,8 +192,11 @@ selection:
 quality:
   min_iod_px: 18                 # 原图眼距下限
   min_sharpness: 0.15
+detector:
+  roi_zoom: true                 # 整图找不到脸、但看到狗身时，在狗身裁剪上再检测一次（最多 10 Hz）
 body_gate:
   enabled: auto                  # auto=有 YOLOX 就启用；off=不做物种判断
+  head_score_threshold: 0.5      # 只有头部裁剪时，证据更弱，所以阈值更高（猫头裁剪曾得 0.44）
 runtime:
   providers: auto
   rotate: auto                   # 手机侧放的视频自动转正；也可以固定为 0/90/180/270
@@ -176,13 +207,12 @@ runtime:
 
 见 [`DOG_CAPTURE_ENGINE_VALIDATION_CN.md`](DOG_CAPTURE_ENGINE_VALIDATION_CN.md)。要点：
 
-- 新增 64 项测试，覆盖配置、几何、对齐、跟踪、质量、抓拍策略、方向锁、物种门控、全部 ONNX 解码器（用常量输出图验证坐标还原）、
-  真实 ONNX Runtime 会话、视频 / 图片源、实时丢帧、CLI 全流程；v0.x 原有的 52 项测试保持通过。
-- 质量常数在 300 张真实正脸上标定：清晰原图有 3% 被判模糊；轻微失焦（0.03 倍眼距）有 96% 被拒，
-  0.15 倍眼距的运动模糊有 75% 被拒，且原图得分始终高于自身的模糊版本。
-- 物种门控：人像、猫、杯子、马均未检出狗；完整的狗照片 92% 有狗框，头部特写裁剪 81% 能确认是狗。
-- 学生模型（YOLO11n-pose，在本机 CPU 上以 320 输入训练 12 轮，DogFLW 作为补眼教师）的数字见验证文档。
-  这只用来证明整条配方能跑通，不能当作发布模型；正式模型应按第 6 节在 GPU 上训练 100 轮。
+- 新增 68 项测试；v0.x 原有测试保持 48 项通过、4 项因本地专有资产缺失跳过。
+- 学生模型：在本机 CPU 上以 320 输入训练 12 轮，用时 1.2 小时。在没见过的 1703 张验证图上，脸框 mAP50 0.905，关键点 mAP50 0.931。
+  在同一批 426 张图上与 v0.x 级联比较：真值鼻子命中率 92% 对 46%，耗时 10.6 对 74.7 ms，体积 10.9 对 33.4 MB。
+  学生模型是在同分布数据上训练的，比较对它有利；它只用来证明配方可行，正式模型应按第 6 节在 GPU 上训练。
+- 质量常数在 300 张真实正脸上标定：清晰原图有 3% 被判模糊；轻微失焦（0.03 倍眼距）有 96% 被拒。
+- 物种门控：人、猫、杯子、马都没有被拍进结果；关闭门控时，人脸会被当成“正面狗脸”收进结果。
 
 ## 10. 局限
 
@@ -191,7 +221,11 @@ runtime:
 - 视角带是鼻眼几何比例，会随品种（口鼻长短）和检测器的鼻子定义变化，需要用自己的视频确认。
 - 质量分只覆盖成像质量（清晰、曝光、尺寸、可见度），还不包括“比对模型认不认得出来”。人脸领域会用 MagFace / SER-FIQ 这类
   可识别度指标，这里留作下一步，可以接入现有 Re-ID 模型来做。
-- 物种门控依赖 COCO 的“dog”类别；狗身被大面积遮挡、只露半张脸时可能误拒。门控可以关闭或调低阈值。
+- 物种门控依赖 COCO 的“dog”类别。相册模式下每张照片只判一次，280 张验证照片中有 32 张脸被拒
+  （其中可能包含真正的误检）；换成 YOLOX-tiny 只能多救回 5 张，耗时却翻倍。视频里按轨迹重试，影响更小。门控可以关闭。
+- 模型给出的眼睛“可见度”只表示眼睛在哪里，不表示睁着还是闭着；闭眼目前只能靠眼部细节分把它排到后面。
+  要可靠识别，需要专门的睁眼/闭眼分类头。
+- 侧脸对齐到正脸模板时会被裁掉一部分（InsightFace 也有同样的问题），所以原始裁剪和整帧一并保存。
 - 不做活体检测或防翻拍。
 
 ## 11. 与 v0.x 的关系
