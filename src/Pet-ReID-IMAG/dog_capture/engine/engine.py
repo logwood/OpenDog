@@ -447,6 +447,20 @@ class CaptureEngine:
         unique = {id(s): s for s in items}
         return sorted(unique.values(), key=lambda s: s.rank(), reverse=True)
 
+    def complete(self):
+        """True once the primary dog has every view and no view can still improve.
+
+        fast/hybrid: every view is locked; best: every view is captured (it
+        never locks, so "complete" means coverage).
+        """
+        context = self.contexts.get(self.primary_id)
+        if context is None:
+            return False
+        shots = context.shots
+        if len(shots.captured()) < len(self.view_names):
+            return False
+        return self.config.selection.mode == 'best' or len(shots.locked) == len(self.view_names)
+
     def best_bundle(self):
         bundles = self.bundles()
         return bundles[0] if bundles else None

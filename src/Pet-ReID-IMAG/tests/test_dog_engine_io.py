@@ -127,3 +127,12 @@ def test_cli_config_and_models_commands(tmp_path, capsys):
     assert json.loads((tmp_path / 'c.json').read_text())['selection']['mode'] == 'hybrid'
     assert main(['models']) == 0
     assert 'yolox_tiny' in capsys.readouterr().out
+
+
+def test_cli_until_done_stops_early(media, tmp_path):
+    video, log = media
+    code = main(['run', str(video), '--detections', str(log), '--output', str(tmp_path / 'u'), '--no-body-gate',
+                 '--quiet', '--mode', 'fast', '--until-done'])
+    report = json.loads((tmp_path / 'u' / 'result.json').read_text())
+    assert code == 0 and report['selection']['coverage_complete']
+    assert report['stats']['frames_read'] < 36

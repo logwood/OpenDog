@@ -98,6 +98,7 @@ def cmd_run(args):
                       f'frame {event.get("frame_index", "")})', flush=True)
 
     realtime = args.realtime or source.live
+    until_done = args.until_done if args.until_done is not None else source.live
     runner = LatestFrameRunner(engine, on_result, log.get if log else None) if realtime else None
     started = time.perf_counter()
     read = processed = 0
@@ -128,6 +129,10 @@ def cmd_run(args):
                 if latest is not None:
                     processed += 1
                     on_result(latest, frame)
+            if until_done and engine.complete():
+                if not args.quiet:
+                    print('All views captured and locked; stopping early.', flush=True)
+                break
             if show is not None:
                 fresh = latest is not None and abs(timestamp - latest.time_s) < 0.25
                 same = fresh and latest.frame_index == index  # boxes only on the analysed frame
@@ -314,6 +319,9 @@ def main(argv=None):
     run.add_argument('--preview', action='store_true', help='write an annotated preview.mp4')
     run.add_argument('--no-frame-log', action='store_true', help='skip frames.jsonl')
     run.add_argument('--max-seconds', type=float, default=0)
+    run.add_argument('--until-done', dest='until_done', action='store_true', default=None,
+                     help='stop once every view is captured and locked (default for cameras/streams)')
+    run.add_argument('--no-until-done', dest='until_done', action='store_false')
     run.add_argument('--quiet', action='store_true')
     run.set_defaults(func=cmd_run)
     bench = sub.add_parser('bench', help='measure model size and per-stage latency on this device')
