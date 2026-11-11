@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dog-capture/1/capture-package",
+  "title": "Capture package manifest (multipart field 'manifest' of POST /v1/capture/sessions/{id}/package; images in 'files')",
+  "type": "object",
+  "required": ["protocol", "session_id", "nonce", "shots"],
+  "properties": {
+    "protocol": {"const": "dog-capture/1"},
+    "session_id": {"type": "string"},
+    "nonce": {"type": "string"},
+    "client": {"type": "object", "description": "sdk version, user agent, camera resolution / facing"},
+    "models_used": {"type": "object", "description": "sha256 of the face and gate models actually run, execution provider"},
+    "timing": {"type": "object", "description": "started/finished ms, frames processed / dropped, fps"},
+    "shots": {
+      "type": "array", "minItems": 1, "maxItems": 8,
+      "items": {
+        "type": "object", "required": ["id", "view", "file", "sha256"],
+        "properties": {
+          "id": {"type": "string"}, "view": {"type": "string"}, "rank": {"type": "integer"},
+          "file": {"type": "string", "description": "multipart filename of the ORIGINAL full frame (JPEG) - the recognizer input"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "width": {"type": "integer"}, "height": {"type": "integer"},
+          "time_s": {"type": "number"}, "frame_index": {"type": "integer"}, "track_id": {"type": "integer"},
+          "detection": {"type": "object", "description": "box [x1,y1,x2,y2], score, schema, keypoints, kp_scores in this image's pixels"},
+          "pose": {"type": "object"}, "quality": {"type": "object"}
+        }
+      }
+    },
+    "signals": {
+      "type": "object",
+      "description": "reserved liveness / anti-replay evidence, recorded but not judged in v1",
+      "properties": {
+        "track_ids": {"type": "array"}, "single_track": {"type": "boolean"},
+        "view_sequence": {"type": "array", "description": "[view, enter_time_s] in the order visited"},
+        "yaw_trace": {"type": "array", "description": "downsampled [time_s, yaw] of the primary track"},
+        "guidance_counts": {"type": "object"}, "prompt_order_followed": {"type": "boolean"}
+      }
+    }
+  }
+}

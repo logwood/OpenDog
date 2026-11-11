@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dog-capture/1/verification-result",
+  "title": "Server re-check result (response of POST .../package; also in GET /v1/capture/sessions/{id})",
+  "type": "object",
+  "required": ["protocol", "session_id", "status", "shots", "missing_views", "retake_views"],
+  "properties": {
+    "protocol": {"const": "dog-capture/1"},
+    "session_id": {"type": "string"},
+    "status": {"enum": ["accepted", "retake"]},
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["id", "view", "accepted", "reasons"],
+        "properties": {
+          "id": {"type": "string"}, "view": {"type": "string"}, "accepted": {"type": "boolean"},
+          "reasons": {"type": "array", "items": {"type": "string"}, "description": "hash_mismatch, bad_image, no_face, not_dog, claimed_face_not_found, view_mismatch, blurred, face_too_small, ..., recognition_unstable, identity_inconsistent"},
+          "size": {"type": "array"}, "server": {"type": "object", "description": "server view, box_iou with the claimed box, quality score and level"}
+        }
+      }
+    },
+    "missing_views": {"type": "array", "items": {"type": "string"}},
+    "retake_views": {"type": "array", "items": {"type": "string"}},
+    "recognition": {"type": "object", "description": "per-shot stability / consistency with the deployed recognizer and thresholds in force"},
+    "capture_token": {"type": "string", "description": "present only when client_commit is allowed; otherwise fetched by the backend"},
+    "token_expires_at": {"type": "number"},
+    "elapsed_ms": {"type": "number"}
+  }
+}

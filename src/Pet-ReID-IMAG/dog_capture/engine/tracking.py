@@ -17,11 +17,6 @@ import numpy as np
 
 from .schema import box_iou_matrix
 
-try:  # optional, exact assignment; greedy matching is used without SciPy
-    from scipy.optimize import linear_sum_assignment as _lsa
-except Exception:  # pragma: no cover - depends on the environment
-    _lsa = None
-
 
 class OneEuroFilter:
     """Speed-adaptive low-pass filter for scalars or arrays, driven by timestamps."""
@@ -100,23 +95,25 @@ class KalmanBoxFilter:
 
 
 def assign(cost, threshold):
-    """Min-cost assignment with a gate; Hungarian if SciPy exists, else greedy."""
+    """Greedy min-cost assignment with a gate.
+
+    Deliberately greedy (stable sort by cost, then row, then column) instead
+    of Hungarian: with a handful of dogs the results are the same in practice,
+    and every port (TypeScript, Kotlin, ...) produces identical pairs.
+    """
     if cost.size == 0:
         return [], list(range(cost.shape[0])), list(range(cost.shape[1]))
     pairs = []
-    if _lsa is not None:
-        rows, cols = _lsa(cost)
-        pairs = [(r, c) for r, c in zip(rows, cols) if cost[r, c] <= threshold]
-    else:
-        order = np.dstack(np.unravel_index(np.argsort(cost, axis=None), cost.shape))[0]
-        used_r, used_c = set(), set()
-        for r, c in order:
-            if cost[r, c] > threshold:
-                break
-            if r not in used_r and c not in used_c:
-                pairs.append((int(r), int(c)))
-                used_r.add(r)
-                used_c.add(c)
+    order = np.argsort(cost, axis=None, kind='stable')
+    used_r, used_c = set(), set()
+    for flat in order:
+        r, c = divmod(int(flat), cost.shape[1])
+        if cost[r, c] > threshold:
+            break
+        if r not in used_r and c not in used_c:
+            pairs.append((r, c))
+            used_r.add(r)
+            used_c.add(c)
     matched_r = {r for r, _ in pairs}
     matched_c = {c for _, c in pairs}
     return (pairs, [r for r in range(cost.shape[0]) if r not in matched_r],

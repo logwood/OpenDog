@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dog-capture/1/session-config",
+  "title": "Capture session configuration (GET /v1/capture/sessions/{id}/config)",
+  "type": "object",
+  "required": ["protocol", "session_id", "purpose", "policy", "engine", "models", "upload", "expires_at"],
+  "properties": {
+    "protocol": {"const": "dog-capture/1"},
+    "session_id": {"type": "string"},
+    "purpose": {"enum": ["enroll", "identify"]},
+    "policy": {
+      "type": "object",
+      "required": ["name", "views", "view_order", "max_duration_s"],
+      "properties": {
+        "name": {"type": "string"},
+        "views": {"type": "array", "items": {"$ref": "#/$defs/view"}},
+        "view_order": {"type": "array", "items": {"type": "string"}, "description": "operator prompt order; sides randomised (liveness signal)"},
+        "selection": {"type": "object"},
+        "max_duration_s": {"type": "number"},
+        "max_attempts": {"type": "integer"}
+      }
+    },
+    "engine": {"type": "object", "description": "complete CaptureConfig (detector, body_gate, tracker, pose, quality, selection, output, runtime) - identical on client and server"},
+    "models": {
+      "type": "object",
+      "properties": {"face": {"$ref": "#/$defs/model"}, "gate": {"$ref": "#/$defs/model"}}
+    },
+    "upload": {
+      "type": "object",
+      "properties": {
+        "image_format": {"const": "jpeg"}, "jpeg_quality": {"type": "number"},
+        "max_long_side": {"type": "integer"}, "max_bytes_per_image": {"type": "integer"}, "max_shots": {"type": "integer"}
+      }
+    },
+    "expires_at": {"type": "number", "description": "unix seconds"},
+    "client_commit": {"type": "boolean", "description": "true only in dev/LAN mode: the client receives the token"}
+  },
+  "$defs": {
+    "view": {
+      "type": "object", "required": ["name", "center", "lower", "upper"],
+      "properties": {
+        "name": {"type": "string"}, "center": {"type": "number"}, "lower": {"type": "number"}, "upper": {"type": "number"},
+        "max_roll_deg": {"type": "number"}, "shots": {"type": "integer", "minimum": 0}, "required": {"type": "boolean"}
+      }
+    },
+    "model": {
+      "type": "object", "required": ["url", "sha256"],
+      "properties": {"url": {"type": "string"}, "sha256": {"type": "string"}, "bytes": {"type": "integer"},
+                     "kind": {"type": "string"}, "schema": {"type": "string"}, "input_size": {"type": "integer"}}
+    }
+  }
+}
