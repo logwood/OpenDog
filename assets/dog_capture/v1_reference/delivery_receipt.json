@@ -1,0 +1,12 @@
+{
+  "source_commit": "6e11be5472c988c9a27e7a82c692855f512650ac",
+  "directory": "delivery/dog_capture_onnx_v1",
+  "zip": "delivery/dog_capture_onnx_v1.zip",
+  "bytes": 121109669,
+  "sha256": "89569d1d2ab2c3ca5fef89c66bd36237dc4b41d691d52cb03850788666844de7",
+  "manifest_files_verified": 317,
+  "local_links_verified": 77,
+  "zip_crc_passed": true,
+  "packaged_engine_model_smoke_passed": true,
+  "native_smoke_selected_view": "front"
+}
