@@ -1,0 +1,15 @@
+{
+  "name": "@opendog/dog-capture-sdk",
+  "version": "1.0.0",
+  "description": "Portable dog-face best-shot capture engine (port of dog_capture.engine) and dog-capture/1 protocol client",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {".": "./src/index.ts", "./worker": "./src/worker.ts"},
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "peerDependencies": {"onnxruntime-web": "^1.20.0"},
+  "devDependencies": {"onnxruntime-web": "1.31.1", "typescript": "5.9.3", "vitest": "4.1.12", "@types/node": "22.19.19"}
+}

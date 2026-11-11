@@ -242,7 +242,8 @@ def mount_capture(app, service=None, *, api_key=None, models_dir=None, config=No
 
     if models_dir is not None:
         os.environ['DOG_CAPTURE_MODELS'] = str(models_dir)
-    base = config or CaptureConfig().merged({'runtime': {'still_images': True, 'rotate': '0'}})
+    # Clients run the video-mode engine; only server-side verification runs per photo.
+    base = config or CaptureConfig()
     kind, path = find_face_model(base)
     detector = build_detector(base, kind, path)
     gate = build_body_gate(base, kind)
