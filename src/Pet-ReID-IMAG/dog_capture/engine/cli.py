@@ -130,7 +130,9 @@ def cmd_run(args):
                     on_result(latest, frame)
             if show is not None:
                 fresh = latest is not None and abs(timestamp - latest.time_s) < 0.25
-                view = draw_overlay(upright(frame, latest), latest) if fresh else draw_overlay(frame, None)
+                same = fresh and latest.frame_index == index  # boxes only on the analysed frame
+                view = (draw_overlay(upright(frame, latest), latest, boxes=same) if fresh
+                        else draw_overlay(frame, None))
                 show.imshow('dog_capture (Esc to stop)', view)
                 if show.waitKey(1) & 0xFF == 27:
                     break

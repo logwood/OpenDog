@@ -145,7 +145,7 @@ Ultralytics 还能直接导出 TFLite / CoreML / NCNN / RKNN / OpenVINO / Tensor
 | 树莓派等 ARM | `onnxruntime` | `cpu`（可配合 INT8，前提是经过对照验证） |
 
 `auto` 按 TensorRT → CUDA → DirectML → CoreML → OpenVINO → CPU 的顺序选择，失败时自动回退，并在 `result.json` 里记录实际使用的执行器和回退原因。
-引擎逻辑（跟踪、对齐、质量、抓拍、引导，含注释）约 1 900 行纯 NumPy/OpenCV 代码，不依赖框架，可以按原样移植到 Kotlin / C++。
+引擎逻辑（跟踪、对齐、质量、抓拍、引导，含注释）约 1 900 行纯 NumPy/OpenCV 代码，不依赖深度学习框架，移植到 Kotlin / C++ 时可以逐模块对照实现。
 
 ## 8. 配置要点
 
@@ -176,7 +176,7 @@ runtime:
 
 见 [`DOG_CAPTURE_ENGINE_VALIDATION_CN.md`](DOG_CAPTURE_ENGINE_VALIDATION_CN.md)。要点：
 
-- 新增 61 项测试，覆盖配置、几何、对齐、跟踪、质量、抓拍策略、方向锁、物种门控、全部 ONNX 解码器（用常量输出图验证坐标还原）、
+- 新增 64 项测试，覆盖配置、几何、对齐、跟踪、质量、抓拍策略、方向锁、物种门控、全部 ONNX 解码器（用常量输出图验证坐标还原）、
   真实 ONNX Runtime 会话、视频 / 图片源、实时丢帧、CLI 全流程；v0.x 原有的 52 项测试保持通过。
 - 质量常数在 300 张真实正脸上标定：清晰原图有 3% 被判模糊；轻微失焦（0.03 倍眼距）有 96% 被拒，
   0.15 倍眼距的运动模糊有 75% 被拒，且原图得分始终高于自身的模糊版本。

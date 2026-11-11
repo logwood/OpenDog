@@ -165,3 +165,19 @@ def test_engine_runs_on_a_real_onnx_session(tmp_path):
     assert result.faces and result.faces[0].quality.passed, result.faces[0].quality.reasons
     assert engine.finalize().captured() == ['front']
     assert json.dumps(engine.describe()['detector']['runtime']['used']) == '["CPUExecutionProvider"]'
+
+
+def test_yolo_pose_schema_from_ultralytics_kpt_names(tmp_path):
+    out = np.zeros((1, 4 + 1 + 3 * 4, 8), np.float32)
+    out[0, :5, 0] = [160, 160, 100, 80, .9]
+    out[0, 5:, 0] = np.c_[[[160, 175], [140, 150], [180, 150], [160, 195]], np.ones(4)].reshape(-1)
+    names = "{0: ['nose', 'left_eye', 'right_eye', 'chin']}"
+    model = constant_model(tmp_path / 'named.onnx', 'images', 320, [('output0', out)],
+                           {'kpt_shape': '[4, 3]', 'kpt_names': names})
+    detector = YoloPoseDetector(model, providers='cpu')
+    assert detector.schema.names == ('nose', 'left_eye', 'right_eye', 'chin')
+    assert ('left_eye', 'right_eye') in detector.schema.pairs
+    dets = detector.detect(FRAME)
+    assert dets[0].validate() is None
+    engine = CaptureEngine(CaptureConfig().merged({'runtime': {'rotate': '0'}}))
+    assert engine.process(np.zeros((480, 640, 3), np.uint8), 0.0, 0, detections=dets) is not None

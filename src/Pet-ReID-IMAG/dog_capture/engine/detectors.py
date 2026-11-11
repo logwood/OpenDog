@@ -22,7 +22,7 @@ import cv2
 import numpy as np
 
 from .runtime import create_session
-from .schema import ANYFACE5, CORE3, Detection, get_schema, nms
+from .schema import ANYFACE5, CORE3, SCHEMAS, Detection, KeypointSchema, get_schema, nms
 
 
 def letterbox(image, size, center=True, pad_value=114):
@@ -116,8 +116,13 @@ class YoloPoseDetector(OnnxDetector):
         if not kpt:
             raise ValueError(f'{model}: no kpt_shape in ONNX metadata or sidecar JSON; not a YOLO pose export?')
         self.num_kpts, self.kpt_dims = int(kpt[0]), int(kpt[1])
-        self.schema = get_schema(schema or self.sidecar.get('schema') or
-                                 {6: 'dogface6', 5: 'anyface5', 3: 'core3'}.get(self.num_kpts, ''))
+        named = self._schema_from_names(self.metadata.get('kpt_names'))
+        if schema or self.sidecar.get('schema'):
+            self.schema = get_schema(schema or self.sidecar.get('schema'))
+        elif named is not None:
+            self.schema = named
+        else:
+            self.schema = get_schema({6: 'dogface6', 5: 'anyface5', 3: 'core3'}.get(self.num_kpts, ''))
         if len(self.schema) != self.num_kpts:
             raise ValueError(f'{model}: {self.num_kpts} keypoints do not fit schema {self.schema.name}')
         names = self.metadata.get('names')
@@ -126,6 +131,24 @@ class YoloPoseDetector(OnnxDetector):
     def preprocess(self, frame):
         canvas, ratio, pad = letterbox(frame, self.size)
         return _rgb_tensor(canvas), ratio, pad
+
+    @staticmethod
+    def _schema_from_names(value):
+        """Ultralytics stores ``kpt_names`` as "{0: ['left_eye', ...]}"; use it if it names eyes and nose."""
+        if not value:
+            return None
+        try:
+            parsed = ast.literal_eval(value)
+            names = tuple(parsed[0] if isinstance(parsed, dict) else parsed)
+        except (ValueError, SyntaxError, KeyError, TypeError):
+            return None
+        for known in SCHEMAS.values():
+            if known.names == names:
+                return known
+        if not {'left_eye', 'right_eye', 'nose'} <= set(names):
+            return None
+        pairs = tuple((n, 'right_' + n[5:]) for n in names if n.startswith('left_') and 'right_' + n[5:] in names)
+        return KeypointSchema('custom_' + '_'.join(names)[:40], names, pairs)
 
     def detect(self, frame):
         tensor, ratio, pad = self.preprocess(frame)

@@ -305,12 +305,14 @@ def fit(image, size):
     return canvas
 
 
-def draw_overlay(frame, result, max_side=960):
+def draw_overlay(frame, result, max_side=960, boxes=True):
+    """``boxes=False`` draws only the status line: coordinates of an older
+    analysed frame are never painted onto a newer camera frame."""
     scale = min(1.0, max_side / max(frame.shape[:2]))
     out = cv2.resize(frame, (round(frame.shape[1] * scale), round(frame.shape[0] * scale))) if scale < 1 else frame.copy()
     if result is None:
         return out
-    for face in result.faces:
+    for face in result.faces if boxes else ():
         box = (face.detection.box * scale).astype(int)
         primary = face.track_id == result.primary_track
         ok = face.quality is not None and face.quality.passed
