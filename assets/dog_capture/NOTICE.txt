@@ -1,0 +1,41 @@
+Dog capture prototype asset notices
+
+The original public videos are attributed individually in sources.json.
+Annotated previews and extracted/cropped frames derived from those videos
+are modifications and are offered under the same CC BY-SA license version
+as their respective originals. The original downloaded video files are unchanged.
+No source author endorsement is implied.
+
+The private user video 2611101816341481.mp4 is provided by the user for this
+project's local tests. No permission for public redistribution was supplied.
+
+Dog face localizer and 46-point landmark weights:
+Author: Hugo Cornellier; training data: DogFLW, Tech4Animals Lab.
+Source: https://huggingface.co/hugocornellier/dog-face-landmarks
+Revision: ffe69649279e0c226e7061f917550ca8608abbfe
+License: Creative Commons Attribution-NonCommercial 4.0 International
+https://creativecommons.org/licenses/by-nc/4.0/
+Modification: expose existing heatmap probabilities as an additional output.
+Weights and the original coordinate output computation are unchanged.
+The runtime derivative remains under CC BY-NC 4.0.
+
+v2: reduce landmark probability maps to 46 entropy values on the inference
+device. v3: export to ONNX/TensorRT FP16, preserving FP32 coordinate/entropy
+reductions; use contiguous spatial softmax and the original coordinate grid.
+Weights remain unchanged. Floating-point backend outputs are compared in
+the validation report and are not claimed to be bitwise identical.
+The EfficientDet TensorRT derivative dequantizes INT8 weights and removes
+activation quantization; box decoding/class reduction run on the GPU.
+TensorRT/CUDA runtimes are installed from NVIDIA and are not bundled here.
+
+DogFLW reference: Martvel et al. (2025), Dog facial landmarks detection and
+its applications for facial analysis. Scientific Reports 15, 21886.
+https://www.nature.com/articles/s41598-025-07040-3
+
+EfficientDet Lite0: Google / TensorFlow Lite official object detection model.
+https://www.tensorflow.org/lite/examples/object_detection/overview
+LiteRT runtime: https://github.com/google-ai-edge/LiteRT (Apache-2.0).
+
+No system DLL is bundled. Windows WebGPU loads an available Microsoft DXC
+runtime; the optional official distribution is at:
+https://github.com/microsoft/DirectXShaderCompiler/releases

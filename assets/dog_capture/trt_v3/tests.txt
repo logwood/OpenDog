@@ -1,0 +1,7 @@
+....................................................                     [100%]
+============================== warnings summary ===============================
+src/Pet-ReID-IMAG/tests/test_dog_trt.py::test_tensorrt_graph_matches_direct_enqueue_across_worker_thread
+  <frozen importlib._bootstrap_external>:1301: DeprecationWarning: The cuda.cuda module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.driver module instead.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+52 passed, 1 warning in 2.12s

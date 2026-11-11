@@ -1,0 +1,1079 @@
+{
+  "cpu": {
+    "backend": "cpu",
+    "models": {
+      "localizer": {
+        "n": 48,
+        "p50_ms": 12.343950000285986,
+        "p95_ms": 13.711920000332611,
+        "max_ms": 14.415599998756079,
+        "parity": []
+      },
+      "landmarks": {
+        "n": 48,
+        "p50_ms": 60.71115000031568,
+        "p95_ms": 63.77413999989585,
+        "max_ms": 64.5805999993172,
+        "parity": []
+      },
+      "detector": {
+        "n": 144,
+        "p50_ms": 14.788800000133051,
+        "p95_ms": 18.630845000279805,
+        "max_ms": 21.03039999929024,
+        "parity": []
+      }
+    },
+    "samples": [
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\user.png",
+        "sha256": "c26d99a6087818d34886ce0bb6be8f5f1ca526587920c1fe1725e6eb3a8259ac"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\wolfhound_panting.png",
+        "sha256": "cdb5384138d97deb851d4d935a2bcb980e4058032ce5fafca1324f898453cfb8"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\labrador_barking.png",
+        "sha256": "d6baa6f132815fedf96d00229649c3347fafe080bda117e51e91e69d7177d0a5"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\lurcher_lick.png",
+        "sha256": "4c3c46ed945dc9ef298422f9ef7e6359657166cb68963c35658162071ab15792"
+      },
+      {
+        "path": "data/dog_capture/public/labrador_barking.ogv",
+        "sha256": "84d886a81539f979a0f6db4bdece3f812cc10f3dc970118688e94159177ae4a9"
+      },
+      {
+        "path": "data/dog_capture/public/shepherd_apple.webm",
+        "sha256": "882a685473897417ad5a71bfa72a5a3485ec780770af420c5c9b111b90b15953"
+      },
+      {
+        "path": "data/dog_capture/public/dog_whimpering.webm",
+        "sha256": "e432a915d0d00f47aa94044c1d9858abcf55a1df0800f8814cee1b0ec2141906"
+      },
+      {
+        "path": "data/dog_capture/public/wolfhound_panting.ogv",
+        "sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893"
+      },
+      {
+        "path": "data/dog_capture/public/lurcher_lick.webm",
+        "sha256": "5cf7a9109deb4d0093a25d441ba726f7d7e2f0c70a6912e072f384569d5f743c"
+      },
+      {
+        "path": "data/dog_capture/user/2611101816341481.mp4",
+        "sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06"
+      }
+    ],
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:36:12) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "notes": [
+      "Batch=1; synchronous host-visible output. Includes input copy and output transfer; excludes resize and startup.",
+      "GPU baseline uses LiteRT WebGPU face models and the original CPU detector.",
+      "Detector conversion removes activation quantization; compare dog presence/boxes and full-video gates, not bitwise equality."
+    ]
+  },
+  "gpu": {
+    "backend": "gpu",
+    "models": {
+      "localizer": {
+        "n": 48,
+        "p50_ms": 2.1552499993049423,
+        "p95_ms": 2.487790000031964,
+        "max_ms": 2.5925999998435145,
+        "parity": [
+          {
+            "sample": 0,
+            "max_abs_delta": [
+              0.0011702775955200195
+            ]
+          },
+          {
+            "sample": 1,
+            "max_abs_delta": [
+              0.0008659958839416504
+            ]
+          },
+          {
+            "sample": 2,
+            "max_abs_delta": [
+              0.0003771185874938965
+            ]
+          },
+          {
+            "sample": 3,
+            "max_abs_delta": [
+              0.0007571578025817871
+            ]
+          },
+          {
+            "sample": 4,
+            "max_abs_delta": [
+              0.0008629560470581055
+            ]
+          },
+          {
+            "sample": 5,
+            "max_abs_delta": [
+              0.00042808055877685547
+            ]
+          }
+        ]
+      },
+      "landmarks": {
+        "n": 48,
+        "p50_ms": 4.839000000174565,
+        "p95_ms": 5.413315000350849,
+        "max_ms": 5.621199999950477,
+        "parity": [
+          {
+            "sample": 0,
+            "max_abs_delta": [
+              0.00439298152923584,
+              0.02457427978515625
+            ]
+          },
+          {
+            "sample": 1,
+            "max_abs_delta": [
+              0.0012542009353637695,
+              0.01735532283782959
+            ]
+          },
+          {
+            "sample": 2,
+            "max_abs_delta": [
+              0.0012981593608856201,
+              0.017171621322631836
+            ]
+          },
+          {
+            "sample": 3,
+            "max_abs_delta": [
+              0.0019585788249969482,
+              0.03896534442901611
+            ]
+          },
+          {
+            "sample": 4,
+            "max_abs_delta": [
+              0.0036349892616271973,
+              0.08234167098999023
+            ]
+          },
+          {
+            "sample": 5,
+            "max_abs_delta": [
+              0.008848428726196289,
+              0.06253623962402344
+            ]
+          }
+        ]
+      },
+      "detector": {
+        "n": 144,
+        "p50_ms": 17.47939999859227,
+        "p95_ms": 25.63753499962331,
+        "max_ms": 28.360199999951874,
+        "parity": [
+          {
+            "sample": 0,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 1,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 2,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 3,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 4,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 5,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 6,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          },
+          {
+            "sample": 7,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          },
+          {
+            "sample": 8,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 9,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 10,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 11,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 12,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 13,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 14,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 15,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          },
+          {
+            "sample": 16,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                1.0,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 17,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          }
+        ]
+      }
+    },
+    "samples": [
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\user.png",
+        "sha256": "c26d99a6087818d34886ce0bb6be8f5f1ca526587920c1fe1725e6eb3a8259ac"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\wolfhound_panting.png",
+        "sha256": "cdb5384138d97deb851d4d935a2bcb980e4058032ce5fafca1324f898453cfb8"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\labrador_barking.png",
+        "sha256": "d6baa6f132815fedf96d00229649c3347fafe080bda117e51e91e69d7177d0a5"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\lurcher_lick.png",
+        "sha256": "4c3c46ed945dc9ef298422f9ef7e6359657166cb68963c35658162071ab15792"
+      },
+      {
+        "path": "data/dog_capture/public/labrador_barking.ogv",
+        "sha256": "84d886a81539f979a0f6db4bdece3f812cc10f3dc970118688e94159177ae4a9"
+      },
+      {
+        "path": "data/dog_capture/public/shepherd_apple.webm",
+        "sha256": "882a685473897417ad5a71bfa72a5a3485ec780770af420c5c9b111b90b15953"
+      },
+      {
+        "path": "data/dog_capture/public/dog_whimpering.webm",
+        "sha256": "e432a915d0d00f47aa94044c1d9858abcf55a1df0800f8814cee1b0ec2141906"
+      },
+      {
+        "path": "data/dog_capture/public/wolfhound_panting.ogv",
+        "sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893"
+      },
+      {
+        "path": "data/dog_capture/public/lurcher_lick.webm",
+        "sha256": "5cf7a9109deb4d0093a25d441ba726f7d7e2f0c70a6912e072f384569d5f743c"
+      },
+      {
+        "path": "data/dog_capture/user/2611101816341481.mp4",
+        "sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06"
+      }
+    ],
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:36:12) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "notes": [
+      "Batch=1; synchronous host-visible output. Includes input copy and output transfer; excludes resize and startup.",
+      "GPU baseline uses LiteRT WebGPU face models and the original CPU detector.",
+      "Detector conversion removes activation quantization; compare dog presence/boxes and full-video gates, not bitwise equality."
+    ]
+  },
+  "trt-direct": {
+    "backend": "trt-direct",
+    "models": {
+      "localizer": {
+        "n": 48,
+        "p50_ms": 1.7321000004812959,
+        "p95_ms": 2.7769749997787585,
+        "max_ms": 2.942699999039178,
+        "parity": [
+          {
+            "sample": 0,
+            "max_abs_delta": [
+              0.0004904866218566895
+            ]
+          },
+          {
+            "sample": 1,
+            "max_abs_delta": [
+              0.00011980533599853516
+            ]
+          },
+          {
+            "sample": 2,
+            "max_abs_delta": [
+              0.0001932978630065918
+            ]
+          },
+          {
+            "sample": 3,
+            "max_abs_delta": [
+              0.00023552775382995605
+            ]
+          },
+          {
+            "sample": 4,
+            "max_abs_delta": [
+              0.0008865892887115479
+            ]
+          },
+          {
+            "sample": 5,
+            "max_abs_delta": [
+              0.00042808055877685547
+            ]
+          }
+        ]
+      },
+      "landmarks": {
+        "n": 48,
+        "p50_ms": 2.0673999997598003,
+        "p95_ms": 2.845509999406204,
+        "max_ms": 2.9990000002726447,
+        "parity": [
+          {
+            "sample": 0,
+            "max_abs_delta": [
+              0.0022467225790023804,
+              0.008039236068725586
+            ]
+          },
+          {
+            "sample": 1,
+            "max_abs_delta": [
+              0.0006926655769348145,
+              0.005774259567260742
+            ]
+          },
+          {
+            "sample": 2,
+            "max_abs_delta": [
+              0.0011196136474609375,
+              0.01018977165222168
+            ]
+          },
+          {
+            "sample": 3,
+            "max_abs_delta": [
+              0.001289457082748413,
+              0.010937690734863281
+            ]
+          },
+          {
+            "sample": 4,
+            "max_abs_delta": [
+              0.0017525255680084229,
+              0.022188186645507812
+            ]
+          },
+          {
+            "sample": 5,
+            "max_abs_delta": [
+              0.0031083226203918457,
+              0.08528995513916016
+            ]
+          }
+        ]
+      },
+      "detector": {
+        "n": 144,
+        "p50_ms": 3.2661500008543953,
+        "p95_ms": 4.305559999284014,
+        "max_ms": 4.540799998721923,
+        "parity": [
+          {
+            "sample": 0,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9840137362480164,
+                0.001953125
+              ]
+            ]
+          },
+          {
+            "sample": 1,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.982372522354126,
+                0.00341796875
+              ]
+            ]
+          },
+          {
+            "sample": 2,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9882335662841797,
+                0.0048828125
+              ]
+            ]
+          },
+          {
+            "sample": 3,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9768435955047607,
+                0.0009765625
+              ]
+            ]
+          },
+          {
+            "sample": 4,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9818927049636841,
+                0.00048828125
+              ]
+            ]
+          },
+          {
+            "sample": 5,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9670694470405579,
+                0.01171875
+              ]
+            ]
+          },
+          {
+            "sample": 6,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          },
+          {
+            "sample": 7,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          },
+          {
+            "sample": 8,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9721776247024536,
+                0.0234375
+              ]
+            ]
+          },
+          {
+            "sample": 9,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9573402404785156,
+                0.001953125
+              ]
+            ]
+          },
+          {
+            "sample": 10,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9823261499404907,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 11,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9634288549423218,
+                0.001953125
+              ]
+            ]
+          },
+          {
+            "sample": 12,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9810057878494263,
+                0.00390625
+              ]
+            ]
+          },
+          {
+            "sample": 13,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.902236819267273,
+                0.01416015625
+              ]
+            ]
+          },
+          {
+            "sample": 14,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9721763730049133,
+                0.01806640625
+              ]
+            ]
+          },
+          {
+            "sample": 15,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          },
+          {
+            "sample": 16,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9760596752166748,
+                0.0009765625
+              ]
+            ]
+          },
+          {
+            "sample": 17,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          }
+        ]
+      }
+    },
+    "samples": [
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\user.png",
+        "sha256": "c26d99a6087818d34886ce0bb6be8f5f1ca526587920c1fe1725e6eb3a8259ac"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\wolfhound_panting.png",
+        "sha256": "cdb5384138d97deb851d4d935a2bcb980e4058032ce5fafca1324f898453cfb8"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\labrador_barking.png",
+        "sha256": "d6baa6f132815fedf96d00229649c3347fafe080bda117e51e91e69d7177d0a5"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\lurcher_lick.png",
+        "sha256": "4c3c46ed945dc9ef298422f9ef7e6359657166cb68963c35658162071ab15792"
+      },
+      {
+        "path": "data/dog_capture/public/labrador_barking.ogv",
+        "sha256": "84d886a81539f979a0f6db4bdece3f812cc10f3dc970118688e94159177ae4a9"
+      },
+      {
+        "path": "data/dog_capture/public/shepherd_apple.webm",
+        "sha256": "882a685473897417ad5a71bfa72a5a3485ec780770af420c5c9b111b90b15953"
+      },
+      {
+        "path": "data/dog_capture/public/dog_whimpering.webm",
+        "sha256": "e432a915d0d00f47aa94044c1d9858abcf55a1df0800f8814cee1b0ec2141906"
+      },
+      {
+        "path": "data/dog_capture/public/wolfhound_panting.ogv",
+        "sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893"
+      },
+      {
+        "path": "data/dog_capture/public/lurcher_lick.webm",
+        "sha256": "5cf7a9109deb4d0093a25d441ba726f7d7e2f0c70a6912e072f384569d5f743c"
+      },
+      {
+        "path": "data/dog_capture/user/2611101816341481.mp4",
+        "sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06"
+      }
+    ],
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:36:12) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "notes": [
+      "Batch=1; synchronous host-visible output. Includes input copy and output transfer; excludes resize and startup.",
+      "GPU baseline uses LiteRT WebGPU face models and the original CPU detector.",
+      "Detector conversion removes activation quantization; compare dog presence/boxes and full-video gates, not bitwise equality."
+    ]
+  },
+  "trt": {
+    "backend": "trt",
+    "models": {
+      "localizer": {
+        "n": 48,
+        "p50_ms": 0.8629499998278334,
+        "p95_ms": 0.8915449999221892,
+        "max_ms": 0.9575000003678724,
+        "parity": [
+          {
+            "sample": 0,
+            "max_abs_delta": [
+              0.0004904866218566895
+            ]
+          },
+          {
+            "sample": 1,
+            "max_abs_delta": [
+              0.00011980533599853516
+            ]
+          },
+          {
+            "sample": 2,
+            "max_abs_delta": [
+              0.0001932978630065918
+            ]
+          },
+          {
+            "sample": 3,
+            "max_abs_delta": [
+              0.00023552775382995605
+            ]
+          },
+          {
+            "sample": 4,
+            "max_abs_delta": [
+              0.0008865892887115479
+            ]
+          },
+          {
+            "sample": 5,
+            "max_abs_delta": [
+              0.00042808055877685547
+            ]
+          }
+        ]
+      },
+      "landmarks": {
+        "n": 48,
+        "p50_ms": 1.4900499991199467,
+        "p95_ms": 1.5407599989885057,
+        "max_ms": 1.5676999992138008,
+        "parity": [
+          {
+            "sample": 0,
+            "max_abs_delta": [
+              0.0022467225790023804,
+              0.008039236068725586
+            ]
+          },
+          {
+            "sample": 1,
+            "max_abs_delta": [
+              0.0006926655769348145,
+              0.005774259567260742
+            ]
+          },
+          {
+            "sample": 2,
+            "max_abs_delta": [
+              0.0011196136474609375,
+              0.01018977165222168
+            ]
+          },
+          {
+            "sample": 3,
+            "max_abs_delta": [
+              0.001289457082748413,
+              0.010937690734863281
+            ]
+          },
+          {
+            "sample": 4,
+            "max_abs_delta": [
+              0.0017525255680084229,
+              0.022188186645507812
+            ]
+          },
+          {
+            "sample": 5,
+            "max_abs_delta": [
+              0.0031083226203918457,
+              0.08528995513916016
+            ]
+          }
+        ]
+      },
+      "detector": {
+        "n": 144,
+        "p50_ms": 1.5892000001258566,
+        "p95_ms": 1.736879999134544,
+        "max_ms": 1.863999999841326,
+        "parity": [
+          {
+            "sample": 0,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9840137362480164,
+                0.001953125
+              ]
+            ]
+          },
+          {
+            "sample": 1,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.982372522354126,
+                0.00341796875
+              ]
+            ]
+          },
+          {
+            "sample": 2,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9882335662841797,
+                0.0048828125
+              ]
+            ]
+          },
+          {
+            "sample": 3,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9768435955047607,
+                0.0009765625
+              ]
+            ]
+          },
+          {
+            "sample": 4,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9818927049636841,
+                0.00048828125
+              ]
+            ]
+          },
+          {
+            "sample": 5,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9670694470405579,
+                0.01171875
+              ]
+            ]
+          },
+          {
+            "sample": 6,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          },
+          {
+            "sample": 7,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          },
+          {
+            "sample": 8,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9721776247024536,
+                0.0234375
+              ]
+            ]
+          },
+          {
+            "sample": 9,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9573402404785156,
+                0.001953125
+              ]
+            ]
+          },
+          {
+            "sample": 10,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9823261499404907,
+                0.0
+              ]
+            ]
+          },
+          {
+            "sample": 11,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9634288549423218,
+                0.001953125
+              ]
+            ]
+          },
+          {
+            "sample": 12,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9810057878494263,
+                0.00390625
+              ]
+            ]
+          },
+          {
+            "sample": 13,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.902236819267273,
+                0.01416015625
+              ]
+            ]
+          },
+          {
+            "sample": 14,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9721763730049133,
+                0.01806640625
+              ]
+            ]
+          },
+          {
+            "sample": 15,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          },
+          {
+            "sample": 16,
+            "reference_dogs": 1,
+            "actual_dogs": 1,
+            "matched_iou_and_score_delta": [
+              [
+                0.9760596752166748,
+                0.0009765625
+              ]
+            ]
+          },
+          {
+            "sample": 17,
+            "reference_dogs": 0,
+            "actual_dogs": 0,
+            "matched_iou_and_score_delta": []
+          }
+        ]
+      }
+    },
+    "samples": [
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\user.png",
+        "sha256": "c26d99a6087818d34886ce0bb6be8f5f1ca526587920c1fe1725e6eb3a8259ac"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\wolfhound_panting.png",
+        "sha256": "cdb5384138d97deb851d4d935a2bcb980e4058032ce5fafca1324f898453cfb8"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\labrador_barking.png",
+        "sha256": "d6baa6f132815fedf96d00229649c3347fafe080bda117e51e91e69d7177d0a5"
+      },
+      {
+        "path": "assets\\dog_capture\\benchmark_inputs\\lurcher_lick.png",
+        "sha256": "4c3c46ed945dc9ef298422f9ef7e6359657166cb68963c35658162071ab15792"
+      },
+      {
+        "path": "data/dog_capture/public/labrador_barking.ogv",
+        "sha256": "84d886a81539f979a0f6db4bdece3f812cc10f3dc970118688e94159177ae4a9"
+      },
+      {
+        "path": "data/dog_capture/public/shepherd_apple.webm",
+        "sha256": "882a685473897417ad5a71bfa72a5a3485ec780770af420c5c9b111b90b15953"
+      },
+      {
+        "path": "data/dog_capture/public/dog_whimpering.webm",
+        "sha256": "e432a915d0d00f47aa94044c1d9858abcf55a1df0800f8814cee1b0ec2141906"
+      },
+      {
+        "path": "data/dog_capture/public/wolfhound_panting.ogv",
+        "sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893"
+      },
+      {
+        "path": "data/dog_capture/public/lurcher_lick.webm",
+        "sha256": "5cf7a9109deb4d0093a25d441ba726f7d7e2f0c70a6912e072f384569d5f743c"
+      },
+      {
+        "path": "data/dog_capture/user/2611101816341481.mp4",
+        "sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06"
+      }
+    ],
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:36:12) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "notes": [
+      "Batch=1; synchronous host-visible output. Includes input copy and output transfer; excludes resize and startup.",
+      "GPU baseline uses LiteRT WebGPU face models and the original CPU detector.",
+      "Detector conversion removes activation quantization; compare dog presence/boxes and full-video gates, not bitwise equality."
+    ]
+  }
+}

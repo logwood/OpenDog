@@ -2,6 +2,7 @@
 # material and binary model payloads are not.
 /data/
 /artifacts/
+/delivery/
 /archive/*
 !/archive/source-history/
 !/archive/source-history/**

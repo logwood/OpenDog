@@ -1,0 +1,77 @@
+{
+  "localizer": {
+    "tensorrt_version": "10.7.0.post1",
+    "precision": "fp16",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "onnx_sha256": "8389fcc1e674ef4a36b3531f907fc503fa600f79d9402d5bf4763154f3c11e0a",
+    "engine_sha256": "aa774e7fd70ffc12386cac8948f0921cec17ac62e0848f6e95ae77698b14ed93",
+    "engine_bytes": 21354700,
+    "build_seconds": 169.1073733000003,
+    "output_names": [
+      "face_box"
+    ],
+    "protected_fp32_layers": [],
+    "workspace_mb": 512,
+    "builder_optimization_level": 3,
+    "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "platform": "Windows"
+  },
+  "landmarks": {
+    "tensorrt_version": "10.7.0.post1",
+    "precision": "fp16",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "platform": "Windows",
+    "onnx_sha256": "d9778c6c0db9ab31fd56d3565ce902d505877ab60f3cd78c4bc5ec0aade5adc9",
+    "engine_sha256": "fc25b0dab398b73ca1968e31325f184c6fc9ca382860a6848df5d7d443979d0b",
+    "engine_bytes": 18328636,
+    "build_seconds": 127.13205720000042,
+    "output_names": [
+      "landmarks",
+      "landmark_entropy"
+    ],
+    "protected_fp32_layers": [
+      "soft_argmax/contiguous/probabilities",
+      "soft_argmax/contiguous/weighted_x",
+      "soft_argmax/contiguous/weighted_y",
+      "soft_argmax/contiguous/x",
+      "soft_argmax/contiguous/y",
+      "soft_argmax/contiguous/clipped",
+      "soft_argmax/contiguous/log",
+      "soft_argmax/contiguous/weighted_log",
+      "soft_argmax/contiguous/negative_entropy",
+      "soft_argmax/contiguous/landmark_entropy"
+    ],
+    "workspace_mb": 512,
+    "builder_optimization_level": 3
+  },
+  "detector": {
+    "tensorrt_version": "10.7.0.post1",
+    "precision": "fp16",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "platform": "Windows",
+    "onnx_sha256": "ee401a50dbc7d83337478caa7bf079b4a19ea2b9903d221fd03e2d9678d6b9b5",
+    "engine_sha256": "d9006bf2c2e0c080aa2cfc1991bb4969ca91900de5a1e1e51d4be9a1b8218ce5",
+    "engine_bytes": 12099892,
+    "build_seconds": 156.15062970000054,
+    "output_names": [
+      "detection_boxes",
+      "detection_scores",
+      "detection_classes"
+    ],
+    "protected_fp32_layers": [],
+    "workspace_mb": 512,
+    "builder_optimization_level": 3,
+    "contract_sha256": "505fd0a595a9a47c99b6024f8089896494e140aedddb5e13d9c44253b7288210"
+  }
+}

@@ -1,0 +1,313 @@
+{
+  "scope": "Coarse human visual regression labels, reviewed from source-video contact sheets on 2026-11-10. User video and some public samples were used during development; these are not held-out accuracy claims. Pose labels use upright face coordinates; ambiguous transitions omitted. reject means unsuitable for a clear primary face image.",
+  "videos": {
+    "wolfhound_panting.ogv": [
+      {
+        "frame": 0,
+        "expected": "front"
+      },
+      {
+        "frame": 48,
+        "expected": "front"
+      },
+      {
+        "frame": 96,
+        "expected": "front"
+      },
+      {
+        "frame": 144,
+        "expected": "right"
+      },
+      {
+        "frame": 192,
+        "expected": "front"
+      },
+      {
+        "frame": 240,
+        "expected": "left"
+      },
+      {
+        "frame": 288,
+        "expected": "left"
+      },
+      {
+        "frame": 336,
+        "expected": "right"
+      },
+      {
+        "frame": 432,
+        "expected": "left"
+      },
+      {
+        "frame": 480,
+        "expected": "left"
+      },
+      {
+        "frame": 528,
+        "expected": "front"
+      },
+      {
+        "frame": 576,
+        "expected": "front"
+      },
+      {
+        "frame": 624,
+        "expected": "front"
+      },
+      {
+        "frame": 672,
+        "expected": "front"
+      },
+      {
+        "frame": 720,
+        "expected": "front"
+      },
+      {
+        "frame": 768,
+        "expected": "left"
+      },
+      {
+        "frame": 816,
+        "expected": "left"
+      },
+      {
+        "frame": 864,
+        "expected": "left"
+      },
+      {
+        "frame": 912,
+        "expected": "front"
+      },
+      {
+        "frame": 960,
+        "expected": "front"
+      },
+      {
+        "frame": 1008,
+        "expected": "left"
+      },
+      {
+        "frame": 1056,
+        "expected": "front"
+      },
+      {
+        "frame": 1104,
+        "expected": "left"
+      },
+      {
+        "frame": 1200,
+        "expected": "front"
+      }
+    ],
+    "labrador_barking.ogv": [
+      {
+        "frame": 0,
+        "expected": "front"
+      },
+      {
+        "frame": 24,
+        "expected": "front"
+      },
+      {
+        "frame": 48,
+        "expected": "front"
+      },
+      {
+        "frame": 72,
+        "expected": "front"
+      },
+      {
+        "frame": 96,
+        "expected": "front"
+      },
+      {
+        "frame": 120,
+        "expected": "front"
+      },
+      {
+        "frame": 144,
+        "expected": "front"
+      },
+      {
+        "frame": 168,
+        "expected": "front"
+      },
+      {
+        "frame": 192,
+        "expected": "front"
+      }
+    ],
+    "lurcher_lick.webm": [
+      {
+        "frame": 0,
+        "expected": "front"
+      },
+      {
+        "frame": 30,
+        "expected": "front"
+      },
+      {
+        "frame": 60,
+        "expected": "front"
+      },
+      {
+        "frame": 90,
+        "expected": "front"
+      },
+      {
+        "frame": 120,
+        "expected": "front"
+      },
+      {
+        "frame": 150,
+        "expected": "front"
+      },
+      {
+        "frame": 180,
+        "expected": "front"
+      },
+      {
+        "frame": 210,
+        "expected": "front"
+      },
+      {
+        "frame": 240,
+        "expected": "front"
+      },
+      {
+        "frame": 270,
+        "expected": "front"
+      },
+      {
+        "frame": 300,
+        "expected": "front"
+      },
+      {
+        "frame": 330,
+        "expected": "front"
+      },
+      {
+        "frame": 360,
+        "expected": "front"
+      }
+    ],
+    "shepherd_apple.webm": [
+      {
+        "frame": 0,
+        "expected": "reject"
+      },
+      {
+        "frame": 150,
+        "expected": "reject"
+      },
+      {
+        "frame": 300,
+        "expected": "reject"
+      },
+      {
+        "frame": 450,
+        "expected": "reject"
+      },
+      {
+        "frame": 600,
+        "expected": "reject"
+      }
+    ],
+    "dog_whimpering.webm": [
+      {
+        "frame": 0,
+        "expected": "reject"
+      },
+      {
+        "frame": 50,
+        "expected": "reject"
+      },
+      {
+        "frame": 100,
+        "expected": "reject"
+      },
+      {
+        "frame": 150,
+        "expected": "reject"
+      },
+      {
+        "frame": 200,
+        "expected": "reject"
+      },
+      {
+        "frame": 250,
+        "expected": "reject"
+      },
+      {
+        "frame": 300,
+        "expected": "reject"
+      }
+    ],
+    "2611101816341481.mp4": [
+      {
+        "frame": 0,
+        "expected": "reject"
+      },
+      {
+        "frame": 87,
+        "expected": "reject"
+      },
+      {
+        "frame": 174,
+        "expected": "reject"
+      },
+      {
+        "frame": 262,
+        "expected": "front"
+      },
+      {
+        "frame": 270,
+        "expected": "front"
+      },
+      {
+        "frame": 437,
+        "expected": "reject"
+      },
+      {
+        "frame": 524,
+        "expected": "reject"
+      },
+      {
+        "frame": 612,
+        "expected": "reject"
+      },
+      {
+        "frame": 699,
+        "expected": "reject"
+      },
+      {
+        "frame": 787,
+        "expected": "reject"
+      },
+      {
+        "frame": 874,
+        "expected": "reject"
+      },
+      {
+        "frame": 962,
+        "expected": "reject"
+      },
+      {
+        "frame": 1048,
+        "expected": "reject"
+      },
+      {
+        "frame": 1137,
+        "expected": "reject"
+      },
+      {
+        "frame": 1224,
+        "expected": "reject"
+      },
+      {
+        "frame": 1312,
+        "expected": "reject"
+      }
+    ]
+  }
+}

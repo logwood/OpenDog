@@ -1,0 +1,49 @@
+{
+  "models": {
+    "localizer": {
+      "onnx_sha256": "8389fcc1e674ef4a36b3531f907fc503fa600f79d9402d5bf4763154f3c11e0a",
+      "bytes": 34424374,
+      "input_names": [
+        "images"
+      ],
+      "output_names": [
+        "face_box"
+      ],
+      "source_tflite_sha256": "bf13f179335cec6046f5f158e218d4f5ef577f04af2896dbe8afbddc1e814b9d"
+    },
+    "landmarks": {
+      "onnx_sha256": "d9778c6c0db9ab31fd56d3565ce902d505877ab60f3cd78c4bc5ec0aade5adc9",
+      "bytes": 23130351,
+      "input_names": [
+        "images"
+      ],
+      "output_names": [
+        "landmarks",
+        "landmark_entropy"
+      ],
+      "source_tflite_sha256": "33e32af5766c1d041aa5ad70aab6430738ef1a7a3d227e93bed76569668ca8ba"
+    },
+    "detector": {
+      "onnx_sha256": "ee401a50dbc7d83337478caa7bf079b4a19ea2b9903d221fd03e2d9678d6b9b5",
+      "bytes": 13833037,
+      "input_names": [
+        "images"
+      ],
+      "output_names": [
+        "detection_boxes",
+        "detection_scores",
+        "detection_classes"
+      ],
+      "source_tflite_sha256": "799df99469321a68e5e59dea58b1bf899373bfddc882470542e93b59f800f528"
+    }
+  },
+  "original_model_sha256": {
+    "dog_face_localizer.tflite": "bf13f179335cec6046f5f158e218d4f5ef577f04af2896dbe8afbddc1e814b9d",
+    "dog_face_landmarks_full.tflite": "4036cd3d332f75be99e267b414ab74e08d4c3a2d4e123d5df7db543b995dcaca",
+    "efficientdet_lite0_nms.tflite": "2e04c53bfeac0ac2a30c057c7e2a777594ce39baaac35a92f74fb1e8c4fc4e0b"
+  },
+  "onnx_opset": 17,
+  "detector_activation_quantization_removed": true,
+  "note": "Face coordinates and confidence retain the trained graph. Detector float export requires semantic regression, not bitwise equivalence.",
+  "landmark_head_layout": "NCHW contiguous spatial softmax; original rounded coordinate grids; FP32 reductions"
+}

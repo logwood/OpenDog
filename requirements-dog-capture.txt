@@ -1,0 +1,4 @@
+# Tested in a separate Python 3.12 environment on native Windows.
+ai-edge-litert==2.3.0
+numpy==2.5.4
+opencv-python==5.0.0.93

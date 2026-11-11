@@ -1,0 +1,5 @@
+[
+  {"name": "front", "center": 0.0, "lower": -0.13, "upper": 0.13, "max_roll": 20},
+  {"name": "left", "center": -0.45, "lower": -0.75, "upper": -0.25, "max_roll": 20},
+  {"name": "right", "center": 0.45, "lower": 0.25, "upper": 0.75, "max_roll": 20}
+]

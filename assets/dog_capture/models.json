@@ -1,0 +1,21 @@
+{
+  "models": {
+    "dog_face_localizer.tflite": {
+      "url": "https://huggingface.co/hugocornellier/dog-face-landmarks/resolve/ffe69649279e0c226e7061f917550ca8608abbfe/dog_face_localizer.tflite",
+      "sha256": "bf13f179335cec6046f5f158e218d4f5ef577f04af2896dbe8afbddc1e814b9d",
+      "bytes": 17268364
+    },
+    "dog_face_landmarks_full.tflite": {
+      "url": "https://huggingface.co/hugocornellier/dog-face-landmarks/resolve/ffe69649279e0c226e7061f917550ca8608abbfe/dog_face_landmarks_full.tflite",
+      "sha256": "4036cd3d332f75be99e267b414ab74e08d4c3a2d4e123d5df7db543b995dcaca",
+      "bytes": 11549008
+    },
+    "efficientdet_lite0_nms.tflite": {
+      "url": "https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/object_detection/rpi/lite-model_efficientdet_lite0_detection_metadata_1.tflite",
+      "sha256": "2e04c53bfeac0ac2a30c057c7e2a777594ce39baaac35a92f74fb1e8c4fc4e0b",
+      "bytes": 4563519
+    }
+  },
+  "landmark_derivative": "Additional existing heatmap output, generated in memory; weights unchanged.",
+  "landmark_license": "CC BY-NC 4.0"
+}

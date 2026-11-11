@@ -1,0 +1,54 @@
+{
+  "ordered_turn_fixture.mp4": {
+    "path": "data/dog_capture/fixtures/ordered_turn_fixture.mp4",
+    "sha256": "54d140131ab358f9d96901965d3e17fa7ec0ce568e13c2c6baf50740538aab16",
+    "source": "wolfhound_panting.ogv",
+    "author": "Sage Ross; engineering transformations by this project",
+    "license": "CC BY-SA 3.0",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Irish_Wolfhound_mix,_panting.ogv",
+    "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "changes": "Temporal montage; source frame intervals [start,end), labels: [(24, 60, 'front'), (240, 280, 'left'), (576, 612, 'front'), (133, 158, 'right'), (624, 660, 'front')]",
+    "expected_sequence_complete": true,
+    "expected_primary_image": true,
+    "scope": "Constructed regression fixture, not a natural capture or liveness demonstration"
+  },
+  "frozen_front_fixture.mp4": {
+    "path": "data/dog_capture/fixtures/frozen_front_fixture.mp4",
+    "sha256": "e90bfe86cad7950e49cb698e7189cea597ec80a72335009ac82db46ec9531e68",
+    "source": "wolfhound_panting.ogv",
+    "author": "Sage Ross; engineering transformations by this project",
+    "license": "CC BY-SA 3.0",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Irish_Wolfhound_mix,_panting.ogv",
+    "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "changes": "Repeated frame 24",
+    "expected_sequence_complete": false,
+    "expected_primary_image": true,
+    "scope": "Constructed regression fixture, not a natural capture or liveness demonstration"
+  },
+  "blurred_front_fixture.mp4": {
+    "path": "data/dog_capture/fixtures/blurred_front_fixture.mp4",
+    "sha256": "3770304ba1c57d1b84c44094f4ee738279a823b45446066dfa480e51b2082c5c",
+    "source": "wolfhound_panting.ogv",
+    "author": "Sage Ross; engineering transformations by this project",
+    "license": "CC BY-SA 3.0",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Irish_Wolfhound_mix,_panting.ogv",
+    "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "changes": "Repeated frame 24, Gaussian sigma 20",
+    "expected_sequence_complete": false,
+    "expected_primary_image": false,
+    "scope": "Constructed regression fixture, not a natural capture or liveness demonstration"
+  },
+  "empty_scene_fixture.mp4": {
+    "path": "data/dog_capture/fixtures/empty_scene_fixture.mp4",
+    "sha256": "6bd842de05b6d0a7d1b2ed7a533a1158255bc7d8b062db92f44d92e794b901bb",
+    "source": "generated uniform gray",
+    "author": "project-generated",
+    "license": "project-generated",
+    "source_url": null,
+    "license_url": null,
+    "changes": "Uniform gray frames",
+    "expected_sequence_complete": false,
+    "expected_primary_image": false,
+    "scope": "Constructed regression fixture, not a natural capture or liveness demonstration"
+  }
+}

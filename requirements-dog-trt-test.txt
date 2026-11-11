@@ -1,0 +1,3 @@
+# Optional developer checks, in addition to runtime/build requirements.
+pytest==9.2.0
+onnxruntime==1.23.2

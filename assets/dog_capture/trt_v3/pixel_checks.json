@@ -1,0 +1,140 @@
+[
+  {
+    "result": "comparison\\live-user-cpu\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 1,
+    "passed": true
+  },
+  {
+    "result": "comparison\\live-user-gpu\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 2,
+    "passed": true
+  },
+  {
+    "result": "comparison\\live-user-trt\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 2,
+    "passed": true
+  },
+  {
+    "result": "comparison\\live-user-trt-repeat\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 2,
+    "passed": true
+  },
+  {
+    "result": "comparison\\live-wolfhound-trt\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 3,
+    "passed": true
+  },
+  {
+    "result": "comparison\\user-cpu\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 2,
+    "passed": true
+  },
+  {
+    "result": "comparison\\user-gpu\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 2,
+    "passed": true
+  },
+  {
+    "result": "comparison\\user-trt\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 2,
+    "passed": true
+  },
+  {
+    "result": "comparison\\user-trt-direct\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 2,
+    "passed": true
+  },
+  {
+    "result": "comparison\\wolfhound-cpu\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 3,
+    "passed": true
+  },
+  {
+    "result": "comparison\\wolfhound-gpu\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 3,
+    "passed": true
+  },
+  {
+    "result": "comparison\\wolfhound-trt\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 3,
+    "passed": true
+  },
+  {
+    "result": "comparison\\wolfhound-trt-direct\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 3,
+    "passed": true
+  },
+  {
+    "result": "validation\\blurred_front_fixture\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 0,
+    "passed": true
+  },
+  {
+    "result": "validation\\dog_whimpering\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 0,
+    "passed": true
+  },
+  {
+    "result": "validation\\empty_scene_fixture\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 0,
+    "passed": true
+  },
+  {
+    "result": "validation\\frozen_front_fixture\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 1,
+    "passed": true
+  },
+  {
+    "result": "validation\\labrador_barking\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 1,
+    "passed": true
+  },
+  {
+    "result": "validation\\lurcher_lick\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 1,
+    "passed": true
+  },
+  {
+    "result": "validation\\ordered_turn_fixture\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 3,
+    "passed": true
+  },
+  {
+    "result": "validation\\shepherd_apple\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 0,
+    "passed": true
+  },
+  {
+    "result": "validation\\user\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 2,
+    "passed": true
+  },
+  {
+    "result": "validation\\wolfhound_panting\\result.json",
+    "sha256_verified": true,
+    "original_frames_verified": 3,
+    "passed": true
+  }
+]

@@ -1,0 +1,1116 @@
+{
+  "runs": [
+    {
+      "run": "comparison/live-user-cpu",
+      "selected": {
+        "front": 265
+      },
+      "missing_views": [
+        "left",
+        "right"
+      ],
+      "performance": null,
+      "real_time": {
+        "processing_fps": 21.944880250426472,
+        "capture_to_result_ms_p50": 2.553549999902316,
+        "capture_to_result_ms_p95": 102.63711999914446,
+        "capture_to_result_ms_max": 656.0801999985415,
+        "source_frames": 1314,
+        "frames_processed": 962,
+        "source_frames_skipped": 0,
+        "frames_replaced_before_processing": 352,
+        "queue_wait_ms_p95": 9.613419999914079
+      },
+      "groups": {
+        "all": {
+          "n": 962,
+          "p50_ms": 2.1313500010364805,
+          "p95_ms": 91.1613099989153,
+          "max_ms": 636.0337000005529
+        },
+        "neural": {
+          "n": 61,
+          "p50_ms": 262.3442000003706,
+          "p95_ms": 422.55389999991166,
+          "max_ms": 636.0337000005529
+        },
+        "accepted": {
+          "n": 21,
+          "p50_ms": 100.67659999913303,
+          "p95_ms": 295.7132999999885,
+          "max_ms": 422.55389999991166
+        }
+      }
+    },
+    {
+      "run": "comparison/live-user-gpu",
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "missing_views": [
+        "right"
+      ],
+      "performance": null,
+      "real_time": {
+        "processing_fps": 29.362918908495764,
+        "capture_to_result_ms_p50": 2.808299999742303,
+        "capture_to_result_ms_p95": 38.60153000023277,
+        "capture_to_result_ms_max": 122.06270000024233,
+        "source_frames": 1314,
+        "frames_processed": 1287,
+        "source_frames_skipped": 0,
+        "frames_replaced_before_processing": 27,
+        "queue_wait_ms_p95": 3.7862399993173352
+      },
+      "groups": {
+        "all": {
+          "n": 1287,
+          "p50_ms": 2.3196000001917128,
+          "p95_ms": 34.89677000034136,
+          "max_ms": 121.49660000068252
+        },
+        "neural": {
+          "n": 74,
+          "p50_ms": 63.07770000057644,
+          "p95_ms": 108.79222499952446,
+          "max_ms": 121.49660000068252
+        },
+        "accepted": {
+          "n": 29,
+          "p50_ms": 23.852800000895513,
+          "p95_ms": 78.97969999976338,
+          "max_ms": 107.96429999936663
+        }
+      }
+    },
+    {
+      "run": "comparison/live-user-trt",
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "missing_views": [
+        "right"
+      ],
+      "performance": null,
+      "real_time": {
+        "processing_fps": 29.256922467199125,
+        "capture_to_result_ms_p50": 1.4813999987381976,
+        "capture_to_result_ms_p95": 31.210719999398812,
+        "capture_to_result_ms_max": 119.64739999893936,
+        "source_frames": 1314,
+        "frames_processed": 1283,
+        "source_frames_skipped": 1,
+        "frames_replaced_before_processing": 30,
+        "queue_wait_ms_p95": 0.55906999950821
+      },
+      "groups": {
+        "all": {
+          "n": 1283,
+          "p50_ms": 1.2741999998979736,
+          "p95_ms": 30.246989998886413,
+          "max_ms": 119.22700000104669
+        },
+        "neural": {
+          "n": 82,
+          "p50_ms": 45.15125000034459,
+          "p95_ms": 95.12232500137543,
+          "max_ms": 119.22700000104669
+        },
+        "accepted": {
+          "n": 34,
+          "p50_ms": 20.21950000016659,
+          "p95_ms": 52.149019999524164,
+          "max_ms": 105.59480000119947
+        }
+      }
+    },
+    {
+      "run": "comparison/live-user-trt-repeat",
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "missing_views": [
+        "right"
+      ],
+      "performance": null,
+      "real_time": {
+        "processing_fps": 29.40769751269783,
+        "capture_to_result_ms_p50": 2.5956999998015817,
+        "capture_to_result_ms_p95": 33.87132500038203,
+        "capture_to_result_ms_max": 118.31200000051467,
+        "source_frames": 1314,
+        "frames_processed": 1290,
+        "source_frames_skipped": 0,
+        "frames_replaced_before_processing": 24,
+        "queue_wait_ms_p95": 0.591755000368721
+      },
+      "groups": {
+        "all": {
+          "n": 1290,
+          "p50_ms": 2.1836500009158044,
+          "p95_ms": 32.27539499994232,
+          "max_ms": 106.45199999999022
+        },
+        "neural": {
+          "n": 88,
+          "p50_ms": 44.08095000053436,
+          "p95_ms": 102.704979999271,
+          "max_ms": 106.45199999999022
+        },
+        "accepted": {
+          "n": 37,
+          "p50_ms": 21.54530000007071,
+          "p95_ms": 68.04916000037318,
+          "max_ms": 106.45199999999022
+        }
+      }
+    },
+    {
+      "run": "comparison/live-wolfhound-trt",
+      "selected": {
+        "front": 192,
+        "right": 146,
+        "left": 398
+      },
+      "missing_views": [],
+      "performance": null,
+      "real_time": {
+        "processing_fps": 23.76638593283478,
+        "capture_to_result_ms_p50": 9.61009999991802,
+        "capture_to_result_ms_p95": 39.209840001240075,
+        "capture_to_result_ms_max": 105.5995000006078,
+        "source_frames": 1212,
+        "frames_processed": 1203,
+        "source_frames_skipped": 0,
+        "frames_replaced_before_processing": 9,
+        "queue_wait_ms_p95": 0.536110000030021
+      },
+      "groups": {
+        "all": {
+          "n": 1203,
+          "p50_ms": 9.147700000539771,
+          "p95_ms": 37.9231200004142,
+          "max_ms": 105.13319999881787
+        },
+        "neural": {
+          "n": 242,
+          "p50_ms": 32.761249999566644,
+          "p95_ms": 89.0106899996681,
+          "max_ms": 105.13319999881787
+        },
+        "accepted": {
+          "n": 748,
+          "p50_ms": 9.563349998643389,
+          "p95_ms": 37.501365000298385,
+          "max_ms": 92.58200000112993
+        }
+      }
+    },
+    {
+      "run": "comparison/user-cpu",
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "missing_views": [
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 24.338463500000216,
+        "analysis_fps": 53.98861764630246,
+        "compute_ms_p50": 1.0912000007010647,
+        "compute_ms_p95": 92.55155000055301,
+        "stage_mean_ms": {
+          "detector": 3.3243656773260146,
+          "localizer": 0.9995275494609487,
+          "landmarks": 11.717730441411193,
+          "tracking": 0.06618942161934728
+        },
+        "threads": 4,
+        "device": "CPU",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 139,
+          "localizer": 80,
+          "landmarker": 216,
+          "candidate_verification": 1
+        },
+        "peak_rss_mb": 326.69921875
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 1314,
+          "p50_ms": 1.0912000007010647,
+          "p95_ms": 92.55155000055301,
+          "max_ms": 573.8376999997854
+        },
+        "neural": {
+          "n": 80,
+          "p50_ms": 261.05440000083036,
+          "p95_ms": 405.90045999952054,
+          "max_ms": 573.8376999997854
+        },
+        "accepted": {
+          "n": 36,
+          "p50_ms": 50.656449999223696,
+          "p95_ms": 175.17422499986424,
+          "max_ms": 326.0274999993271
+        }
+      }
+    },
+    {
+      "run": "comparison/user-gpu",
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "missing_views": [
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 9.845020799999475,
+        "analysis_fps": 133.46848388579028,
+        "compute_ms_p50": 1.0865499998544692,
+        "compute_ms_p95": 26.18562999950879,
+        "stage_mean_ms": {
+          "detector": 3.015928767114293,
+          "localizer": 0.4299187975665486,
+          "landmarks": 1.6864657534248926,
+          "tracking": 0.09880936073466982
+        },
+        "threads": 4,
+        "device": "LiteRT WebGPU + CPU detector",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 139,
+          "localizer": 81,
+          "landmarker": 223,
+          "candidate_verification": 1
+        },
+        "peak_rss_mb": 452.9453125
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 1314,
+          "p50_ms": 1.0865499998544692,
+          "p95_ms": 26.18562999950879,
+          "max_ms": 174.37389999940933
+        },
+        "neural": {
+          "n": 81,
+          "p50_ms": 40.8649000000878,
+          "p95_ms": 68.68930000018736,
+          "max_ms": 174.37389999940933
+        },
+        "accepted": {
+          "n": 33,
+          "p50_ms": 19.085899999481626,
+          "p95_ms": 60.92877999908523,
+          "max_ms": 174.37389999940933
+        }
+      }
+    },
+    {
+      "run": "comparison/user-trt",
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "missing_views": [
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 4.886994700000287,
+        "analysis_fps": 268.87690301770186,
+        "compute_ms_p50": 0.9535499993944541,
+        "compute_ms_p95": 8.80715499943107,
+        "stage_mean_ms": {
+          "detector": 1.100500837134584,
+          "localizer": 0.1984682648455067,
+          "landmarks": 0.5160714611837242,
+          "tracking": 0.0668158295321578
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 139,
+          "localizer": 77,
+          "landmarker": 197
+        },
+        "peak_rss_mb": 625.65625
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 1314,
+          "p50_ms": 0.9535499993944541,
+          "p95_ms": 8.80715499943107,
+          "max_ms": 24.450099999739905
+        },
+        "neural": {
+          "n": 77,
+          "p50_ms": 16.064100000221515,
+          "p95_ms": 21.38319999903615,
+          "max_ms": 24.450099999739905
+        },
+        "accepted": {
+          "n": 29,
+          "p50_ms": 7.676899998841691,
+          "p95_ms": 18.745160000253218,
+          "max_ms": 24.450099999739905
+        }
+      }
+    },
+    {
+      "run": "comparison/user-trt-direct",
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "missing_views": [
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 5.759476900000664,
+        "analysis_fps": 228.14571927527803,
+        "compute_ms_p50": 1.02095000056579,
+        "compute_ms_p95": 12.18703000058666,
+        "stage_mean_ms": {
+          "detector": 1.3776116438443882,
+          "localizer": 0.2857661339438804,
+          "landmarks": 0.7218940639286524,
+          "tracking": 0.06851811263094473
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 (direct enqueue)",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 139,
+          "localizer": 77,
+          "landmarker": 197
+        },
+        "peak_rss_mb": 619.59765625
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 1314,
+          "p50_ms": 1.02095000056579,
+          "p95_ms": 12.18703000058666,
+          "max_ms": 35.73520000099961
+        },
+        "neural": {
+          "n": 77,
+          "p50_ms": 21.962299999358947,
+          "p95_ms": 30.857440000909268,
+          "max_ms": 35.73520000099961
+        },
+        "accepted": {
+          "n": 29,
+          "p50_ms": 9.342499999547726,
+          "p95_ms": 25.700800000413416,
+          "max_ms": 30.59919999941485
+        }
+      }
+    },
+    {
+      "run": "comparison/wolfhound-cpu",
+      "selected": {
+        "front": 191,
+        "right": 146,
+        "left": 399
+      },
+      "missing_views": [],
+      "performance": {
+        "analysis_wall_seconds": 38.035409099999015,
+        "analysis_fps": 31.86504440674023,
+        "compute_ms_p50": 4.504699999415607,
+        "compute_ms_p95": 107.06971499903378,
+        "stage_mean_ms": {
+          "detector": 3.3635968646662926,
+          "localizer": 3.243160561058824,
+          "landmarks": 18.910881848185053,
+          "tracking": 1.6416502475318706
+        },
+        "threads": 4,
+        "device": "CPU",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 152,
+          "localizer": 239,
+          "landmarker": 320,
+          "candidate_verification": 18
+        },
+        "peak_rss_mb": 358.0859375
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 1212,
+          "p50_ms": 4.504699999415607,
+          "p95_ms": 107.06971499903378,
+          "max_ms": 687.8541000005498
+        },
+        "neural": {
+          "n": 239,
+          "p50_ms": 85.17559999927471,
+          "p95_ms": 327.84718000057177,
+          "max_ms": 687.8541000005498
+        },
+        "accepted": {
+          "n": 779,
+          "p50_ms": 4.704699998910655,
+          "p95_ms": 97.93065999983804,
+          "max_ms": 627.5605000009818
+        }
+      }
+    },
+    {
+      "run": "comparison/wolfhound-gpu",
+      "selected": {
+        "front": 192,
+        "right": 146,
+        "left": 399
+      },
+      "missing_views": [],
+      "performance": {
+        "analysis_wall_seconds": 17.020413199999894,
+        "analysis_fps": 71.20861202124091,
+        "compute_ms_p50": 4.974699999365839,
+        "compute_ms_p95": 37.62707999985653,
+        "stage_mean_ms": {
+          "detector": 3.8937212045939096,
+          "localizer": 1.444787211234317,
+          "landmarks": 2.6866561056131975,
+          "tracking": 2.0054737623687218
+        },
+        "threads": 4,
+        "device": "LiteRT WebGPU + CPU detector",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 152,
+          "localizer": 237,
+          "landmarker": 325,
+          "candidate_verification": 19
+        },
+        "peak_rss_mb": 483.94921875
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 1212,
+          "p50_ms": 4.974699999365839,
+          "p95_ms": 37.62707999985653,
+          "max_ms": 302.5608000007196
+        },
+        "neural": {
+          "n": 237,
+          "p50_ms": 19.862799999827985,
+          "p95_ms": 59.056540000165086,
+          "max_ms": 124.17920000007143
+        },
+        "accepted": {
+          "n": 766,
+          "p50_ms": 5.283350000354403,
+          "p95_ms": 34.41034999968906,
+          "max_ms": 302.5608000007196
+        }
+      }
+    },
+    {
+      "run": "comparison/wolfhound-trt",
+      "selected": {
+        "front": 192,
+        "right": 146,
+        "left": 398
+      },
+      "missing_views": [],
+      "performance": {
+        "analysis_wall_seconds": 9.612591099999918,
+        "analysis_fps": 126.0846308130188,
+        "compute_ms_p50": 4.556750000119791,
+        "compute_ms_p95": 15.65408499900514,
+        "stage_mean_ms": {
+          "detector": 1.302346204626008,
+          "localizer": 0.8483344059407113,
+          "landmarks": 1.0801714521422694,
+          "tracking": 1.6138978547916292
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 152,
+          "localizer": 242,
+          "landmarker": 344,
+          "candidate_verification": 33
+        },
+        "peak_rss_mb": 656.00390625
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 1212,
+          "p50_ms": 4.556750000119791,
+          "p95_ms": 15.65408499900514,
+          "max_ms": 36.17880000092555
+        },
+        "neural": {
+          "n": 242,
+          "p50_ms": 10.305200000402692,
+          "p95_ms": 22.348534998764077,
+          "max_ms": 36.17880000092555
+        },
+        "accepted": {
+          "n": 752,
+          "p50_ms": 4.720100000668026,
+          "p95_ms": 15.498334999028872,
+          "max_ms": 25.75509999951464
+        }
+      }
+    },
+    {
+      "run": "comparison/wolfhound-trt-direct",
+      "selected": {
+        "front": 192,
+        "right": 146,
+        "left": 398
+      },
+      "missing_views": [],
+      "performance": {
+        "analysis_wall_seconds": 11.2409291999993,
+        "analysis_fps": 107.82026809670462,
+        "compute_ms_p50": 4.579149999699439,
+        "compute_ms_p95": 18.496100001357263,
+        "stage_mean_ms": {
+          "detector": 1.634951732661822,
+          "localizer": 1.1856956270523322,
+          "landmarks": 1.5388910891257068,
+          "tracking": 1.684211551146711
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 (direct enqueue)",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 152,
+          "localizer": 242,
+          "landmarker": 344,
+          "candidate_verification": 33
+        },
+        "peak_rss_mb": 649.296875
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 1212,
+          "p50_ms": 4.579149999699439,
+          "p95_ms": 18.496100001357263,
+          "max_ms": 47.58079999919573
+        },
+        "neural": {
+          "n": 242,
+          "p50_ms": 14.328449999993609,
+          "p95_ms": 36.65665999942575,
+          "max_ms": 47.58079999919573
+        },
+        "accepted": {
+          "n": 752,
+          "p50_ms": 5.195699999603676,
+          "p95_ms": 18.323889999919626,
+          "max_ms": 42.31029999937164
+        }
+      }
+    },
+    {
+      "run": "validation/blurred_front_fixture",
+      "selected": {},
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 0.24792789999992237,
+        "analysis_fps": 290.4070094572759,
+        "compute_ms_p50": 1.0352999988754163,
+        "compute_ms_p95": 3.8158549997206137,
+        "stage_mean_ms": {
+          "detector": 1.2323347223173187,
+          "localizer": 0.0,
+          "landmarks": 0.0,
+          "tracking": 0.0
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 9
+        },
+        "peak_rss_mb": 585.0703125
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 72,
+          "p50_ms": 1.0352999988754163,
+          "p95_ms": 3.8158549997206137,
+          "max_ms": 3.8586999999097316
+        }
+      }
+    },
+    {
+      "run": "validation/dog_whimpering",
+      "selected": {},
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 2.569111700000576,
+        "analysis_fps": 130.00602503967622,
+        "compute_ms_p50": 4.724200000055134,
+        "compute_ms_p95": 7.918069999868747,
+        "stage_mean_ms": {
+          "detector": 2.123243113813744,
+          "localizer": 0.11695508980997392,
+          "landmarks": 0.2582694610745404,
+          "tracking": 1.3010595808399323
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 42,
+          "localizer": 24,
+          "landmarker": 24
+        },
+        "peak_rss_mb": 611.671875
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 334,
+          "p50_ms": 4.724200000055134,
+          "p95_ms": 7.918069999868747,
+          "max_ms": 11.970900000960683
+        },
+        "neural": {
+          "n": 24,
+          "p50_ms": 7.582899999761139,
+          "p95_ms": 11.35829500062755,
+          "max_ms": 11.970900000960683
+        }
+      }
+    },
+    {
+      "run": "validation/empty_scene_fixture",
+      "selected": {},
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 0.21635439999954542,
+        "analysis_fps": 332.7873156272823,
+        "compute_ms_p50": 0.8588000000600005,
+        "compute_ms_p95": 3.3110100000158127,
+        "stage_mean_ms": {
+          "detector": 1.0640958334483406,
+          "localizer": 0.0,
+          "landmarks": 0.0,
+          "tracking": 0.0
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 9
+        },
+        "peak_rss_mb": 584.8125
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 72,
+          "p50_ms": 0.8588000000600005,
+          "p95_ms": 3.3110100000158127,
+          "max_ms": 3.749999999854481
+        }
+      }
+    },
+    {
+      "run": "validation/frozen_front_fixture",
+      "selected": {
+        "front": 1
+      },
+      "missing_views": [
+        "left",
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 0.5023433999995177,
+        "analysis_fps": 143.32824916196594,
+        "compute_ms_p50": 3.9976499992917525,
+        "compute_ms_p95": 8.080345000053057,
+        "stage_mean_ms": {
+          "detector": 1.1534486112244242,
+          "localizer": 0.2967944444410225,
+          "landmarks": 0.46741944445077227,
+          "tracking": 1.7100124999211
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 9,
+          "localizer": 8,
+          "landmarker": 9,
+          "candidate_verification": 1
+        },
+        "peak_rss_mb": 592.59375
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 72,
+          "p50_ms": 3.9976499992917525,
+          "p95_ms": 8.080345000053057,
+          "max_ms": 19.281499999124208
+        },
+        "neural": {
+          "n": 8,
+          "p50_ms": 8.089850000033039,
+          "p95_ms": 16.970414999559576,
+          "max_ms": 19.281499999124208
+        },
+        "accepted": {
+          "n": 72,
+          "p50_ms": 3.9976499992917525,
+          "p95_ms": 8.080345000053057,
+          "max_ms": 19.281499999124208
+        }
+      }
+    },
+    {
+      "run": "validation/labrador_barking",
+      "selected": {
+        "front": 79
+      },
+      "missing_views": [
+        "left",
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 1.2657662000001437,
+        "analysis_fps": 158.79709854788126,
+        "compute_ms_p50": 3.7503999992622994,
+        "compute_ms_p95": 11.064599999372149,
+        "stage_mean_ms": {
+          "detector": 1.0846497512305073,
+          "localizer": 0.3922492537029355,
+          "landmarks": 0.7646676617537987,
+          "tracking": 1.2734805969553258
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 26,
+          "localizer": 30,
+          "landmarker": 59,
+          "candidate_verification": 11
+        },
+        "peak_rss_mb": 621.203125
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 201,
+          "p50_ms": 3.7503999992622994,
+          "p95_ms": 11.064599999372149,
+          "max_ms": 18.931999999040272
+        },
+        "neural": {
+          "n": 30,
+          "p50_ms": 8.14375000027212,
+          "p95_ms": 17.56432499969378,
+          "max_ms": 18.931999999040272
+        },
+        "accepted": {
+          "n": 162,
+          "p50_ms": 3.827300000921241,
+          "p95_ms": 9.644475000368397,
+          "max_ms": 17.61900000019523
+        }
+      }
+    },
+    {
+      "run": "validation/lurcher_lick",
+      "selected": {
+        "front": 148
+      },
+      "missing_views": [
+        "left",
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 1.9652750999994169,
+        "analysis_fps": 198.4455000727968,
+        "compute_ms_p50": 3.397449999283708,
+        "compute_ms_p95": 15.943415000128876,
+        "stage_mean_ms": {
+          "detector": 0.9477535897018149,
+          "localizer": 0.48542076924954575,
+          "landmarks": 1.2778551281604824,
+          "tracking": 0.8589166666495611
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 41,
+          "localizer": 66,
+          "landmarker": 156,
+          "candidate_verification": 3
+        },
+        "peak_rss_mb": 554.8984375
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 390,
+          "p50_ms": 3.397449999283708,
+          "p95_ms": 15.943415000128876,
+          "max_ms": 26.64310000000114
+        },
+        "neural": {
+          "n": 66,
+          "p50_ms": 9.384399999362358,
+          "p95_ms": 20.688500000233034,
+          "max_ms": 26.64310000000114
+        },
+        "accepted": {
+          "n": 101,
+          "p50_ms": 3.882799999701092,
+          "p95_ms": 16.132599999764352,
+          "max_ms": 22.887399998580804
+        }
+      }
+    },
+    {
+      "run": "validation/ordered_turn_fixture",
+      "selected": {
+        "front": 15,
+        "left": 45,
+        "right": 125
+      },
+      "missing_views": [],
+      "performance": {
+        "analysis_wall_seconds": 1.2750890999996045,
+        "analysis_fps": 135.67679309630492,
+        "compute_ms_p50": 4.44710000010673,
+        "compute_ms_p95": 9.844219999285997,
+        "stage_mean_ms": {
+          "detector": 1.1657473988776537,
+          "localizer": 0.6122757225483118,
+          "landmarks": 0.6056271676153969,
+          "tracking": 1.7451867051143333
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 22,
+          "localizer": 30,
+          "landmarker": 34,
+          "candidate_verification": 4
+        },
+        "peak_rss_mb": 600.91796875
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 173,
+          "p50_ms": 4.44710000010673,
+          "p95_ms": 9.844219999285997,
+          "max_ms": 17.739099999744212
+        },
+        "neural": {
+          "n": 30,
+          "p50_ms": 9.431350000340899,
+          "p95_ms": 15.370260000690894,
+          "max_ms": 17.739099999744212
+        },
+        "accepted": {
+          "n": 170,
+          "p50_ms": 4.45415000012872,
+          "p95_ms": 9.802094999940891,
+          "max_ms": 17.739099999744212
+        }
+      }
+    },
+    {
+      "run": "validation/shepherd_apple",
+      "selected": {},
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 3.8936506000009103,
+        "analysis_fps": 190.82349094184934,
+        "compute_ms_p50": 3.0095000001892913,
+        "compute_ms_p95": 9.819700000298315,
+        "stage_mean_ms": {
+          "detector": 1.0188185733201163,
+          "localizer": 0.28835572006210963,
+          "landmarks": 0.7975573351121872,
+          "tracking": 1.4489137281614048
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 79,
+          "localizer": 91,
+          "landmarker": 190
+        },
+        "peak_rss_mb": 558.33984375
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 743,
+          "p50_ms": 3.0095000001892913,
+          "p95_ms": 9.819700000298315,
+          "max_ms": 19.088600000031875
+        },
+        "neural": {
+          "n": 91,
+          "p50_ms": 7.798599999659928,
+          "p95_ms": 17.38794999982929,
+          "max_ms": 19.088600000031875
+        }
+      }
+    },
+    {
+      "run": "validation/user",
+      "selected": {
+        "front": 271,
+        "left": 282
+      },
+      "missing_views": [
+        "right"
+      ],
+      "performance": {
+        "analysis_wall_seconds": 4.938730199999554,
+        "analysis_fps": 266.0602921779608,
+        "compute_ms_p50": 0.9751500001584645,
+        "compute_ms_p95": 8.520000000316939,
+        "stage_mean_ms": {
+          "detector": 1.1254207001524101,
+          "localizer": 0.19876202435130016,
+          "landmarks": 0.5185273211623963,
+          "tracking": 0.060509969564391294
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 139,
+          "localizer": 77,
+          "landmarker": 197
+        },
+        "peak_rss_mb": 625.1953125
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 1314,
+          "p50_ms": 0.9751500001584645,
+          "p95_ms": 8.520000000316939,
+          "max_ms": 31.488000000535976
+        },
+        "neural": {
+          "n": 77,
+          "p50_ms": 15.531300001384807,
+          "p95_ms": 21.7473600005178,
+          "max_ms": 31.488000000535976
+        },
+        "accepted": {
+          "n": 29,
+          "p50_ms": 6.344400000671158,
+          "p95_ms": 18.38378000029478,
+          "max_ms": 31.488000000535976
+        }
+      }
+    },
+    {
+      "run": "validation/wolfhound_panting",
+      "selected": {
+        "front": 192,
+        "right": 146,
+        "left": 398
+      },
+      "missing_views": [],
+      "performance": {
+        "analysis_wall_seconds": 8.670386800000415,
+        "analysis_fps": 139.78615117839288,
+        "compute_ms_p50": 4.08045000040147,
+        "compute_ms_p95": 12.29071500010833,
+        "stage_mean_ms": {
+          "detector": 1.1964450494884575,
+          "localizer": 0.7543432343301884,
+          "landmarks": 0.9744895214485476,
+          "tracking": 1.4302362211526656
+        },
+        "threads": 4,
+        "device": "TensorRT FP16 + CUDA Graph",
+        "includes_preview_encoding_in_analysis_wall": false,
+        "model_calls": {
+          "detector": 152,
+          "localizer": 242,
+          "landmarker": 344,
+          "candidate_verification": 33
+        },
+        "peak_rss_mb": 655.36328125
+      },
+      "real_time": {},
+      "groups": {
+        "all": {
+          "n": 1212,
+          "p50_ms": 4.08045000040147,
+          "p95_ms": 12.29071500010833,
+          "max_ms": 30.02090000154567
+        },
+        "neural": {
+          "n": 242,
+          "p50_ms": 9.525550000034855,
+          "p95_ms": 20.21760500083473,
+          "max_ms": 30.02090000154567
+        },
+        "accepted": {
+          "n": 752,
+          "p50_ms": 4.262950000338606,
+          "p95_ms": 12.037024999881396,
+          "max_ms": 21.69560000038473
+        }
+      }
+    }
+  ],
+  "notes": [
+    "Models and policies are unchanged between backends; detector float conversion is disclosed in the export manifest.",
+    "Offline FPS includes decode, processing and JSONL writing; previews disabled.",
+    "Real-time latency starts at decoded-frame submission, excludes sensor/decode/display and startup.",
+    "Neural and accepted-frame statistics prevent background rejection from hiding expensive frames."
+  ]
+}

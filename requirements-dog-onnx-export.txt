@@ -1,0 +1,5 @@
+# Install into a separate conversion environment, never the real-time runtime.
+tensorflow==2.19.1
+tf2onnx==1.17.0
+onnx==1.20.1
+numpy==2.1.3

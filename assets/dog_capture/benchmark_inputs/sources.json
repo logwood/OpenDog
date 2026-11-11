@@ -1,0 +1,62 @@
+{
+  "user": {
+    "source": "artifacts\\runs\\dog_capture\\release_validation\\user\\best_front_face.png",
+    "sha256": "c26d99a6087818d34886ce0bb6be8f5f1ca526587920c1fe1725e6eb3a8259ac",
+    "note": "Exact copy of v1 selected face crop; inherits source-video provenance and license.",
+    "video_path": "data/dog_capture/user/2611101816341481.mp4",
+    "video_sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06",
+    "frame_index": 266,
+    "box_xyxy": [
+      41,
+      206,
+      720,
+      960
+    ],
+    "rotation_quarters": 3
+  },
+  "wolfhound_panting": {
+    "source": "artifacts\\runs\\dog_capture\\release_validation\\wolfhound_panting\\best_front_face.png",
+    "sha256": "cdb5384138d97deb851d4d935a2bcb980e4058032ce5fafca1324f898453cfb8",
+    "note": "Exact copy of v1 selected face crop; inherits source-video provenance and license.",
+    "video_path": "data/dog_capture/public/wolfhound_panting.ogv",
+    "video_sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893",
+    "frame_index": 16,
+    "box_xyxy": [
+      297,
+      3,
+      1020,
+      665
+    ],
+    "rotation_quarters": 0
+  },
+  "labrador_barking": {
+    "source": "artifacts\\runs\\dog_capture\\release_validation\\labrador_barking\\best_front_face.png",
+    "sha256": "d6baa6f132815fedf96d00229649c3347fafe080bda117e51e91e69d7177d0a5",
+    "note": "Exact copy of v1 selected face crop; inherits source-video provenance and license.",
+    "video_path": "data/dog_capture/public/labrador_barking.ogv",
+    "video_sha256": "84d886a81539f979a0f6db4bdece3f812cc10f3dc970118688e94159177ae4a9",
+    "frame_index": 90,
+    "box_xyxy": [
+      349,
+      0,
+      1111,
+      607
+    ],
+    "rotation_quarters": 0
+  },
+  "lurcher_lick": {
+    "source": "artifacts\\runs\\dog_capture\\release_validation\\lurcher_lick\\best_front_face.png",
+    "sha256": "4c3c46ed945dc9ef298422f9ef7e6359657166cb68963c35658162071ab15792",
+    "note": "Exact copy of v1 selected face crop; inherits source-video provenance and license.",
+    "video_path": "data/dog_capture/public/lurcher_lick.webm",
+    "video_sha256": "5cf7a9109deb4d0093a25d441ba726f7d7e2f0c70a6912e072f384569d5f743c",
+    "frame_index": 128,
+    "box_xyxy": [
+      108,
+      319,
+      420,
+      657
+    ],
+    "rotation_quarters": 0
+  }
+}

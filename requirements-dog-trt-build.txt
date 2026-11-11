@@ -1,0 +1,3 @@
+# Build/export orchestration; install alongside requirements-dog-trt.txt.
+ai-edge-litert==2.3.0
+onnx==1.22.0
