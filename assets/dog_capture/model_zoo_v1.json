@@ -1,0 +1,73 @@
+{
+  "description": "Models for the dog_capture v1 engine. Files live in models/pretrained/dog_capture_v1/ (override with DOG_CAPTURE_MODELS). Lower priority number = preferred by detector.kind=auto.",
+  "models": [
+    {
+      "name": "dog_face_pose",
+      "role": "face",
+      "kind": "yolo_pose",
+      "priority": 1,
+      "file": "dog_face_pose.onnx",
+      "schema": "dogface6",
+      "obtain": "python src/Pet-ReID-IMAG/tools/train_dog_face_pose.py --data <dog-pose root> --export (trains YOLO11n-pose on the face subset of the Ultralytics dog-pose / StanfordExtra keypoints)",
+      "license": "Weights you train with Ultralytics are subject to AGPL-3.0 unless you hold an Ultralytics Enterprise license; StanfordExtra annotations are for research use.",
+      "edge": "~3 M parameters at 640 or 480 input; exports to ONNX, TFLite, CoreML, NCNN, RKNN, TensorRT via Ultralytics"
+    },
+    {
+      "name": "anyface_yolov5l6",
+      "role": "face",
+      "kind": "anyface",
+      "priority": 2,
+      "file": "anyface_yolov5l6_640.onnx",
+      "schema": "anyface5",
+      "obtain": "python src/Pet-ReID-IMAG/tools/export_anyface_onnx.py --weights models/pretrained/anyface/yolov5l6_best.pt --size 640 (the .pt is already in the local workspace, SHA-256 b78a85f5...)",
+      "license": "AnyFace code MIT, YOLOv5-face code GPL-3.0; weights trained on WIDER FACE / AnimalWeb (research datasets). Check before commercial use.",
+      "edge": "YOLOv5l6, ~76 M parameters: desktop GPU class, not phone class"
+    },
+    {
+      "name": "scrfd_dog",
+      "role": "face",
+      "kind": "scrfd",
+      "priority": 3,
+      "file": "scrfd_dog.onnx",
+      "schema": "anyface5",
+      "obtain": "Train InsightFace SCRFD (MIT) on dog faces with 5 points (e.g. AnyFace-format labels) and export with its scrfd2onnx tool.",
+      "license": "Depends on your training data.",
+      "edge": "SCRFD-500M..2.5G: 0.5-2.5 GFLOPs, phone class"
+    },
+    {
+      "name": "dogflw_legacy",
+      "role": "face",
+      "kind": "dogflw",
+      "priority": 4,
+      "file": "../dog_face_landmarks_v1",
+      "schema": "core3",
+      "obtain": "Existing v0.x assets: python src/Pet-ReID-IMAG/tools/prepare_dog_capture_assets.py --models (needs ai-edge-litert)",
+      "license": "CC BY-NC 4.0 (DogFLW) - non-commercial only",
+      "edge": "three TFLite models, ~33 MB"
+    },
+    {
+      "name": "yolox_tiny",
+      "role": "body",
+      "kind": "yolox",
+      "priority": 1,
+      "file": "yolox_tiny.onnx",
+      "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx",
+      "sha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7",
+      "bytes": 20219662,
+      "license": "Apache-2.0 (YOLOX), COCO-trained",
+      "edge": "5.1 M parameters, 416 input"
+    },
+    {
+      "name": "yolox_nano",
+      "role": "body",
+      "kind": "yolox",
+      "priority": 2,
+      "file": "yolox_nano.onnx",
+      "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx",
+      "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+      "bytes": 3659407,
+      "license": "Apache-2.0 (YOLOX), COCO-trained",
+      "edge": "0.9 M parameters, 416 input"
+    }
+  ]
+}

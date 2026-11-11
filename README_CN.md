@@ -172,6 +172,22 @@ Semantic V3 联合到一个 512 维 ONNX 描述符中；它不是默认部署，
 获得权利人的授权。详细模型记录见
 `docs/AGENT_V1_MODEL_RECORD.md`。
 
+## 犬脸优选抓拍 v1（采集端）
+
+给比对模型挑选正面 / 左 / 右清晰原图的采集模块已按成熟人脸抓拍流水线重写：单阶段检测 + 关键点、
+YOLOX 物种门控、ByteTrack 多目标跟踪、PetFace 五点对齐、FIQA 式质量分项、fast / best / hybrid 优选策略、
+防抖中文引导，统一用 ONNX Runtime 部署（TensorRT / CUDA / DirectML / CoreML / OpenVINO / NNAPI / CPU）。
+
+```powershell
+.\dog-capture.cmd 视频或照片文件夹        # 或 dog-capture.cmd 0 打开摄像头
+# Linux / macOS / Jetson：scripts/dog-capture.sh dog.mp4
+```
+
+设计、模型清单与许可、边端小模型训练配方、部署矩阵见
+[`docs/DOG_CAPTURE_ENGINE_CN.md`](docs/DOG_CAPTURE_ENGINE_CN.md)；实测数字见
+[`docs/DOG_CAPTURE_ENGINE_VALIDATION_CN.md`](docs/DOG_CAPTURE_ENGINE_VALIDATION_CN.md)。
+v0.x 的 `run-dog-*.cmd` 入口保持不变，可并行对照。
+
 ## 关键内容
 
 - `environment.repro.yml` / `requirements-modern.txt`：已验证的现代 CUDA 环境锁；

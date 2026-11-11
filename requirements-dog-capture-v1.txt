@@ -1,0 +1,7 @@
+# dog_capture v1 engine runtime (python -m dog_capture). No torch/TensorFlow/TensorRT SDK needed.
+# GPU: replace onnxruntime with onnxruntime-gpu (CUDA/TensorRT EP), onnxruntime-directml (Windows)
+# or onnxruntime-openvino; macOS onnxruntime already includes CoreML.  Tested with the versions below.
+numpy>=1.26,<3
+opencv-python>=4.8,<6
+onnxruntime>=1.18
+PyYAML>=6
