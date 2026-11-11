@@ -174,8 +174,6 @@ class CaptureEngine:
         self.body_scores = np.zeros((0,), np.float32)
         self.body_time = -math.inf
         self.body_checked = -math.inf
-        self.head_checked = -math.inf
-        self.head_cache = []
         self._external = False
         self.guidance_history = deque()
         self.shown_code = None
@@ -198,58 +196,65 @@ class CaptureEngine:
             self.events.append({'event': 'track_finished', 'track_id': track_id, 'time_s': timestamp,
                                 'views': context.shots.captured()})
 
-    def _species_gate(self, frame, detections, timestamp, timings):
-        """Keep only faces that belong to a dog.
-
-        A face passes when its centre lies inside a recent dog-body box from
-        the full frame.  Close-ups often show no full body, so an unmatched
-        face gets one rate-limited check on an expanded head crop; positive
-        results are cached for ``hold_s`` by box overlap.
-        """
+    def _refresh_bodies(self, frame, timestamp, timings):
         g = self.config.body_gate
-        if self.body_gate is None or not detections:
-            return detections, 0
         if timestamp - self.body_checked >= g.period_s or timestamp < self.body_checked:
             started = time.perf_counter()
             boxes, scores = self.body_gate.detect(frame)
-            timings['body_gate'] = (time.perf_counter() - started) * 1000
+            timings['body_gate'] = timings.get('body_gate', 0) + (time.perf_counter() - started) * 1000
             self.body_checked = timestamp
             if len(boxes):
                 self.body_boxes, self.body_scores, self.body_time = boxes, scores, timestamp
-        bodies_fresh = timestamp - self.body_time <= g.hold_s and len(self.body_boxes)
-        self.head_cache = [(b, t) for b, t in self.head_cache if timestamp - t <= g.hold_s]
-        kept = []
+
+    def _check_dog(self, frame, det, timestamp, timings):
+        """True if the face belongs to a dog: inside a recent dog-body box, or a
+        dog is detected in an expanded head crop (close-ups often show no body)."""
+        g = self.config.body_gate
+        self._refresh_bodies(frame, timestamp, timings)
+        cx, cy = (det.box[0] + det.box[2]) / 2, (det.box[1] + det.box[3]) / 2
+        if timestamp - self.body_time <= g.hold_s:
+            for box, score in zip(self.body_boxes, self.body_scores):
+                mx, my = (box[2] - box[0]) * g.margin, (box[3] - box[1]) * g.margin
+                if box[0] - mx <= cx <= box[2] + mx and box[1] - my <= cy <= box[3] + my:
+                    det.body_box, det.body_score = box, float(score)
+                    return True
         h, w = frame.shape[:2]
-        for det in detections:
-            cx, cy = (det.box[0] + det.box[2]) / 2, (det.box[1] + det.box[3]) / 2
-            best, best_score = None, -1.0
-            if bodies_fresh:
-                for box, score in zip(self.body_boxes, self.body_scores):
-                    mx, my = (box[2] - box[0]) * g.margin, (box[3] - box[1]) * g.margin
-                    if box[0] - mx <= cx <= box[2] + mx and box[1] - my <= cy <= box[3] + my and score > best_score:
-                        best, best_score = box, float(score)
-            if best is None and self.head_cache:
-                cached = box_iou_matrix(det.box[None], np.stack([b for b, _ in self.head_cache]))[0]
-                if cached.max() >= 0.3:
-                    best, best_score = det.box, None
-            if best is None and timestamp - self.head_checked >= g.period_s:
-                self.head_checked = timestamp
-                size = max(det.width, det.height) * 1.5
-                x1, y1 = int(max(0, cx - size)), int(max(0, cy - size))
-                x2, y2 = int(min(w, cx + size)), int(min(h, cy + size))
-                if x2 - x1 >= 32 and y2 - y1 >= 32:
-                    started = time.perf_counter()
-                    boxes, scores = self.body_gate.detect(frame[y1:y2, x1:x2])
-                    timings['head_gate'] = timings.get('head_gate', 0) + (time.perf_counter() - started) * 1000
-                    lx, ly = cx - x1, cy - y1
-                    for box, score in zip(boxes, scores):
-                        if score >= g.head_score_threshold and box[0] <= lx <= box[2] and box[1] <= ly <= box[3]:
-                            best, best_score = box + np.array([x1, y1, x1, y1], np.float32), float(score)
-                            self.head_cache.append((det.box.copy(), timestamp))
-                            break
-            if best is not None:
-                det.body_box, det.body_score = best, best_score
-                kept.append(det)
+        size = max(det.width, det.height) * 1.5
+        x1, y1 = int(max(0, cx - size)), int(max(0, cy - size))
+        x2, y2 = int(min(w, cx + size)), int(min(h, cy + size))
+        if x2 - x1 < 32 or y2 - y1 < 32:
+            return False
+        started = time.perf_counter()
+        boxes, scores = self.body_gate.detect(frame[y1:y2, x1:x2])
+        timings['head_gate'] = timings.get('head_gate', 0) + (time.perf_counter() - started) * 1000
+        for box, score in zip(boxes, scores):
+            if score >= g.head_score_threshold and box[0] <= cx - x1 <= box[2] and box[1] <= cy - y1 <= box[3]:
+                det.body_box, det.body_score = box + np.array([x1, y1, x1, y1], np.float32), float(score)
+                return True
+        return False
+
+    def _track_is_dog(self, frame, track, timestamp, timings):
+        """Species verdict per *track*, not per frame (stable and cheap).
+
+        A confirmed track stays a dog for its lifetime -- ByteTrack only links
+        overlapping boxes, so a track cannot silently become a person.  An
+        unconfirmed track is re-checked every ``period_s``; the gate model runs
+        only while such tracks exist.
+        """
+        if self.body_gate is None or getattr(track, 'is_dog', False):
+            return True
+        if timestamp < getattr(track, 'dog_retry', -math.inf):
+            return False
+        track.is_dog = self._check_dog(frame, track.detection, timestamp, timings)
+        if not track.is_dog:
+            track.dog_retry = timestamp + self.config.body_gate.period_s
+        return track.is_dog
+
+    def _species_gate(self, frame, detections, timestamp, timings):
+        """Photo mode (no tracks): check every face of the image."""
+        if self.body_gate is None or not detections:
+            return detections, 0
+        kept = [d for d in detections if self._check_dog(frame, d, timestamp, timings)]
         return kept, len(detections) - len(kept)
 
     def _choose_primary(self, tracks):
@@ -314,11 +319,11 @@ class CaptureEngine:
                 rejected[reason] = rejected.get(reason, 0) + 1
             else:
                 valid.append(det)
-        any_face = bool(valid)
-        valid, not_dog = self._species_gate(work, valid, timestamp, timings)
-        if not_dog:
-            rejected['not_dog'] = not_dog
         if self.config.runtime.still_images:
+            any_face = bool(valid)
+            valid, not_dog = self._species_gate(work, valid, timestamp, timings)
+            if not_dog:
+                rejected['not_dog'] = not_dog
             return self._process_still(work, valid, timestamp, index, rotation, rejected, timings, started,
                                        search=not any_face and not external)
         confident = [d for d in valid if d.score >= self.config.tracker.new_track_score]
@@ -335,6 +340,10 @@ class CaptureEngine:
         for track in self.tracker.removed:
             self._archive(track.id, timestamp)
         timings['tracking'] = (time.perf_counter() - t0) * 1000
+        dogs = [t for t in tracks if self._track_is_dog(work, t, timestamp, timings)]
+        if len(dogs) < len(tracks):
+            rejected['not_dog'] = len(tracks) - len(dogs)
+        tracks = dogs
         tracks = sorted(tracks, key=lambda t: -t.detection.width * t.detection.height)
         tracks = tracks[:self.config.detector.max_faces]
         self._choose_primary(tracks)
@@ -381,7 +390,7 @@ class CaptureEngine:
             for degrees in ROTATION_SEARCH[1:]:  # no face at all: the photo may be sideways
                 rotated = rotate_frame(frame, degrees)
                 found = [d for d in self.detector.detect(rotated) if d.validate() is None]
-                self.body_checked = self.head_checked = -math.inf  # body boxes are per orientation
+                self.body_checked = -math.inf  # body boxes are per orientation
                 found, not_dog = self._species_gate(rotated, found, timestamp, timings)
                 if not_dog:
                     rejected['not_dog'] = rejected.get('not_dog', 0) + not_dog

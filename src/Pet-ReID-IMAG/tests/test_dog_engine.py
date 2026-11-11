@@ -517,5 +517,42 @@ class HeadOnlyGate:
 def test_head_crop_fallback_needs_stronger_evidence(score, kept):
     image, dets = render()
     engine = CaptureEngine(body_gate=HeadOnlyGate(score))
-    result = engine.process(image, 0.0, 0, detections=dets)
-    assert ('not_dog' not in result.rejected) == kept
+    for i in range(3):  # a track is gated once confirmed (second hit)
+        result = engine.process(image, i / 30, i, detections=dets)
+    assert ('not_dog' not in result.rejected) == kept and bool(result.faces) == kept
+
+
+def test_species_verdict_is_per_track_and_cheap():
+    frames = [render(center=(350, 360), extra_faces=(((950, 360), 90, 0, 0),)) for _ in range(30)]
+    gate = FakeGate([[200, 150, 520, 700]])
+    engine = CaptureEngine(body_gate=gate)
+    results = run(engine, frames)
+    assert all(r.rejected.get('not_dog') == 1 for r in results[2:])  # the second face never flickers in
+    assert all(len(r.faces) == 1 for r in results[1:])
+    assert gate.calls <= 2 + 30 / 30 / .25 * 2  # only re-checks of the unverified track, rate limited
+
+
+def test_soak_memory_stays_bounded_with_dogs_coming_and_going():
+    """3000 frames: dogs enter, turn, leave, re-enter; nothing may grow without bound."""
+    engine = CaptureEngine()
+    base, _ = render(size=(360, 640), center=(320, 180), iod=60)
+    rng = np.random.default_rng(3)
+    for i in range(3000):
+        phase = (i // 150) % 4  # 5 s cycles: one dog, two dogs, nobody, one dog elsewhere
+        dets = []
+        if phase in (0, 1, 3):
+            x = 200 + (i % 150) * 2 if phase != 3 else 500 - (i % 150)
+            yaw = float(np.sin(i / 20) * .5)
+            dets.append(det(face_points((x, 180), 60, yaw), box=(x - 60, 120, x + 60, 260)))
+        if phase == 1:
+            dets.append(det(face_points((520, 180), 50, rng.normal(0, .05)), box=(470, 130, 570, 250)))
+        if i % 97 == 0:
+            dets.append({'box': [0, 0]})  # garbage from an upstream system
+        engine.process(base, i / 30, i, detections=dets)
+    assert len(engine.tracker.tracks) <= 3 and len(engine.contexts) <= 3
+    assert len(engine.finished) <= 4 and len(engine.events) <= 1024
+    assert len(engine.guidance_history) <= 30
+    for shots in engine.bundles():
+        for view in shots.view_names:
+            assert len(shots.slots[view]) <= 1 and len(shots.pending[view]) <= 1
+    assert engine.frames == 3000

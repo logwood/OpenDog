@@ -138,14 +138,15 @@ def build_body_gate(config, detector_kind):
         return None  # the DogFLW cascade already gates on a dog detector
     path = Path(g.model) if g.model else None
     if path is None:
-        for name in ('yolox_tiny.onnx', 'yolox_nano.onnx', 'yolox_s.onnx'):
+        # nano first: 3.7 MB and ~4x faster than tiny; per-track verification absorbs its lower recall
+        for name in ('yolox_nano.onnx', 'yolox_tiny.onnx', 'yolox_s.onnx'):
             if (model_dir() / name).is_file():
                 path = model_dir() / name
                 break
     if path is None or not path.is_file():
         if g.enabled == 'on':
             raise FileNotFoundError('body_gate.enabled=on but no YOLOX model found; run '
-                                    '`python -m dog_capture models --download yolox_tiny`')
+                                    '`python -m dog_capture models --download yolox_nano`')
         return None
     return detectors.YoloxBodyGate(path, class_id=g.class_id, input_size=g.input_size,
                                    score_threshold=g.score_threshold, providers=r.providers,

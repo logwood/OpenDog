@@ -1,7 +1,7 @@
 """``python -m dog_capture``: one entry point for every input and backend.
 
     python -m dog_capture run VIDEO|IMAGE|FOLDER|CAMERA_INDEX|rtsp://...
-    python -m dog_capture models [--download yolox_tiny]
+    python -m dog_capture models [--download yolox_nano]
     python -m dog_capture doctor
     python -m dog_capture config --write my_config.yaml
 """
@@ -180,6 +180,59 @@ def cmd_run(args):
     return 0 if views else 2
 
 
+def cmd_bench(args):
+    """Per-stage latency and size on this device: detector, gate, engine overhead."""
+    import numpy as np
+    from .io import open_source
+    from ..runtime import peak_rss_mb
+    from .zoo import build_engine
+    config = load_config(args)
+    engine = build_engine(config.merged({'runtime': {'rotate': '0'}}))
+    frames = []
+    if args.source:
+        source = open_source(args.source)
+        for frame, _, _ in source:
+            frames.append(frame)
+            if len(frames) >= args.frames:
+                break
+        source.close()
+    if not frames:
+        rng = np.random.default_rng(0)
+        frames = [(rng.random((720, 1280, 3)) * 255).astype(np.uint8) for _ in range(8)]
+    def timed(fn, frame, runs):
+        values = []
+        for _ in range(runs):
+            started = time.perf_counter()
+            fn(frame)
+            values.append((time.perf_counter() - started) * 1000)
+        return values
+    report = {'device_providers': engine.detector.runtime['used'] if hasattr(engine.detector, 'runtime') else None,
+              'frames': len(frames), 'frame_shape': list(frames[0].shape)}
+    for name, model in (('detector', engine.detector), ('body_gate', engine.body_gate)):
+        if model is None:
+            continue
+        model.warmup(3) if hasattr(model, 'warmup') else None
+        values = [v for f in frames for v in timed(model.detect, f, max(1, args.runs // len(frames)))]
+        path = getattr(model, 'model_path', None)
+        report[name] = {'model': str(path) if path else None,
+                        'megabytes': round(Path(path).stat().st_size / 1e6, 2) if path and Path(path).is_file() else None,
+                        'input_size': getattr(model, 'size', None),
+                        'ms_p50': round(float(np.median(values)), 2), 'ms_p95': round(float(np.percentile(values, 95)), 2)}
+    totals, overhead = [], []
+    for i, frame in enumerate(frames * max(1, args.runs // len(frames))):
+        result = engine.process(frame, i / 30.0, i)
+        totals.append(result.timings_ms['total'])
+        overhead.append(result.timings_ms['total'] - result.timings_ms.get('detector', 0)
+                        - result.timings_ms.get('body_gate', 0) - result.timings_ms.get('head_gate', 0))
+    report['pipeline_ms'] = {'p50': round(float(np.median(totals)), 2), 'p95': round(float(np.percentile(totals, 95)), 2),
+                             'fps_at_p50': round(1000 / max(float(np.median(totals)), 1e-6), 1)}
+    report['engine_overhead_ms'] = {'p50': round(float(np.median(overhead)), 2),
+                                    'p95': round(float(np.percentile(overhead, 95)), 2)}
+    report['peak_rss_mb'] = peak_rss_mb()
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 def cmd_models(args):
     from . import zoo
     if args.download:
@@ -263,6 +316,20 @@ def main(argv=None):
     run.add_argument('--max-seconds', type=float, default=0)
     run.add_argument('--quiet', action='store_true')
     run.set_defaults(func=cmd_run)
+    bench = sub.add_parser('bench', help='measure model size and per-stage latency on this device')
+    bench.add_argument('source', nargs='?', help='video/images to use (default: random 720p frames)')
+    bench.add_argument('--config')
+    bench.add_argument('--frames', type=int, default=30)
+    bench.add_argument('--runs', type=int, default=60)
+    for flag in ('--detector', '--model', '--body-model', '--providers', '--views', '--mode', '--rotate'):
+        bench.add_argument(flag, default=None)
+    bench.add_argument('--threads', type=int)
+    bench.add_argument('--input-size', type=int)
+    bench.add_argument('--score', type=float)
+    bench.add_argument('--top-k', type=int)
+    bench.add_argument('--no-body-gate', action='store_true')
+    bench.add_argument('--mirror', action='store_true')
+    bench.set_defaults(func=cmd_bench)
     models = sub.add_parser('models', help='list, verify and download models')
     models.add_argument('--download', help='model name from the list, or "all" for downloadable ones')
     models.set_defaults(func=cmd_models)

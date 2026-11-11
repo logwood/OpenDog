@@ -42,13 +42,13 @@ v0.x 的模块、入口和验证记录全部保留（`run-dog-*.cmd`、`TargetVi
 
 Windows：把视频、照片或照片文件夹拖到仓库根目录的 `dog-capture.cmd`；摄像头用 `dog-capture.cmd 0`。
 Linux / macOS / Jetson：`scripts/dog-capture.sh 视频或摄像头 [选项]`。首次运行会创建
-`.tmp/dog-capture-v1-env`，并下载 YOLOX 物种门控（约 20 MB，已固定 SHA-256）。
+`.tmp/dog-capture-v1-env`，并下载 YOLOX 物种门控（约 3.7 MB，已固定 SHA-256）。
 
 ```bash
 cd src/Pet-ReID-IMAG
 python -m dog_capture doctor                      # 依赖、执行器、可用模型
 python -m dog_capture models                      # 模型清单、哈希、获取方式、许可
-python -m dog_capture models --download yolox_tiny
+python -m dog_capture models --download yolox_nano
 python -m dog_capture run dog.mp4                 # 逐帧分析
 python -m dog_capture run dog.mp4 --realtime      # 按原速回放，跟摄像头一样会丢旧帧
 python -m dog_capture run 0 --show                # 摄像头实时窗口（需要非 headless 版 OpenCV）
@@ -103,7 +103,7 @@ for view in best.captured():
 | `anyface_yolov5l6` | YOLOv5-face | 双眼、鼻、双嘴角 | 约 76M 参数，适合桌面 GPU | AnyFace 代码 MIT、YOLOv5-face 代码 GPL-3.0；训练数据为研究数据集 | `tools/export_anyface_onnx.py --weights models/pretrained/anyface/yolov5l6_best.pt`（本地已有 .pt） |
 | `scrfd_dog` | SCRFD | 5 点 | 0.5–2.5 GFLOPs | 取决于训练数据 | 用 InsightFace SCRFD 在犬脸 5 点数据上训练 |
 | `dogflw_legacy` | v0.x 三模型 TFLite 级联 | 46 点简化为双眼 + 鼻 | 约 33 MB | CC BY-NC 4.0，禁止商用 | 已有 v0.x 资产；需要 `ai-edge-litert` |
-| `yolox_tiny` / `yolox_nano` | YOLOX（COCO） | 物种门控 | 5.1M / 0.9M 参数 | Apache-2.0 | `python -m dog_capture models --download yolox_tiny` |
+| `yolox_nano`（默认）/ `yolox_tiny` | YOLOX（COCO） | 物种门控 | 0.9M / 5.1M 参数，3.7 / 20 MB | Apache-2.0 | `python -m dog_capture models --download yolox_nano` |
 
 权重文件不进 Git（`.gitignore` 已排除 `models/pretrained/`），清单记录来源、哈希和许可。
 

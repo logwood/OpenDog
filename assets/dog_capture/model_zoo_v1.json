@@ -46,28 +46,28 @@
       "edge": "three TFLite models, ~33 MB"
     },
     {
-      "name": "yolox_tiny",
-      "role": "body",
-      "kind": "yolox",
-      "priority": 1,
-      "file": "yolox_tiny.onnx",
-      "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx",
-      "sha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7",
-      "bytes": 20219662,
-      "license": "Apache-2.0 (YOLOX), COCO-trained",
-      "edge": "5.1 M parameters, 416 input"
-    },
-    {
       "name": "yolox_nano",
       "role": "body",
       "kind": "yolox",
-      "priority": 2,
+      "priority": 1,
       "file": "yolox_nano.onnx",
       "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx",
       "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
       "bytes": 3659407,
       "license": "Apache-2.0 (YOLOX), COCO-trained",
-      "edge": "0.9 M parameters, 416 input"
+      "edge": "0.9 M parameters, 3.7 MB, 416 input; default gate (per-track verification)"
+    },
+    {
+      "name": "yolox_tiny",
+      "role": "body",
+      "kind": "yolox",
+      "priority": 2,
+      "file": "yolox_tiny.onnx",
+      "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx",
+      "sha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7",
+      "bytes": 20219662,
+      "license": "Apache-2.0 (YOLOX), COCO-trained",
+      "edge": "5.1 M parameters, 20 MB, 416 input; ~6 pp higher single-image recall, ~4x slower"
     }
   ]
 }

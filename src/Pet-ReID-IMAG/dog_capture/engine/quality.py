@@ -149,9 +149,11 @@ class QualityAssessor:
 
         gray = cv2.cvtColor(aligned.image, cv2.COLOR_BGR2GRAY)
         values = gray[self.mask]
+        # uint8 histogram: percentiles without sorting (several times faster than np.percentile)
+        cumulative = np.cumsum(np.bincount(values, minlength=256)) / values.size
         brightness = float(values.mean())
-        contrast = float(np.percentile(values, 95) - np.percentile(values, 5))
-        clipped = float(np.mean((values >= 250) | (values <= 3)))
+        contrast = float(np.searchsorted(cumulative, 0.95) - np.searchsorted(cumulative, 0.05))
+        clipped = float(1 - cumulative[249] + cumulative[3])
         lap = _laplacian_energy(gray, self.mask)
         x1, y1, x2, y2 = self.mask_rect
         crete = blur_effect(gray[y1:y2, x1:x2])
