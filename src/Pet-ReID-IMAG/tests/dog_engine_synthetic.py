@@ -82,3 +82,62 @@ class ScriptedDetector:
 
     def describe(self):
         return {'kind': 'scripted'}
+
+
+class BlobDetector:
+    """Finds the synthetic face's dark eyes and nose in any image (full frame or rotated crop).
+
+    A stand-in keypoint model for refinement tests: equivariant by construction and, like
+    the trained model, more confident on upright faces (0.9 upright, 0.5 at a quarter turn).
+    ``eye_shift`` (in eye distances, along the face's up direction) moves the reported eyes
+    off the real ones to imitate a hallucination; ``crops_only`` ignores full frames after
+    the first call (a full-frame miss the refiner must bridge).
+    """
+    size = 320
+
+    def __init__(self, eye_shift=0.0, crops_only=False):
+        self.eye_shift = eye_shift
+        self.crops_only = crops_only
+        self.blank = False   # tests set it: the model sees no face at all on this frame
+        self.calls = 0
+        self.full_calls = 0
+
+    def detect(self, image):
+        self.calls += 1
+        if self.blank:
+            return []
+        if image.shape[:2] != (self.size, self.size):
+            self.full_calls += 1
+            if self.crops_only and self.full_calls > 1:
+                return []
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        n, _, stats, centres = cv2.connectedComponentsWithStats((gray < 45).astype(np.uint8))
+        blobs = []
+        for i in range(1, n):
+            area, w, h = stats[i, cv2.CC_STAT_AREA], stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT]
+            if area >= 8 and area / max(w * h, 1) > 0.45:
+                blobs.append((area, centres[i]))
+        if len(blobs) < 3:
+            return []
+        blobs.sort(key=lambda b: -b[0])
+        nose = np.asarray(blobs[0][1], np.float64)
+        # the two remaining blobs most alike in size and nearest the nose are the eyes
+        a, b = (np.asarray(c, np.float64) for _, c in blobs[1:3])
+        axis = b - a
+        normal = np.array([-axis[1], axis[0]])
+        if (nose - (a + b) / 2) @ normal < 0:
+            a, b, axis, normal = b, a, -axis, -normal
+        iod = float(np.linalg.norm(axis))
+        unit_x, unit_y = axis / iod, normal / iod
+        up = -unit_y * self.eye_shift * iod
+        mouth = [nose + (-0.46 * unit_x + 0.13 * unit_y) * iod, nose + (0.46 * unit_x + 0.13 * unit_y) * iod]
+        points = np.stack([a + up, b + up, nose, *mouth])
+        roll = abs(math.degrees(math.atan2(axis[1], axis[0])))
+        score = 0.9 - 0.4 * min(roll, 90.0) / 90.0
+        centre = (a + b) / 2 + unit_y * 0.25 * iod
+        half = 1.05 * iod
+        box = np.r_[centre - half, centre + half]
+        return [Detection(box, score, points, ANYFACE5, kp_scores=[0.95, 0.95, 0.95, 0.9, 0.9], source='blobs')]
+
+    def describe(self):
+        return {'kind': 'blobs'}

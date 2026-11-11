@@ -26,7 +26,9 @@ VIEW_LABELS = {'front': '正对镜头', 'left': '画面左侧', 'right': '画面
 QUALITY_CODES = ('face_too_small', 'face_clipped', 'too_dark', 'overexposed', 'low_contrast',
                  'blurred', 'eyes_or_nose_occluded')
 POSE_REASONS = {'eyes_unresolved', 'implausible_eye_span', 'implausible_nose_position',
-                'extreme_pose', 'inconsistent_landmarks', 'eyes_coincide', 'alignment_failed'}
+                'extreme_pose', 'inconsistent_landmarks', 'eyes_coincide', 'alignment_failed',
+                'landmarks_unreliable', 'landmarks_unstable'}
+ALIASES = {'eyes_not_visible': 'eyes_or_nose_occluded'}   # shot-gate reason -> operator message
 
 
 def guidance(face, missing_views, *, rejected_species=False, speed_iod=0.0, motion_ref=3.0, dog_seen=False):
@@ -43,7 +45,7 @@ def guidance(face, missing_views, *, rejected_species=False, speed_iod=0.0, moti
         if dog_seen:
             return result('dog_far')
         return result('not_dog' if rejected_species else 'no_face')
-    reasons = set(face.quality.reasons) if face.quality else set()
+    reasons = {ALIASES.get(r, r) for r in face.quality.reasons} if face.quality else set()
     for code in QUALITY_CODES:
         if code in reasons:
             return result(code)

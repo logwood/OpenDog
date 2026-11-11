@@ -13,5 +13,6 @@ export * from './quality';
 export * from './selection';
 export * from './guidance';
 export * from './detectors';
+export * from './refine';
 export * from './engine';
 export * from './session';

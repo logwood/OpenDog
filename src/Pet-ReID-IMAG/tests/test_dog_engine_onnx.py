@@ -159,7 +159,8 @@ def test_engine_runs_on_a_real_onnx_session(tmp_path):
     out[0, 5:, 0] = np.c_[canvas_kpts, np.ones(5)].reshape(-1)
     model = constant_model(tmp_path / 'pose5.onnx', 'images', 320, [('output0', out)], {'kpt_shape': '[5, 3]'})
     detector = YoloPoseDetector(model, providers='cpu')
-    engine = CaptureEngine(CaptureConfig().merged({'runtime': {'rotate': '0'}}), detector)
+    # A constant model cannot follow crops: this test covers the ONNX session, not refinement.
+    engine = CaptureEngine(CaptureConfig().merged({'runtime': {'rotate': '0'}, 'refine': {'enabled': False}}), detector)
     for i in range(10):
         result = engine.process(image, i / 30, i)
     assert result.faces and result.faces[0].quality.passed, result.faces[0].quality.reasons

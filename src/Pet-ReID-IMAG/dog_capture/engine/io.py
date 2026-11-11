@@ -424,7 +424,11 @@ def write_review(directory, report):
         items = selection['views'].get(view)
         title = html.escape(labels.get(view, view))
         if not items:
-            cards.append(f'<article><h2>{title}</h2><div class="empty">未采集到合格图像</div></article>')
+            miss = selection.get('near_misses', {}).get(view)
+            hint = '' if miss is None else (
+                f'<p class="muted">最接近的候选：第 {miss["frame_index"]} 帧，质量 {miss["score"]:.2f}（{miss["level"]}，'
+                f'需要 {miss["needed"]}），最弱一项：{html.escape(str(miss["weakest"]))}。脸部位置已核实，只是不够清晰。</p>')
+            cards.append(f'<article><h2>{title}</h2><div class="empty">未采集到合格图像</div>{hint}</article>')
             continue
         item = items[0]
         q = item['quality']

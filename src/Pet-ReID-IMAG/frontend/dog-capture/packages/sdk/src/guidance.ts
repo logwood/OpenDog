@@ -20,7 +20,9 @@ export const VIEW_LABELS: Record<string, string> = { front: '正对镜头', left
 const QUALITY_CODES = ['face_too_small', 'face_clipped', 'too_dark', 'overexposed', 'low_contrast', 'blurred',
   'eyes_or_nose_occluded'];
 const POSE_REASONS = new Set(['eyes_unresolved', 'implausible_eye_span', 'implausible_nose_position', 'extreme_pose',
-  'inconsistent_landmarks', 'eyes_coincide', 'alignment_failed']);
+  'inconsistent_landmarks', 'eyes_coincide', 'alignment_failed', 'landmarks_unreliable', 'landmarks_unstable']);
+/** shot-gate reason -> operator message */
+const ALIASES: Record<string, string> = { eyes_not_visible: 'eyes_or_nose_occluded' };
 
 export interface Guidance { code: string; message: string; view: string | null }
 
@@ -38,7 +40,7 @@ export function guidance(face: GuidanceFace | null, missing: string[], opts: {
   });
   if (!missing.length) return result('done');
   if (!face) return result(opts.dogSeen ? 'dog_far' : opts.rejectedSpecies ? 'not_dog' : 'no_face');
-  const reasons = new Set(face.quality?.reasons ?? []);
+  const reasons = new Set((face.quality?.reasons ?? []).map((r) => ALIASES[r] ?? r));
   for (const code of QUALITY_CODES) if (reasons.has(code)) return result(code);
   if ([...reasons].some((r) => POSE_REASONS.has(r)) || (face.geometry && !face.geometry.valid)) return result('pose_unresolved');
   if ((opts.speedIod ?? 0) > (opts.motionRef ?? 3)) return result('moving_fast');

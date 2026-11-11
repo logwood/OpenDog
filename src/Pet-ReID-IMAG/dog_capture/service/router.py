@@ -104,7 +104,7 @@ def build_capture_router(*, base_config, engine_factory, model_files, gallery=No
             session.state = 'capturing'
         models = {item['role']: {'url': f'/v1/capture/models/{name}?sha256={item["sha256"]}', 'sha256': item['sha256'],
                                  'bytes': item['bytes'], **{k: item['meta'][k] for k in
-                                                            ('kind', 'schema', 'input_size', 'kpt_shape')
+                                                            ('kind', 'schema', 'input_size', 'kpt_shape', 'yaw_scale')
                                                             if k in item['meta']}}
                   for name, item in served.items()}
         return {'protocol': PROTOCOL, 'session_id': session.id, 'purpose': session.purpose,

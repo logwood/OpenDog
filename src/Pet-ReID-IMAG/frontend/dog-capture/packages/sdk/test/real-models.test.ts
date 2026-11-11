@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createOrtRunner, fromBGR, YoloPoseDetector, YoloxBodyGate } from '../src';
+import { createOrtRunner, defaultConfig, eyeContrast, FaceRefiner, fromBGR, YoloPoseDetector, YoloxBodyGate } from '../src';
 
 const dir = process.env.DOG_CAPTURE_REAL;
 const ready = !!dir && existsSync(resolve(dir, 'ref.json'));
@@ -31,4 +31,42 @@ describe.skipIf(!ready)('real models on onnxruntime-web', () => {
     expect(boxes.length).toBe(ref.bodies[0].length);
     boxes[0].forEach((v, i) => expect(Math.abs(v - ref.bodies[0][0][i])).toBeLessThan(3.0));
   }, 60_000);
+});
+
+const refineReady = !!dir && existsSync(resolve(dir, 'refine_ref.json'));
+
+describe.skipIf(!refineReady)('refinement with the real face model (tools/export_refine_parity.py)', () => {
+  it('turns faces upright, verifies them and measures eye evidence like the Python engine', async () => {
+    const ort = await import('onnxruntime-web');
+    ort.env.wasm.numThreads = 1;
+    const ref = JSON.parse(readFileSync(resolve(dir!, 'refine_ref.json'), 'utf8'));
+    const runner = await createOrtRunner(ort, new Uint8Array(readFileSync(resolve(dir!, 'dog_face_pose.onnx'))), ['wasm']);
+    runner.inputSize = ref.model_input;
+    const detector = new YoloPoseDetector(runner, { kpt: [6, 3] });
+    const refiner = new FaceRefiner(detector, defaultConfig().refine);
+    for (const item of ref.frames) {
+      const frame = fromBGR(new Uint8Array(readFileSync(resolve(dir!, item.file))), item.w, item.h);
+      const found = await detector.detect(frame);
+      const refined = (await refiner.refine(frame, found, 0, true)).filter((d) => d.extra?.refined);
+      const label = `frame ${item.frame_index}`;
+      expect(refined.length, label).toBe(item.faces.length);
+      for (const [i, e] of item.faces.entries()) {
+        const d = refined[i];
+        expect(d.extra!.upright_k, label).toBe(e.upright_k);
+        expect(Math.abs(Number(d.extra!.upright_angle) - e.upright_angle), label).toBeLessThan(3);
+        expect(Math.abs(d.score - e.score), label).toBeLessThan(0.05);
+        const iod = Math.hypot(e.keypoints[0][0] - e.keypoints[1][0], e.keypoints[0][1] - e.keypoints[1][1]);
+        d.keypoints.forEach(([x, y], k) => expect(Math.hypot(x - e.keypoints[k][0], y - e.keypoints[k][1]) / iod, label).toBeLessThan(0.04));
+        // same implementation on the reference keypoints; on our own keypoints, a point on an edge can shift it more
+        // (cv2 warps in 5-bit fixed point, this port in float: the brightness-range term moves a little)
+        eyeContrast(frame, { ...d, keypoints: e.keypoints }).forEach((v, k) => expect(Math.abs(v - e.eye_contrast[k]), label).toBeLessThan(0.05));
+        eyeContrast(frame, d).forEach((v, k) => expect(Math.abs(v - e.eye_contrast[k]), label).toBeLessThan(0.12));
+        const v = await refiner.verify(frame, d);
+        expect(Math.abs(v.score - e.verify.score), label).toBeLessThan(0.05);
+        v.eyes.forEach((x, k) => expect(Math.abs(x - e.verify.eyes[k]), label).toBeLessThan(0.04));
+        expect(Math.abs(v.mirror - e.verify.mirror), label).toBeLessThan(0.05);
+        expect(Math.abs(v.agreement - e.verify.agreement), label).toBeLessThan(0.05);
+      }
+    }
+  }, 120_000);
 });

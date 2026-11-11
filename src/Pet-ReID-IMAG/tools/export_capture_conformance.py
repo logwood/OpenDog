@@ -86,11 +86,48 @@ def geometry_cases(config):
     for schema, points, kp in cases:
         det = detection(points, schema, kp=kp)
         g = face_geometry(det, config.pose)
-        out.append({'schema': schema, 'box': r(det.box), 'keypoints': r(points), 'kp_scores': kp,
+        out.append({'schema': schema, 'box': r(det.box), 'keypoints': r(points), 'kp_scores': kp, 'upright_k': 0,
                     'expected': r({'yaw': g.yaw, 'pitch': g.pitch, 'roll_deg': g.roll_deg, 'iod': g.iod,
                                    'lower_yaw': g.lower_yaw, 'approx_deg': g.approx_deg, 'valid': g.valid,
                                    'reason': g.reason, 'swapped': g.swapped,
                                    'points': {k: list(v) for k, v in g.points.items()}})})
+    # faces turned by quarter turns: roll is reported after the face's own quarter turn
+    for roll, k in ((90, 3), (-90, 1), (180, 2), (100, 3), (-35, 0)):
+        det = detection(face_points(yaw=0.1, roll=roll), 'anyface5')
+        det.extra['upright_k'] = k
+        g = face_geometry(det, config.pose)
+        out.append({'schema': 'anyface5', 'box': r(det.box), 'keypoints': r(det.keypoints), 'kp_scores': None,
+                    'upright_k': k,
+                    'expected': r({'yaw': g.yaw, 'pitch': g.pitch, 'roll_deg': g.roll_deg, 'iod': g.iod,
+                                   'lower_yaw': g.lower_yaw, 'approx_deg': g.approx_deg, 'valid': g.valid,
+                                   'reason': g.reason, 'swapped': g.swapped,
+                                   'points': {k2: list(v) for k2, v in g.points.items()}})})
+    return out
+
+
+def refine_cases():
+    """Canonical crop geometry, eye-line tilt, upright frames and the eye-contrast evidence."""
+    from dog_capture.engine.refine import (crop_matrix, eye_contrast, eye_line_deg, rotation_matrix,
+                                           upright_frame)
+    out = {'rotation': [], 'crop': [], 'tilt': [], 'upright': [], 'contrast': []}
+    for angle in (0, 90, 180, 270, -90, 33.5, -71.25):
+        out['rotation'].append({'angle': angle, 'size': 320, 'expected': r(rotation_matrix(angle, 320))})
+    for box, angle, share in (((100, 100, 200, 160), 0, 0.35), ((10.5, 220, 650, 1068.7), 90, 0.35),
+                              ((300, 40, 420, 190), -37.5, 0.5)):
+        out['crop'].append({'box': list(box), 'angle': angle, 'share': share, 'size': 320,
+                            'expected': r(crop_matrix(box, angle, share, 320))})
+    for roll in (0, 25, 90, -120, 180):
+        det = detection(face_points(yaw=0.2, roll=roll), 'anyface5')
+        out['tilt'].append({'keypoints': r(det.keypoints), 'expected': r(eye_line_deg(det))})
+    image = np.zeros((40, 64, 3), np.uint8)
+    for k in range(4):
+        _, m = upright_frame(image, k)
+        out['upright'].append({'k': k, 'width': 64, 'height': 40, 'expected': r(m)})
+    frame, dets = render(size=(240, 320), center=(160, 120), iod=70)
+    shifted = detection(np.asarray(dets[0].keypoints) - [0, 30], 'anyface5')
+    for name, det in (('eyes', dets[0]), ('fur', shifted)):
+        out['contrast'].append({'name': name, 'keypoints': r(det.keypoints), 'expected': r(eye_contrast(frame, det))})
+    out['frame_bgr'] = pack(frame)
     return out
 
 
@@ -269,6 +306,7 @@ def main():
         'views.json': view_cases(config), 'one_euro.json': one_euro_cases(),
         'tracking.json': tracking_cases(config), 'selection.json': selection_cases(config),
         'quality.json': quality_cases(config), 'guidance.json': guidance_cases(),
+        'refine.json': refine_cases(),
         'config_default.json': config.to_dict(),
         'schemas.json': {n: {'names': list(s.names), 'pairs': [list(p) for p in s.pairs], 'yaw_scale': s.yaw_scale}
                          for n, s in SCHEMAS.items()},

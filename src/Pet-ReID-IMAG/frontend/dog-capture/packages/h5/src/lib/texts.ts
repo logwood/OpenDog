@@ -13,7 +13,8 @@ export const REASONS: Record<string, string> = {
   not_dog: '不像狗脸', claimed_face_not_found: '与采集时的狗脸位置不一致', view_mismatch: '角度不符合要求',
   quality_too_low: '质量不足', face_too_small: '狗脸太小', face_clipped: '狗脸不完整', blurred: '模糊',
   too_dark: '太暗', overexposed: '过曝', low_contrast: '发灰', eyes_or_nose_occluded: '眼睛或鼻子被遮挡',
-  alignment_failed: '关键点异常', recognition_unstable: '识别模型无法稳定读取', identity_inconsistent: '和其他照片不像同一只狗',
+  alignment_failed: '关键点异常', landmarks_unreliable: '无法确认眼睛和鼻子的位置', landmarks_unstable: '脸部识别不稳定',
+  eyes_not_visible: '看不到睁开的眼睛', recognition_unstable: '识别模型无法稳定读取', identity_inconsistent: '和其他照片不像同一只狗',
   eyes_unresolved: '看不清眼睛', extreme_pose: '角度过大', implausible_nose_position: '关键点异常',
   inconsistent_landmarks: '关键点异常', implausible_eye_span: '关键点异常',
 };

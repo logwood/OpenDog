@@ -12,7 +12,7 @@ export interface Runner {
   run(input: Float32Array, dims: number[]): Promise<TensorOut[]>;
 }
 
-export interface FaceDetector { detect(frame: Frame): Promise<Detection[]> }
+export interface FaceDetector { detect(frame: Frame): Promise<Detection[]>; readonly size?: number }
 export interface BodyGate { detect(frame: Frame): Promise<{ boxes: Box[]; scores: number[] }> }
 
 function chw(canvas: Frame, order: 'rgb' | 'bgr', scale: number): Float32Array {
@@ -44,12 +44,19 @@ function finish(boxes: Box[], scores: number[], points: Point[][], kp: number[][
 export class YoloPoseDetector implements FaceDetector {
   schema: KeypointSchema;
   constructor(private runner: Runner, public options: { kpt: [number, number]; schema?: string; numClasses?: number;
-    scoreThreshold?: number; nmsIou?: number; maxFaces?: number; kptNames?: string[] }) {
+    scoreThreshold?: number; nmsIou?: number; maxFaces?: number; kptNames?: string[]; yawScale?: number }) {
     const [k] = options.kpt;
     this.schema = options.schema ? getSchema(options.schema)
       : schemaFromNames(options.kptNames) ?? getSchema(({ 6: 'dogface6', 5: 'anyface5', 3: 'core3' } as Record<number, string>)[k]);
     if (this.schema.names.length !== k) throw new Error(`${k} keypoints do not fit schema ${this.schema.name}`);
+    if (options.yawScale !== undefined) {   // per-model yaw calibration from the model sidecar
+      if (!(options.yawScale >= 0.2 && options.yawScale <= 5)) throw new Error(`yaw_scale ${options.yawScale} out of range`);
+      this.schema = { ...this.schema, yawScale: options.yawScale };
+    }
   }
+
+  /** Square network input (the refiner crops faces at exactly this size). */
+  get size() { return this.runner.inputSize; }
 
   async detect(frame: Frame): Promise<Detection[]> {
     const size = this.runner.inputSize;

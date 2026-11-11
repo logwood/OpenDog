@@ -163,7 +163,10 @@ def cmd_run(args):
         'views': list(engine.view_names), 'models': engine.describe(),
         'selection': {'track_id': best.track_id if best else None, 'views': views,
                       'missing_views': [v for v in engine.view_names if v not in views],
-                      'coverage_complete': bool(best) and all(v in views for v in engine.view_names)},
+                      'coverage_complete': bool(best) and all(v in views for v in engine.view_names),
+                      # credible faces (landmarks verified) that missed only the quality level
+                      'near_misses': {v: engine.near_misses[v] for v in engine.view_names
+                                      if v not in views and v in engine.near_misses}},
         'comparison_inputs': {v: items[0]['aligned'] for v, items in views.items()},
         'other_tracks': others,
         'stats': {'frames_read': read, 'frames_processed': processed,

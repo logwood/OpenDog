@@ -49,6 +49,56 @@ class DetectorConfig:
 
 
 @dataclass
+class RefineConfig:
+    """Second-stage keypoints on a canonical upright face crop (refine.py).
+
+    Validation (dogface6 val, 500 faces, 3/4 of them turned by a quarter turn):
+    keypoints within 0.25 IOD 19 % (full frame, 0 deg) -> 79 % (crop + orientation search).
+    """
+    enabled: bool = True
+    share: float = 0.35              # face long side / crop side (training faces: median 0.30)
+    search_period_s: float = 0.5     # re-check the quarter turn this often, unless (edge option) the
+    confident_score: float = 1.0     # crop score is at least this: then only every max_search_period_s.
+    max_search_period_s: float = 2.0  # (Off by default: on rolled close-ups a wrong turn can score 0.6.)
+    switch_margin: float = 0.05      # another quarter turn must beat the current one by this score
+    fine_min_deg: float = 8.0        # re-crop at the measured residual tilt above this (photos/search)
+    research_below: float = 0.40     # search at once if the current orientation's score falls below
+    carry_frames: int = 3            # drop a followed face after this many failed or weak refinements
+    match_iou: float = 0.3
+    full_detect_period_s: float = 0.3  # while faces are followed on their crops, run the full-frame
+                                       # detector (new dogs) only this often; 0 = every frame
+    # Shot gate (checked only when a frame is about to become a shot): the upright crop must
+    # score this high and give the same landmarks on its mirror image (mean disagreement / IOD).
+    min_shot_score: float = 0.50
+    max_mirror_disagreement: float = 0.20
+    # Keypoint confidence is informative on the upright crop (not on a rolled full frame):
+    # frontal shots need both eyes (validation: keeps 97 % of good frontal faces), side shots
+    # the visible one (keeps 76 %; side keypoints are the model's weakest).
+    min_front_eye_conf: float = 0.70
+    max_agreement: float = 0.30      # open-loop keypoints vs the refined ones (/ IOD)
+    # Side views: the model's weakest (validation: 86 % of good side faces reach eye
+    # confidence 0.5, 76 % reach 0.6) and often tilted between quarter turns, which
+    # spreads the open-loop look; frontal claims keep the strict values above.
+    min_side_eye_conf: float = 0.50
+    max_side_mirror_disagreement: float = 0.30
+    max_side_agreement: float = 0.50
+    min_eye_contrast: float = 0.20   # image evidence of an open eye (refine.eye_contrast)
+    # Video: a real face passes these checks frame after frame, a hallucination on some
+    # frames only (and between them is often not found at all).  So a shot also needs, at
+    # that place (by position, not track id) over the window, passes / (passes + failed
+    # checks + frames with no face there) >= gate_min_ratio; frames where the face was
+    # there but not checkable (out of band, low quality) do not count either way.
+    gate_window_s: float = 0.5
+    gate_min_frames: int = 8         # ... and at least this many frames (slow devices)
+    gate_min_ratio: float = 0.35
+    gate_min_passes: int = 3
+    # Cadences are in seconds *and* frames, so a slow device (a browser at a few fps) does not
+    # end up running the full-frame detector or the four-way orientation search on every frame.
+    full_detect_min_frames: int = 3
+    search_min_frames: int = 6
+
+
+@dataclass
 class BodyGateConfig:
     """Dog-body detector used as a species gate (face detectors also find people/cats)."""
     enabled: str = 'auto'         # auto (use if the model exists) | on | off
@@ -147,6 +197,7 @@ class RuntimeConfig:
 @dataclass
 class CaptureConfig:
     detector: DetectorConfig = field(default_factory=DetectorConfig)
+    refine: RefineConfig = field(default_factory=RefineConfig)
     body_gate: BodyGateConfig = field(default_factory=BodyGateConfig)
     tracker: TrackerConfig = field(default_factory=TrackerConfig)
     pose: PoseConfig = field(default_factory=PoseConfig)
@@ -200,6 +251,17 @@ class CaptureConfig:
               f'detector.kind={d.kind!r}')
         check(32 <= d.input_size <= 2048 and d.input_size % 32 == 0, 'detector.input_size must be a multiple of 32')
         check(0 < d.score_threshold < 1 and 0 < d.nms_iou < 1 and d.max_faces >= 1, 'detector thresholds')
+        f = self.refine
+        check(0.1 <= f.share <= 0.9 and f.search_period_s > 0 and f.switch_margin >= 0 and f.carry_frames >= 0
+              and 0 <= f.fine_min_deg <= 45
+              and 0 < f.match_iou < 1 and f.full_detect_period_s >= 0 and 0 <= f.confident_score <= 1
+              and f.max_search_period_s >= f.search_period_s and f.gate_window_s > 0
+              and 0 <= f.gate_min_ratio <= 1 and f.gate_min_passes >= 1 and f.gate_min_frames >= 1
+              and f.full_detect_min_frames >= 1 and f.search_min_frames >= 1, 'refine settings')
+        check(0 <= f.min_shot_score < 1 and 0 <= f.research_below < 1 and f.max_mirror_disagreement > 0
+              and 0 <= f.min_front_eye_conf < 1 and 0 <= f.min_side_eye_conf < 1 and f.max_agreement > 0
+              and f.max_side_mirror_disagreement > 0 and f.max_side_agreement > 0
+              and 0 <= f.min_eye_contrast < 1, 'refine shot-gate thresholds')
         check(self.body_gate.enabled in ('auto', 'on', 'off'), 'body_gate.enabled must be auto/on/off')
         check(0 < self.body_gate.score_threshold <= self.body_gate.head_score_threshold < 1,
               'body_gate thresholds (head_score_threshold >= score_threshold)')

@@ -137,8 +137,8 @@ export function resize(frame: Frame, outW: number, outH: number): Frame {
   return out;
 }
 
-/** cv2.warpAffine(INTER_LINEAR, BORDER_CONSTANT=0) with a forward 2x3 matrix. */
-export function warpAffine(frame: Frame, m: number[][], outW: number, outH: number): Frame {
+/** cv2.warpAffine(INTER_LINEAR, BORDER_CONSTANT=border) with a forward 2x3 matrix. */
+export function warpAffine(frame: Frame, m: number[][], outW: number, outH: number, border = 0): Frame {
   const [[a, b, c], [d, e, f]] = m;
   const det = a * e - b * d;
   const ia = e / det, ib = -b / det, id = -d / det, ie = a / det;
@@ -146,7 +146,7 @@ export function warpAffine(frame: Frame, m: number[][], outW: number, outH: numb
   const out = makeFrame(outW, outH);
   const { width: w, height: h, data } = frame;
   const sample = (x: number, y: number, ch: number) =>
-    (x < 0 || y < 0 || x >= w || y >= h) ? 0 : data[(y * w + x) * 4 + ch];
+    (x < 0 || y < 0 || x >= w || y >= h) ? border : data[(y * w + x) * 4 + ch];
   for (let y = 0; y < outH; y++) {
     for (let x = 0; x < outW; x++) {
       const sx = ia * x + ib * y + ic, sy = id * x + ie * y + iff;

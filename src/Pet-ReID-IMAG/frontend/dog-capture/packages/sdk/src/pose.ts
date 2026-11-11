@@ -13,6 +13,8 @@ export interface FaceGeometry {
   lower_yaw: number | null;
   approx_deg: number;
   swapped: boolean;
+  /** quarter turns (clockwise) that make the face upright; roll_deg is measured after them */
+  upright_k: number;
   valid: boolean;
   reason: string;
 }
@@ -24,8 +26,9 @@ export function faceGeometry(det: Detection, config: CaptureConfig['pose']): Fac
     points[name] = [det.keypoints[i][0], det.keypoints[i][1]];
     if (det.kpScores) scores[name] = det.kpScores[i];
   });
+  const uprightK = ((Number(det.extra?.upright_k ?? 0) % 4) + 4) % 4;
   const base: FaceGeometry = { points, scores, iod: 0, roll_deg: 0, yaw: 0, pitch: 0, lower_yaw: null, approx_deg: 0,
-    swapped: false, valid: false, reason: 'no_face' };
+    swapped: false, upright_k: uprightK, valid: false, reason: 'no_face' };
   let a = points.left_eye, b = points.right_eye;
   const nose = points.nose;
   let axis = [b[0] - a[0], b[1] - a[1]];
@@ -50,7 +53,9 @@ export function faceGeometry(det: Detection, config: CaptureConfig['pose']): Fac
   const scale = det.schema.yawScale;
   const yaw = (off[0] * h[0] + off[1] * h[1]) / span / scale;
   const pitch = (off[0] * normal[0] + off[1] * normal[1]) / span;
-  const roll = Math.atan2(h[1], h[0]) * 180 / Math.PI;
+  // roll in the face's upright orientation (a dog lying down is upright after its quarter turn)
+  let roll = Math.atan2(h[1], h[0]) * 180 / Math.PI + 90 * uprightK;
+  roll = ((((roll + 180) % 360) + 360) % 360) - 180;
   let lower: number | null = null;
   if ('left_mouth' in points && 'right_mouth' in points) {
     const m = [(points.left_mouth[0] + points.right_mouth[0]) / 2 - mid[0], (points.left_mouth[1] + points.right_mouth[1]) / 2 - mid[1]];
@@ -59,7 +64,8 @@ export function faceGeometry(det: Detection, config: CaptureConfig['pose']): Fac
     lower = ((points.chin[0] - mid[0]) * h[0] + (points.chin[1] - mid[1]) * h[1]) / span / scale;
   }
   const g: FaceGeometry = { points, scores, iod: span, roll_deg: roll, yaw, pitch, lower_yaw: lower,
-    approx_deg: Math.atan2(yaw, config.snout_factor) * 180 / Math.PI, swapped, valid: false, reason: 'ok' };
+    approx_deg: Math.atan2(yaw, config.snout_factor) * 180 / Math.PI, swapped, upright_k: uprightK, valid: false,
+    reason: 'ok' };
   const boxW = Math.max(width(det), height(det));
   if (span < config.min_iod_box_ratio * boxW) g.reason = 'eyes_unresolved';
   else if (span > config.max_iod_box_ratio * boxW) g.reason = 'implausible_eye_span';

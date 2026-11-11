@@ -2,7 +2,8 @@
 
 The same causal pipeline as a face-capture SDK:
 
-1. a one-stage face detector returns boxes + keypoints for every face;
+1. a one-stage face detector returns boxes + keypoints for every face, and each
+   face is re-examined on a canonical upright crop (refine.py: scale + quarter turn);
 2. an optional dog-body detector rejects human/cat faces (species gate);
 3. ByteTrack gives each dog a stable track ID (several dogs no longer void a frame);
 4. per track: keypoint geometry -> debounced view -> aligned-crop quality;
@@ -27,6 +28,7 @@ from .config import CaptureConfig
 from .guidance import guidance
 from .pose import ViewClassifier, face_geometry
 from .quality import QualityAssessor, QualityReport
+from .refine import FaceRefiner, eye_contrast, transform_detection, upright_frame
 from .schema import Detection, box_iou_matrix
 from .selection import Shot, TrackShots
 from .tracking import ByteTracker, Track
@@ -149,6 +151,11 @@ class OrientationLock:
         return False
 
 
+def _place(det):
+    x1, y1, x2, y2 = (float(v) for v in det.box)
+    return (x1 + x2) / 2, (y1 + y2) / 2, max(x2 - x1, y2 - y1)
+
+
 def rotate_frame(frame, degrees_cw):
     k = (degrees_cw // 90) % 4
     return frame if k == 0 else np.ascontiguousarray(np.rot90(frame, -k))
@@ -177,12 +184,18 @@ class _TrackContext:
                                 {v.name: v.shots for v in engine.config.pose.views})
 
 
+
 class CaptureEngine:
     def __init__(self, config: CaptureConfig | None = None, detector=None, body_gate=None):
         self.config = config or CaptureConfig()
         self.config.validate()
         self.detector = detector
         self.body_gate = body_gate
+        # Crop refinement needs a model that can be run on an image (not the legacy DogFLW cascade).
+        refinable = detector is not None and hasattr(detector, 'size') and self.config.refine.enabled
+        self.refiner = FaceRefiner(detector, self.config.refine) if refinable else None
+        self.full_detected = -math.inf
+        self.full_detected_frame = -10 ** 9
         self.views = {v.name: v for v in self.config.pose.views}
         self.view_names = tuple(self.views)
         self.required_views = frozenset(v.name for v in self.config.pose.views if v.required)
@@ -203,6 +216,12 @@ class CaptureEngine:
         self.body_checked = -math.inf
         self.roi_checked = -math.inf
         self._external = False
+        self._timings = {}
+        # Per view: the best credible candidate that missed only the quality level (for review).
+        self.near_misses: dict[str, dict] = {}
+        self.gate_history = deque()   # (time, cx, cy, size, 'pass'|'fail'|'present') per analysed face
+        self.frame_times = deque()    # times of processed frames
+        self._gate_status = {}        # id(detection) -> this frame's check result
         self.guidance_history = deque()
         self.shown_code = None
 
@@ -365,8 +384,16 @@ class CaptureEngine:
         self.previous_time = timestamp
         self.frames += 1
         timings = {}
+        self._timings = timings
         rejected = {}
+        skipped = False
         external = self._external = detections is not None
+        window, keep = self.config.refine.gate_window_s, self.config.refine.gate_min_frames
+        self.frame_times.append(timestamp)
+        while len(self.frame_times) > keep and timestamp - self.frame_times[0] > window:
+            self.frame_times.popleft()
+        while self.gate_history and self.gate_history[0][0] < self.frame_times[0]:
+            self.gate_history.popleft()
         if external:
             rotation, probe = 0, False
         elif self.config.runtime.still_images:  # photos are searched per image instead
@@ -386,8 +413,12 @@ class CaptureEngine:
                     rejected['malformed_detection'] = rejected.get('malformed_detection', 0) + 1
         elif self.detector is None:
             raise RuntimeError('No detector configured; pass detections= for upstream observations')
+        elif self._skip_full_detection(timestamp, probe):
+            found = []   # edge mode: faces are followed on their crops (refine.full_detect_period_s)
+            skipped = True
         else:
             found = self.detector.detect(work)
+            self.full_detected, self.full_detected_frame = timestamp, self.frames
             timings['detector'] = (time.perf_counter() - t0) * 1000
         valid = []
         for det in found:
@@ -398,7 +429,10 @@ class CaptureEngine:
                 valid.append(det)
         if probe:  # orientation probe: detection only, no tracking or species gate in these coordinates
             return self._probe(valid, rotation, timestamp, index, rejected, timings, started)
-        if not external and not any(d.score >= self.config.tracker.high_score for d in valid):
+        followed = self.refiner is not None and not external and any(
+            r['misses'] < self.config.refine.carry_frames and r['score'] >= self.config.tracker.high_score
+            for r in self.refiner.rois)
+        if not external and not followed and not any(d.score >= self.config.tracker.high_score for d in valid):
             # Only weak or unrelated faces (e.g. a person): look for the dog's face up close.
             valid = valid + self._roi_zoom(work, timestamp, timings)
         if self.config.runtime.still_images:
@@ -408,11 +442,17 @@ class CaptureEngine:
                 rejected['not_dog'] = not_dog
             return self._process_still(work, valid, timestamp, index, rotation, rejected, timings, started,
                                        search=not any_face and not external)
+        if self.refiner is not None and not external:
+            t0 = time.perf_counter()
+            valid = self.refiner.refine(work, valid, timestamp, full_ran=not skipped)
+            timings['refine'] = (time.perf_counter() - t0) * 1000
         found, roll = self._upright_evidence(valid)
         if not external and self.orientation.report(rotation, False, found, timestamp, roll):
             for track in self.tracker.tracks:  # coordinates change with rotation
                 self._archive(track.id, timestamp)
             self.tracker.reset()
+            if self.refiner is not None:
+                self.refiner.reset()
             self.body_time = self.body_checked = -math.inf
         t0 = time.perf_counter()
         tracks = self.tracker.update(valid, timestamp)
@@ -437,6 +477,14 @@ class CaptureEngine:
         timings['analysis'] = (time.perf_counter() - t0) * 1000
         return self._result(faces, events, index, timestamp, rotation, rejected, timings, started)
 
+    def _skip_full_detection(self, timestamp, probe):
+        period = self.config.refine.full_detect_period_s
+        if self.refiner is None or period <= 0 or probe or self.config.runtime.still_images:
+            return False
+        live = any(r['misses'] == 0 and r['score'] >= self.config.tracker.high_score for r in self.refiner.rois)
+        recent = self.frames - self.full_detected_frame < self.config.refine.full_detect_min_frames
+        return live and (0 <= timestamp - self.full_detected < period or recent)
+
     def _upright_evidence(self, detections):
         confident = [d for d in detections if d.score >= self.config.tracker.new_track_score]
         if not confident:
@@ -451,6 +499,8 @@ class CaptureEngine:
             for track in self.tracker.tracks:  # coordinates change with rotation
                 self._archive(track.id, timestamp)
             self.tracker.reset()
+            if self.refiner is not None:
+                self.refiner.reset()
             self.body_time = self.body_checked = -math.inf
         timings['orientation_probe'] = 1.0
         # Report the base rotation: a probe frame shows nothing and must not look rotated.
@@ -471,17 +521,98 @@ class CaptureEngine:
         face = FaceResult(track.id, det, geometry, state, quality,
                           speed_iod_per_s=speed / max(geometry.iod, 1e-6))
         eligible = in_band and quality.passed and context.shots.eligible_level(quality.level)
+        if in_band and quality.passed and not eligible:
+            self._near_miss(context, frame, det, target, state.view, quality, track.id, index, timestamp, still)
+        if eligible and context.shots.wants(state.view, quality.score):
+            # Landmarks first, sharpness second: a confident but hallucinated face (the model on a
+            # dog lying sideways with closed eyes) must not win on texture or exposure.
+            problem = self._trusted(context, frame, det, target, timestamp, still)
+            if problem:
+                quality.reasons.append(problem)
+                quality.passed, eligible = False, False
         if eligible and context.shots.wants(state.view, quality.score):
             size = self.config.output.aligned_size
             crop = aligned.image if size == aligned.image.shape[0] else align_face(
                 frame, geometry.points, self.template[0], self.template[1], size).image
-            shot = Shot(state.view, track.id, index, timestamp, quality.score, quality, geometry, det,
-                        crop.copy(), frame.copy() if self.config.output.keep_frames else None, rotation,
-                        'still_image' if still else 'stable_view')
+            # The kept frame is turned (losslessly) so the face is upright for the recognizer.
+            k = geometry.upright_k
+            kept, shot_det, shot_geometry = frame, det, geometry
+            if k:
+                kept, matrix = upright_frame(frame, k)
+                shot_det = transform_detection(det, matrix)
+                shot_det.extra['upright_k'] = 0
+                shot_geometry = face_geometry(shot_det, self.config.pose)
+            shot = Shot(state.view, track.id, index, timestamp, quality.score, quality, shot_geometry, shot_det,
+                        crop.copy(), kept.copy() if self.config.output.keep_frames else None,
+                        (rotation + 90 * k) % 360, 'still_image' if still else 'stable_view')
             new, face.accepted = context.shots.offer(shot, state, timestamp)
             events += new
         self.events.extend(events)
+        if self.refiner is not None and not still and det.source != 'external':
+            self.gate_history.append((timestamp, *_place(det), self._gate_status.pop(id(det), 'present')))
         return face, events
+
+    def _unreliable(self, frame, det, target=None):
+        """Reason code if this face's landmarks cannot be trusted for a shot, else None.
+
+        Cheapest first: refined at all and its crop score; image evidence of open eyes;
+        then an open-loop second look on the nearest quarter-turn crop (two model runs):
+        score, eye confidence for the target view, mirror test, agreement.
+        """
+        if self.refiner is None or det.source == 'external':
+            return None
+        f = self.config.refine
+        if not det.extra.get('refined') or det.score < f.min_shot_score:
+            return 'landmarks_unreliable'
+        front = target is not None and target.lower < 0 < target.upper
+        pick = min if front else max      # frontal: both eyes; side: the visible one
+        started = time.perf_counter()
+        contrast = eye_contrast(frame, det)
+        det.extra['eye_contrast'] = contrast
+        if pick(contrast) < f.min_eye_contrast:
+            self._timing('shot_check', started)
+            return 'eyes_not_visible'
+        check = self.refiner.verify(frame, det)
+        det.extra['verify'] = check
+        self._timing('shot_check', started)
+        if (check['score'] < f.min_shot_score
+                or pick(check['eyes']) < (f.min_front_eye_conf if front else f.min_side_eye_conf)
+                or not check['mirror'] <= (f.max_mirror_disagreement if front else f.max_side_mirror_disagreement)
+                or not check['agreement'] <= (f.max_agreement if front else f.max_side_agreement)):
+            return 'landmarks_unreliable'
+        return None
+
+    def _trusted(self, context, frame, det, target, timestamp, still=False):
+        """Shot gate: this frame's landmark checks, and (video) a consistent recent history."""
+        problem = self._unreliable(frame, det, target)
+        if still or self.refiner is None or det.source == 'external':
+            return problem
+        f = self.config.refine
+        self._gate_status[id(det)] = 'fail' if problem else 'pass'
+        if problem:
+            return problem
+        cx, cy, size = _place(det)
+        here = [e for e in self.gate_history if math.hypot(e[1] - cx, e[2] - cy) <= 0.5 * max(e[3], size)]
+        passes = 1 + sum(1 for e in here if e[4] == 'pass')
+        fails = sum(1 for e in here if e[4] == 'fail')
+        missing = max(0, len(self.frame_times) - 1 - len({e[0] for e in here}))   # frames with no face here
+        if passes < f.gate_min_passes or passes < f.gate_min_ratio * (passes + fails + missing):
+            return 'landmarks_unstable'
+        return None
+
+    def _near_miss(self, context, frame, det, target, view, quality, track_id, index, timestamp, still=False):
+        best = self.near_misses.get(view)
+        if best is not None and best['score'] >= quality.score:
+            return
+        if self._trusted(context, frame, det, target, timestamp, still):
+            return   # not a credible face: never shown as "almost"
+        self.near_misses[view] = {'view': view, 'frame_index': index, 'time_s': round(timestamp, 4),
+                                  'track_id': track_id, 'score': round(quality.score, 4), 'level': quality.level,
+                                  'needed': self.config.selection.min_level,
+                                  'weakest': min(quality.factors, key=quality.factors.get) if quality.factors else None}
+
+    def _timing(self, name, started):
+        self._timings[name] = self._timings.get(name, 0) + (time.perf_counter() - started) * 1000
 
     def _process_still(self, frame, detections, timestamp, index, rotation, rejected, timings, started,
                        search=False):
@@ -498,6 +629,8 @@ class CaptureEngine:
                     frame, detections, rotation = rotated, found, degrees
                     break
         faces, events = [], []
+        if detections and self.refiner is not None and not self._external:
+            detections = self.refiner.refine(frame, detections, timestamp, still=True)
         if detections:
             det = max(detections, key=lambda d: d.width * d.height * d.score)
             track = Track(0, det, timestamp, self.tracker.kalman)
@@ -559,6 +692,8 @@ class CaptureEngine:
         if self.detector is None:
             raise RuntimeError('verify_shot needs a face detector')
         found = [d for d in self.detector.detect(frame) if d.validate() is None]
+        if found and self.refiner is not None:
+            found = self.refiner.refine(frame, found, 0.0, still=True)
         reasons = []
         if not found:
             return {'ok': False, 'reasons': ['no_face'], 'faces': 0}
@@ -592,6 +727,10 @@ class CaptureEngine:
         target = self.views.get(claimed_view) if claimed_view else self.views.get(view)
         quality, _ = self.assessor.assess(frame, det, geometry, target, 0.0)
         reasons += quality.reasons
+        self._timings = timings
+        problem = self._unreliable(frame, det, target) if quality.passed else None
+        if problem:
+            reasons.append(problem)
         if claimed_view is not None and view != claimed_view:
             reasons.append('view_mismatch')
         if quality.passed and not TrackShots.level_ok(quality.level, self.config.selection.min_level):

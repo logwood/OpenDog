@@ -144,7 +144,7 @@ token 一次有效：重复提交返回 `409 token_used`；token 与会话不符
 | `missing_file` / `bad_image` | 图片缺失 / 无法解码 | `quality_too_low` 及质量分项码 | 质量不足（模糊、过暗、过曝、太小、遮挡…） |
 | `image_size_out_of_range` / `file_too_large` | 尺寸或体积不合规 | `recognition_unstable` | 识别模型对轻微裁剪不稳定 |
 | `no_face` / `not_dog` | 没有狗脸 / 不像狗 | `identity_inconsistent` | 与其他照片不像同一只狗 |
-| `claimed_face_not_found` | 与采集时的狗脸位置不一致 | | |
+| `claimed_face_not_found` | 与采集时的狗脸位置不一致 | `landmarks_unreliable` / `eyes_not_visible` | 五官位置无法确认 / 看不到睁开的眼睛（第二阶段核实） |
 
 ## 6. Token
 

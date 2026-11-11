@@ -1,7 +1,8 @@
 /**
  * CaptureEngine (video mode) — port of dog_capture/engine/engine.py:
- * detection -> ROI zoom fallback -> ByteTrack -> per-track species gate ->
- * pose -> debounced view -> aligned-crop quality -> best shot -> guidance.
+ * detection -> ROI zoom fallback -> canonical upright crop (refine.ts) -> ByteTrack ->
+ * per-track species gate -> pose -> debounced view -> aligned-crop quality ->
+ * landmark verification -> best shot -> guidance.
  */
 import { alignFace } from './alignment';
 import { defaultConfig, mergeConfig, type CaptureConfig, type ViewSpec } from './config';
@@ -10,6 +11,7 @@ import { guidance, type Guidance } from './guidance';
 import { crop, mirror, rotate, type Frame } from './image';
 import { faceGeometry, ViewClassifier, type FaceGeometry, type ViewState } from './pose';
 import { QualityAssessor, type QualityReport } from './quality';
+import { eyeContrast, FaceRefiner, transformDetection, uprightFrame } from './refine';
 import { detectionReason, height, iou, width, type Box, type Detection } from './schema';
 import { TrackShots, type CaptureEvent, type Shot } from './selection';
 import { ByteTracker, type Track } from './tracking';
@@ -132,6 +134,19 @@ export class CaptureEngine {
   private roiChecked = -Infinity;
   private history: [number, Guidance][] = [];
   private shownCode: string | null = null;
+  readonly refiner: FaceRefiner | null;
+  private fullDetected = -Infinity;
+  private fullDetectedFrame = -1e9;
+  private timings: Record<string, number> = {};
+  /** (time, cx, cy, size, 'pass' | 'fail' | 'present') per analysed face, keyed by place (not track id) */
+  private gateHistory: [number, number, number, number, string][] = [];
+  private frameTimes: number[] = [];
+  private gateStatus = new Map<Detection, string>();
+  /** Track near misses (each costs a landmark check); the H5 does not show them. */
+  trackNearMisses = false;
+  /** Per view: the best verified face that missed only the quality level (for review). */
+  nearMisses = new Map<string, { view: string; frameIndex: number; timeS: number; trackId: number; score: number;
+    level: string; needed: string; weakest: string | null }>();
 
   constructor(config: Partial<CaptureConfig> | Record<string, unknown> = {}, public detector: FaceDetector | null = null,
     public bodyGate: BodyGate | null = null, mask?: Uint8Array) {
@@ -142,6 +157,15 @@ export class CaptureEngine {
     this.assessor = new QualityAssessor(this.config.quality, mask);
     this.tracker = new ByteTracker(this.config.tracker);
     this.orientation = new OrientationLock(this.config.runtime.rotate);
+    this.refiner = detector && this.config.refine.enabled ? new FaceRefiner(detector, this.config.refine) : null;
+  }
+
+  private skipFullDetection(t: number, probe: boolean) {
+    const period = this.config.refine.full_detect_period_s;
+    if (!this.refiner || period <= 0 || probe) return false;
+    const live = this.refiner.rois.some((r) => r.misses === 0 && r.score >= this.config.tracker.high_score);
+    const recent = this.frames - this.fullDetectedFrame < this.config.refine.full_detect_min_frames;
+    return live && ((t - this.fullDetected >= 0 && t - this.fullDetected < period) || recent);
   }
 
   private context(id: number): Context {
@@ -277,6 +301,12 @@ export class CaptureEngine {
     this.previousTime = t;
     this.frames += 1;
     const timings: Record<string, number> = {}, rejected: Record<string, number> = {};
+    this.timings = timings;
+    let skipped = false;
+    const window = this.config.refine.gate_window_s, keep = this.config.refine.gate_min_frames;
+    this.frameTimes.push(t);
+    while (this.frameTimes.length > keep && t - this.frameTimes[0] > window) this.frameTimes.shift();
+    while (this.gateHistory.length && this.gateHistory[0][0] < this.frameTimes[0]) this.gateHistory.shift();
     const external = detections !== undefined;
     const [rotation, probe] = external ? [0, false] : this.orientation.next(t);
     let work = rotate(frame, rotation);
@@ -285,7 +315,11 @@ export class CaptureEngine {
     const t0 = now();
     if (external) found = detections!;
     else if (!this.detector) throw new Error('No detector configured; pass detections for upstream observations');
-    else { found = await this.detector.detect(work); timings.detector = now() - t0; }
+    else if (this.skipFullDetection(t, probe)) { found = []; skipped = true; }   // edge mode: faces followed on their crops
+    else {
+      found = await this.detector.detect(work);
+      this.fullDetected = t; this.fullDetectedFrame = this.frames; timings.detector = now() - t0;
+    }
     let valid: Detection[] = [];
     for (const det of found) {
       const reason = detectionReason(det);
@@ -297,8 +331,15 @@ export class CaptureEngine {
       timings.orientation_probe = 1;
       return this.result([], [], index, t, this.orientation.rotation, rejected, timings, started);
     }
-    if (!external && !valid.some((d) => d.score >= this.config.tracker.high_score)) {
+    const followed = !!this.refiner && !external && this.refiner.rois.some(
+      (r) => r.misses < this.config.refine.carry_frames && r.score >= this.config.tracker.high_score);
+    if (!external && !followed && !valid.some((d) => d.score >= this.config.tracker.high_score)) {
       valid = valid.concat(await this.roiZoom(work, t, timings));
+    }
+    if (this.refiner && !external) {
+      const tr = now();
+      valid = await this.refiner.refine(work, valid, t, false, !skipped);
+      timings.refine = now() - tr;
     }
     const [ok, roll] = this.uprightEvidence(valid);
     if (!external && this.orientation.report(rotation, false, ok, t, roll)) this.resetForRotation(t);
@@ -317,7 +358,7 @@ export class CaptureEngine {
     const t2 = now();
     const faces: FaceResult[] = [], events: CaptureEvent[] = [];
     for (const track of tracks) {
-      const [face, newEvents] = this.analyse(work, track, t, index, rotation);
+      const [face, newEvents] = await this.analyse(work, track, t, index, rotation);
       faces.push(face); events.push(...newEvents);
     }
     timings.analysis = now() - t2;
@@ -327,10 +368,11 @@ export class CaptureEngine {
   private resetForRotation(t: number) {
     for (const track of this.tracker.tracks) this.archive(track.id, t);
     this.tracker.reset();
+    this.refiner?.reset();
     this.bodyTime = this.bodyChecked = -Infinity;
   }
 
-  private analyse(frame: Frame, track: Track, t: number, index: number, rotation: number): [FaceResult, CaptureEvent[]] {
+  private async analyse(frame: Frame, track: Track, t: number, index: number, rotation: number): Promise<[FaceResult, CaptureEvent[]]> {
     const ctx = this.context(track.id);
     const det = track.detection;
     const geometry = faceGeometry(det, this.config.pose);
@@ -344,17 +386,90 @@ export class CaptureEngine {
     const { report, aligned } = this.assessor.assess(frame, det, geometry, target, speed, full);
     const face: FaceResult = { trackId: track.id, detection: det, geometry, viewState: state, quality: report,
       accepted: false, speedIodPerS: speed / Math.max(geometry.iod, 1e-6) };
-    const eligible = inBand && report.passed && ctx.shots.eligibleLevel(report.level);
+    let eligible = inBand && report.passed && ctx.shots.eligibleLevel(report.level);
+    if (inBand && report.passed && !eligible && this.trackNearMisses) {
+      await this.nearMiss(ctx, frame, det, target, state.view!, report, track.id, index, t);
+    }
     if (eligible && aligned && ctx.shots.wants(state.view!, report.score)) {
+      // Landmarks first, sharpness second: a confident hallucination must not win on texture.
+      const problem = await this.trusted(ctx, frame, det, target, t);
+      if (problem) { report.reasons.push(problem); report.passed = false; eligible = false; }
+    }
+    if (eligible && aligned && ctx.shots.wants(state.view!, report.score)) {
+      // The kept frame is turned (losslessly) so the face is upright for the recognizer.
+      const k = geometry.upright_k;
+      let uprightImage = frame, shotDet = det, shotGeometry = geometry;
+      if (k) {
+        const turned = uprightFrame(frame, k);
+        uprightImage = turned.frame;
+        shotDet = transformDetection(det, turned.matrix);
+        shotDet.extra = { ...(shotDet.extra ?? {}), upright_k: 0 };
+        shotGeometry = faceGeometry(shotDet, this.config.pose);
+      }
       const shot: Shot = { view: state.view!, trackId: track.id, frameIndex: index, timeS: t, score: report.score,
-        quality: report, geometry, detection: det, frame: this.config.output.keep_frames ? copyFrame(frame) : null,
-        rotationDeg: rotation, confirmedAt: null };
+        quality: report, geometry: shotGeometry, detection: shotDet,
+        frame: this.config.output.keep_frames ? copyFrame(uprightImage) : null, rotationDeg: (rotation + 90 * k) % 360,
+        confirmedAt: null };
       const [newEvents, kept] = ctx.shots.offer(shot, state, t);
       face.accepted = kept;
       events.push(...newEvents);
     }
     this.pushEvents(events);
+    if (this.refiner && det.source !== 'external') {
+      this.gateHistory.push([t, ...place(det), this.gateStatus.get(det) ?? 'present']);
+      this.gateStatus.delete(det);
+    }
     return [face, events];
+  }
+
+  /** Reason code if this face's landmarks cannot be trusted for a shot (see engine.py _unreliable). */
+  private async unreliable(frame: Frame, det: Detection, target: ViewSpec | null): Promise<string | null> {
+    if (!this.refiner || det.source === 'external') return null;
+    const f = this.config.refine;
+    if (!det.extra?.refined || det.score < f.min_shot_score) return 'landmarks_unreliable';
+    const front = target !== null && target.lower < 0 && 0 < target.upper;
+    const pick = (v: [number, number]) => (front ? Math.min(...v) : Math.max(...v));
+    const started = now();
+    const contrast = eyeContrast(frame, det);
+    det.extra.eye_contrast = contrast;
+    if (pick(contrast) < f.min_eye_contrast) {
+      this.timings.shot_check = (this.timings.shot_check ?? 0) + now() - started;
+      return 'eyes_not_visible';
+    }
+    const check = await this.refiner.verify(frame, det);
+    det.extra.verify = check;
+    this.timings.shot_check = (this.timings.shot_check ?? 0) + now() - started;
+    if (check.score < f.min_shot_score || pick(check.eyes) < (front ? f.min_front_eye_conf : f.min_side_eye_conf)
+      || !(check.mirror <= (front ? f.max_mirror_disagreement : f.max_side_mirror_disagreement))
+      || !(check.agreement <= (front ? f.max_agreement : f.max_side_agreement))) return 'landmarks_unreliable';
+    return null;
+  }
+
+  /** Shot gate: this frame's landmark checks and a consistent recent history on the track. */
+  private async trusted(ctx: Context, frame: Frame, det: Detection, target: ViewSpec | null, t: number): Promise<string | null> {
+    void ctx; void t;
+    const problem = await this.unreliable(frame, det, target);
+    if (!this.refiner || det.source === 'external') return problem;
+    const f = this.config.refine;
+    this.gateStatus.set(det, problem ? 'fail' : 'pass');
+    if (problem) return problem;
+    const [cx, cy, size] = place(det);
+    const here = this.gateHistory.filter(([, x, y, s]) => Math.hypot(x - cx, y - cy) <= 0.5 * Math.max(s, size));
+    const passes = 1 + here.filter((e) => e[4] === 'pass').length;
+    const fails = here.filter((e) => e[4] === 'fail').length;
+    const missing = Math.max(0, this.frameTimes.length - 1 - new Set(here.map((e) => e[0])).size);
+    return passes < f.gate_min_passes || passes < f.gate_min_ratio * (passes + fails + missing) ? 'landmarks_unstable' : null;
+  }
+
+  private async nearMiss(ctx: Context, frame: Frame, det: Detection, target: ViewSpec | null, view: string,
+    report: QualityReport, trackId: number, index: number, t: number) {
+    const best = this.nearMisses.get(view);
+    if (best && best.score >= report.score) return;
+    if (await this.trusted(ctx, frame, det, target, t)) return;   // never shown as "almost" unless verified
+    const factors = Object.entries(report.factors ?? {});
+    this.nearMisses.set(view, { view, frameIndex: index, timeS: t, trackId, score: report.score, level: report.level,
+      needed: this.config.selection.min_level,
+      weakest: factors.length ? factors.reduce((a, b) => (b[1] < a[1] ? b : a))[0] : null });
   }
 
   private debounce(advice: Guidance, t: number, windowS = 0.6): Guidance {
@@ -431,6 +546,10 @@ export class CaptureEngine {
     if (!shot.frame || !shot.geometry) return null;
     return alignFace(shot.frame, shot.geometry.points, size).image;
   }
+}
+
+function place(d: Detection): [number, number, number] {
+  return [(d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2, Math.max(d.box[2] - d.box[0], d.box[3] - d.box[1])];
 }
 
 function copyFrame(frame: Frame): Frame {

@@ -9,7 +9,7 @@ import type { Shot, TrackShots } from './selection';
 export const PROTOCOL = 'dog-capture/1';
 export const SDK_VERSION = 'dog-capture-sdk/1.0.0';
 
-export interface ModelInfo { url: string; sha256: string; bytes?: number; kind?: string; schema?: string; input_size?: number; kpt_shape?: number[] }
+export interface ModelInfo { url: string; sha256: string; bytes?: number; kind?: string; schema?: string; input_size?: number; kpt_shape?: number[]; yaw_scale?: number }
 export interface SessionConfig {
   protocol: string; session_id: string; purpose: 'enroll' | 'identify';
   policy: { name: string; views: CaptureConfig['pose']['views']; view_order: string[]; max_duration_s: number;
@@ -70,7 +70,8 @@ export async function createEngine(config: SessionConfig, models: { face: ArrayB
   const kpt = (faceInfo.kpt_shape ?? [6, 3]) as [number, number];
   const detector = new YoloPoseDetector(faceRunner, { kpt, schema: faceInfo.schema,
     scoreThreshold: config.engine.detector.score_threshold, nmsIou: config.engine.detector.nms_iou,
-    maxFaces: config.engine.detector.max_faces });
+    maxFaces: config.engine.detector.max_faces,
+    yawScale: typeof faceInfo.yaw_scale === 'number' ? faceInfo.yaw_scale : undefined });
   let gate = null, gateProviders: string[] = [];
   if (models.gate && config.models.gate) {
     const gateRunner = await createOrtRunner(ort, models.gate, providers);

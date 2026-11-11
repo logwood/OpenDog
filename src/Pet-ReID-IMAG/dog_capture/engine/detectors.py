@@ -15,6 +15,7 @@ Adapters: ``LegacyDogFlwDetector`` wraps the v0.x DogFLW TFLite cascade.
 from __future__ import annotations
 
 import ast
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -131,6 +132,11 @@ class YoloPoseDetector(OnnxDetector):
             self.schema = get_schema({6: 'dogface6', 5: 'anyface5', 3: 'core3'}.get(self.num_kpts, ''))
         if len(self.schema) != self.num_kpts:
             raise ValueError(f'{model}: {self.num_kpts} keypoints do not fit schema {self.schema.name}')
+        if self.sidecar.get('yaw_scale') is not None:   # per-model yaw calibration (see schema.DOGFACE6)
+            value = float(self.sidecar['yaw_scale'])
+            if not 0.2 <= value <= 5:
+                raise ValueError(f'{model}: sidecar yaw_scale {value} out of range')
+            self.schema = replace(self.schema, yaw_scale=value)
         if named is not None and self.schema.names != named.names:
             raise ValueError(f'{model}: keypoint names/order disagree with schema {self.schema.name}')
         names = self.metadata.get('names')

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
-  ByteTracker, SETTLE_FACTOR, blurEffect, coreMask, defaultConfig, eyePatches, faceGeometry, fromBGR, getSchema, guidance,
+  ByteTracker, SETTLE_FACTOR, blurEffect, cropMatrix, eyeContrast, eyeLineDeg, rotationMatrix, uprightFrame, coreMask, defaultConfig, eyePatches, faceGeometry, fromBGR, getSchema, guidance,
   laplacianEnergy, mergeConfig, OneEuroFilter, QualityAssessor, similarity, toGray, TrackShots, ViewClassifier,
   type Detection, type Point,
 } from '../src';
@@ -36,8 +36,10 @@ describe('configuration', () => {
 describe('geometry', () => {
   it('matches every case', () => {
     for (const c of load('geometry.json')) {
-      const det: Detection = { box: c.box, score: 0.9, keypoints: c.keypoints, schema: getSchema(c.schema), kpScores: c.kp_scores };
+      const det: Detection = { box: c.box, score: 0.9, keypoints: c.keypoints, schema: getSchema(c.schema), kpScores: c.kp_scores,
+        extra: { upright_k: c.upright_k ?? 0 } };
       const g = faceGeometry(det, config.pose);
+      expect(g.upright_k).toBe(c.upright_k ?? 0);
       const e = c.expected;
       expect(g.valid, JSON.stringify(c.keypoints)).toBe(e.valid);
       expect(g.reason).toBe(e.reason);
@@ -47,6 +49,33 @@ describe('geometry', () => {
       for (const [name, p] of Object.entries(e.points as Record<string, Point>)) {
         close(g.points[name][0], p[0], 1e-3); close(g.points[name][1], p[1], 1e-3);
       }
+    }
+  });
+});
+
+describe('refine (canonical upright crops)', () => {
+  const c = load('refine.json');
+  const mat = (m: number[][], e: number[][], tol: number) => m.forEach((row, i) => row.forEach((v, j) => close(v, e[i][j], tol)));
+  it('rotates and crops like the reference', () => {
+    for (const x of c.rotation) mat(rotationMatrix(x.angle, x.size), x.expected, 1e-6);
+    for (const x of c.crop) mat(cropMatrix(x.box, x.angle, x.share, x.size), x.expected, 1e-5);
+    for (const x of c.upright) {
+      const frame = { width: x.width, height: x.height, data: new Uint8ClampedArray(x.width * x.height * 4) };
+      mat(uprightFrame(frame, x.k).matrix, x.expected, 0);
+    }
+  });
+  it('measures the eye-line tilt', () => {
+    for (const x of c.tilt) {
+      close(eyeLineDeg({ box: [0, 0, 1, 1], score: 1, keypoints: x.keypoints, schema: getSchema('anyface5') }), x.expected, 1e-4);
+    }
+  });
+  it('measures eye evidence on a real image', () => {
+    const [h, w] = c.frame_bgr.shape;
+    const frame = fromBGR(unpack(c.frame_bgr), w, h);
+    for (const x of c.contrast) {
+      const v = eyeContrast(frame, { box: [0, 0, 1, 1], score: 1, keypoints: x.keypoints, schema: getSchema('anyface5') });
+      // bilinear warp: cv2 uses 5-bit fixed point, this port floats -> a few grey levels apart
+      v.forEach((value, i) => close(value, x.expected[i], 0.03));
     }
   });
 });

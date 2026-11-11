@@ -11,9 +11,10 @@ export const ANYFACE5: KeypointSchema = {
   name: 'anyface5', names: ['left_eye', 'right_eye', 'nose', 'left_mouth', 'right_mouth'],
   pairs: [['left_eye', 'right_eye'], ['left_mouth', 'right_mouth']], yawScale: 1.0,
 };
+/** yawScale fitted on the student's predictions (see schema.py DOGFACE6); a model sidecar may override it. */
 export const DOGFACE6: KeypointSchema = {
   name: 'dogface6', names: ['left_eye', 'right_eye', 'nose', 'chin', 'left_ear_base', 'right_ear_base'],
-  pairs: [['left_eye', 'right_eye'], ['left_ear_base', 'right_ear_base']], yawScale: 1.9,
+  pairs: [['left_eye', 'right_eye'], ['left_ear_base', 'right_ear_base']], yawScale: 1.05,
 };
 export const CORE3: KeypointSchema = {
   name: 'core3', names: ['left_eye', 'right_eye', 'nose'], pairs: [['left_eye', 'right_eye']], yawScale: 1.0,
@@ -39,6 +40,8 @@ export interface Detection {
   bodyBox?: Box | null;
   bodyScore?: number | null;
   source?: string;
+  /** refinement results: upright_angle, upright_k, refined, carried, eye_contrast, verify, ... */
+  extra?: Record<string, unknown>;
 }
 
 export function detectionReason(d: Detection): string | null {
@@ -64,7 +67,18 @@ export function detectionToJSON(d: Detection) {
   if (d.kpScores) out.kp_scores = d.kpScores.map((v) => Math.round(v * 1e4) / 1e4);
   if (d.bodyBox) { out.body_box = d.bodyBox.map(r2); out.body_score = d.bodyScore ?? null; }
   if (d.source) out.source = d.source;
+  for (const key of ['upright_k', 'upright_angle', 'refined', 'eye_contrast', 'verify']) {
+    if (d.extra && key in d.extra) out[key] = plain(d.extra[key]);
+  }
   return out;
+}
+
+/** JSON-friendly copy of a small diagnostic value (numbers rounded, non-finite -> null). */
+function plain(item: unknown): unknown {
+  if (Array.isArray(item)) return item.map(plain);
+  if (item && typeof item === 'object') return Object.fromEntries(Object.entries(item).map(([k, v]) => [k, plain(v)]));
+  if (typeof item === 'number') return Number.isFinite(item) ? Math.round(item * 1e4) / 1e4 : null;
+  return item;
 }
 
 /** IoU of two xyxy boxes, computed in float32 like the reference. */

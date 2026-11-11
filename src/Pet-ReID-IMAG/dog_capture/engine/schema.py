@@ -44,17 +44,32 @@ class KeypointSchema:
 ANYFACE5 = KeypointSchema(
     'anyface5', ('left_eye', 'right_eye', 'nose', 'left_mouth', 'right_mouth'),
     (('left_eye', 'right_eye'), ('left_mouth', 'right_mouth')))
-# Face subset of the StanfordExtra / Ultralytics dog-pose 24 keypoints.  Its
-# nose is the nose *tip*: on 347 validation faces the tip-based yaw cue was
-# 1.90 x the nose-centre cue (correlation 0.95).
+# Face subset of the StanfordExtra / Ultralytics dog-pose 24 keypoints (nose = tip).
+# yaw_scale must be fitted on a model's *predictions*: human-labelled tips gave
+# 1.90 x the DogFLW nose-centre cue, but the dogface6 student's own eyes + nose
+# (refined upright crops, 497 dogface6-val faces) give 1.04 (correlation 0.81);
+# with 1.90 a DogFLW side view (0.25-0.45) read 0.16, inside the gap between bands.
+# A model may override it with "yaw_scale" in its JSON sidecar.
 DOGFACE6 = KeypointSchema(
     'dogface6', ('left_eye', 'right_eye', 'nose', 'chin', 'left_ear_base', 'right_ear_base'),
-    (('left_eye', 'right_eye'), ('left_ear_base', 'right_ear_base')), yaw_scale=1.90)
+    (('left_eye', 'right_eye'), ('left_ear_base', 'right_ear_base')), yaw_scale=1.05)
 # Minimal schema: eye centres and nose (e.g. reduced DogFLW 46-point output).
 CORE3 = KeypointSchema('core3', ('left_eye', 'right_eye', 'nose'), (('left_eye', 'right_eye'),))
 
 SCHEMAS = {s.name: s for s in (ANYFACE5, DOGFACE6, CORE3)}
 REQUIRED = ('left_eye', 'right_eye', 'nose')
+
+
+def _plain(item):
+    """JSON-friendly copy of a small diagnostic value (floats rounded, inf -> None)."""
+    if isinstance(item, dict):
+        return {k: _plain(v) for k, v in item.items()}
+    if isinstance(item, (list, tuple)):
+        return [_plain(v) for v in item]
+    if isinstance(item, (bool, int, str)) or item is None:
+        return item
+    value = float(item)
+    return round(value, 4) if math.isfinite(value) else None
 
 
 def get_schema(value) -> KeypointSchema:
@@ -132,6 +147,9 @@ class Detection:
             value['body_score'] = None if self.body_score is None else round(float(self.body_score), 4)
         if self.source:
             value['source'] = self.source
+        for key in ('upright_k', 'upright_angle', 'refined', 'eye_contrast', 'verify'):
+            if key in self.extra:
+                value[key] = _plain(self.extra[key])
         return value
 
     @classmethod

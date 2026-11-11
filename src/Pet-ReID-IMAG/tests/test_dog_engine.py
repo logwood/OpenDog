@@ -582,3 +582,126 @@ def test_per_view_shot_counts_and_required_views():
     front = shots.slots['front']
     assert len(front) == 2 and abs(front[0].time_s - front[1].time_s) >= .3
     assert engine.complete()  # right is optional
+
+
+# ---------------------------------------------------------------- canonical upright crops (refine.py)
+from dog_capture.engine.refine import (apply, crop_matrix, eye_contrast, rotation_matrix,  # noqa: E402
+                                       upright_frame)
+from dog_engine_synthetic import BlobDetector  # noqa: E402
+
+
+def refined_engine(detector, **overrides):
+    return CaptureEngine(CaptureConfig().merged({'runtime': {'rotate': '0'}, **overrides}), detector)
+
+
+def test_rotation_matrix_quarter_turns_match_cv2_rotate():
+    image = (np.arange(12 * 12 * 3) % 251).astype(np.uint8).reshape(12, 12, 3)
+    for k, code in ((1, cv2.ROTATE_90_CLOCKWISE), (2, cv2.ROTATE_180), (3, cv2.ROTATE_90_COUNTERCLOCKWISE)):
+        warped = cv2.warpAffine(image, rotation_matrix(90 * k, 12)[:2], (12, 12), flags=cv2.INTER_NEAREST)
+        assert np.array_equal(warped, cv2.rotate(image, code))
+
+
+def test_upright_frame_maps_points_with_the_pixels():
+    image = np.zeros((40, 64, 3), np.uint8)
+    image[7, 50] = 255
+    for k in range(4):
+        turned, matrix = upright_frame(image, k)
+        x, y = np.round(apply(matrix, [[50, 7]])[0]).astype(int)
+        assert turned[y, x].max() == 255
+
+
+def test_crop_matrix_puts_the_face_at_the_canonical_share():
+    matrix = crop_matrix((100, 100, 200, 160), 0.0, 0.35, 320)
+    centre = apply(matrix, [[150, 130]])[0]
+    assert np.allclose(centre, [160, 160])
+    assert np.isclose(matrix[0, 0], 320 / (100 / 0.35))
+
+
+def test_refiner_turns_a_lying_dog_upright_and_stores_the_shot_upright():
+    for roll in (90.0, -90.0, 180.0):
+        image, _ = render(roll=roll)
+        engine = refined_engine(BlobDetector())
+        for i in range(20):
+            result = engine.process(image, i / 30, i)
+        face = result.faces[0]
+        assert abs(face.geometry.roll_deg) < 5 and face.geometry.upright_k in (1, 2, 3)
+        shot = engine.finalize().best('front')
+        assert shot.rotation_deg == 90 * face.geometry.upright_k
+        assert shot.frame.shape[:2] == (image.shape[1::-1] if face.geometry.upright_k % 2 else image.shape[:2])
+        gray = cv2.cvtColor(shot.frame, cv2.COLOR_BGR2GRAY)
+        for x, y in np.round(shot.detection.keypoints[:2]).astype(int):   # eyes are on dark eye pixels
+            assert gray[y - 3:y + 4, x - 3:x + 4].min() < 60
+        assert abs(shot.geometry.roll_deg) < 5 and shot.geometry.upright_k == 0
+
+
+def test_residual_roll_still_limits_the_view():
+    image, _ = render(roll=35.0)   # between quarter turns: the stored frame would stay tilted
+    engine = refined_engine(BlobDetector())
+    for i in range(20):
+        result = engine.process(image, i / 30, i)
+    assert abs(result.faces[0].geometry.roll_deg) > 30
+    assert engine.finalize() is None
+
+
+def test_refiner_carries_a_face_the_full_frame_detector_misses():
+    image, _ = render(roll=90.0)
+    detector = BlobDetector(crops_only=True)   # the full-frame detector finds it once, then never
+    engine = refined_engine(detector, refine={'full_detect_period_s': 0.0})   # ... and runs every frame
+    results = [engine.process(image, i / 30, i) for i in range(12)]
+    assert all(r.faces for r in results[1:4])          # frame 0: new track unconfirmed; then carried ...
+    assert results[3].faces[0].detection.extra['carried']
+    assert not results[-1].faces                       # ... but a detector that ran and missed wins
+    # edge mode: the full-frame detector is skipped on purpose, so a confident crop keeps the face
+    detector = BlobDetector(crops_only=True)
+    engine = refined_engine(detector, refine={'full_detect_period_s': 10.0})
+    results = [engine.process(image, i / 30, i) for i in range(12)]
+    assert detector.full_calls == 1 and all(r.faces for r in results[1:])
+
+
+def test_shot_gate_rejects_eyes_without_image_evidence():
+    image, _ = render()
+    engine = refined_engine(BlobDetector(eye_shift=0.45))   # "eyes" reported on plain fur
+    for i in range(20):
+        result = engine.process(image, i / 30, i)
+    assert engine.finalize() is None
+    face = result.faces[0]
+    assert 'eyes_not_visible' in face.quality.reasons or not face.quality.passed
+    assert result.guidance['code'] in ('eyes_or_nose_occluded', 'pose_unresolved', 'hold_still')
+
+
+def test_eye_contrast_is_high_on_drawn_eyes_and_low_on_fur():
+    image, dets = render()
+    det = dets[0]
+    assert min(eye_contrast(image, det)) > 0.5
+    det.keypoints[:2] -= [0, 0.45 * 90]
+    assert max(eye_contrast(image, det)) < 0.15
+
+
+def test_near_miss_is_reported_for_a_verified_face_below_the_level():
+    image, _ = render(blur=1.0)
+    engine = refined_engine(BlobDetector(), selection={'min_level': 'high'}, quality={'high_level': 0.99})
+    for i in range(20):
+        engine.process(image, i / 30, i)
+    assert engine.finalize() is None
+    miss = engine.near_misses['front']
+    assert miss['needed'] == 'high' and miss['level'] in ('medium', 'low') and miss['weakest']
+
+
+def test_temporal_gate_rejects_a_face_that_only_sometimes_passes():
+    # a hallucination flickers: verified on two frames, then not found at all for six (user video: 3 in 16)
+    image, _ = render()
+    detector = BlobDetector()
+    engine = refined_engine(detector)
+    reasons = set()
+    for i in range(48):
+        detector.blank = i % 8 > 1
+        result = engine.process(image, i / 30, i)
+        reasons.update(result.faces[0].quality.reasons if result.faces else [])
+    assert engine.finalize() is None
+    assert 'landmarks_unstable' in reasons
+    # the same face seen on every frame is captured
+    detector.blank = False
+    engine = refined_engine(BlobDetector())
+    for i in range(45):
+        engine.process(image, i / 30, i)
+    assert engine.finalize() is not None

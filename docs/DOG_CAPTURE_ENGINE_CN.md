@@ -177,6 +177,11 @@ Ultralytics 还能直接导出 TFLite / CoreML / NCNN / RKNN / OpenVINO / Tensor
 
 ## 8. 配置要点
 
+**2026-11-11 起的第二阶段重定位（`refine`）**：每张脸在规范化裁剪上重新定位（脸占 35%，整 90° 搜索 + 眼线细调），
+选图前再做三层核实（开环复查、眼睛图像证据、同一位置的时间稳定性），`dogface6` 的 `yaw_scale` 由 1.90 改为 1.05。
+依据和数字见 [`DOG_CAPTURE_USER_VIDEO_ANALYSIS_CN.md`](DOG_CAPTURE_USER_VIDEO_ANALYSIS_CN.md)。新的拒绝原因：
+`landmarks_unreliable`（五官位置无法确认）、`eyes_not_visible`（看不到睁开的眼睛）、`landmarks_unstable`（时有时无）。
+
 `python -m dog_capture config --write my.yaml` 会导出全部参数。常改的几项：
 
 ```yaml

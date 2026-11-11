@@ -41,12 +41,13 @@ class FaceGeometry:
     points: dict = field(default_factory=dict)  # canonical name -> (2,) frame coordinates
     scores: dict = field(default_factory=dict)  # canonical name -> keypoint confidence
     iod: float = 0.0                 # inter-ocular distance (pixels)
-    roll_deg: float = 0.0            # eye-line angle; 0 = upright
+    roll_deg: float = 0.0            # eye-line angle after the face's quarter turn; 0 = upright
     yaw: float = 0.0                 # dimensionless cue, negative = nose to the image left
     pitch: float = 0.0               # nose drop below the eye line / iod
     lower_yaw: float | None = None   # mouth-midpoint or chin cue, if present
     approx_deg: float = 0.0          # display only
     swapped: bool = False            # detector eye order was reversed
+    upright_k: int = 0               # quarter turns (clockwise) that make the face upright
     valid: bool = False
     reason: str = 'no_face'
 
@@ -88,14 +89,18 @@ def face_geometry(detection, config) -> FaceGeometry:
     scale = detection.schema.yaw_scale  # express the cue in reference (nose-centre) units
     yaw = float(offset @ horizontal / span) / scale
     pitch = float(offset @ normal / span)
-    roll = math.degrees(math.atan2(horizontal[1], horizontal[0]))
+    # Roll is measured in the face's upright orientation: a dog lying down with its face turned by
+    # a quarter turn (detection.extra['upright_k'], see refine.py) is upright for pose purposes.
+    upright_k = int(getattr(detection, 'extra', {}).get('upright_k', 0)) % 4
+    roll = math.degrees(math.atan2(horizontal[1], horizontal[0])) + 90.0 * upright_k
+    roll = (roll + 180.0) % 360.0 - 180.0
     lower = None
     if 'left_mouth' in points and 'right_mouth' in points:
         lower = float(((points['left_mouth'] + points['right_mouth']) / 2 - mid) @ horizontal / span) / scale
     elif 'chin' in points and (not scores or scores.get('chin', 1) >= 0.3):
         lower = float((points['chin'] - mid) @ horizontal / span) / scale
     geometry = FaceGeometry(points, scores, span, roll, yaw, pitch, lower,
-                            math.degrees(math.atan2(yaw, config.snout_factor)), swapped)
+                            math.degrees(math.atan2(yaw, config.snout_factor)), swapped, upright_k=upright_k)
     box_w = max(detection.width, detection.height)
     if span < config.min_iod_box_ratio * box_w:
         geometry.reason = 'eyes_unresolved'

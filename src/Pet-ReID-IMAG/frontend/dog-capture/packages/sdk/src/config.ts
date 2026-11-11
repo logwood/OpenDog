@@ -14,6 +14,15 @@ export interface CaptureConfig {
     kind: string; model: string; input_size: number; score_threshold: number; nms_iou: number;
     max_faces: number; schema: string; roi_zoom: boolean; roi_min_zoom: number; roi_period_s: number;
   };
+  refine: {
+    enabled: boolean; share: number; search_period_s: number; confident_score: number; max_search_period_s: number;
+    switch_margin: number; fine_min_deg: number;
+    research_below: number; carry_frames: number; match_iou: number; full_detect_period_s: number;
+    min_shot_score: number; max_mirror_disagreement: number; min_front_eye_conf: number; min_side_eye_conf: number;
+    max_agreement: number; max_side_mirror_disagreement: number; max_side_agreement: number;
+    min_eye_contrast: number; gate_window_s: number; gate_min_frames: number; gate_min_ratio: number;
+    gate_min_passes: number; full_detect_min_frames: number; search_min_frames: number;
+  };
   body_gate: {
     enabled: string; model: string; input_size: number; score_threshold: number; class_id: number;
     period_s: number; hold_s: number; margin: number; head_score_threshold: number;
@@ -51,6 +60,12 @@ export function defaultConfig(): CaptureConfig {
   return {
     detector: { kind: 'auto', model: '', input_size: 640, score_threshold: 0.35, nms_iou: 0.45, max_faces: 8,
       schema: '', roi_zoom: true, roi_min_zoom: 1.5, roi_period_s: 0.1 },
+    refine: { enabled: true, share: 0.35, search_period_s: 0.5, confident_score: 1.0, max_search_period_s: 2.0,
+      switch_margin: 0.05, fine_min_deg: 8.0, research_below: 0.4, carry_frames: 3, match_iou: 0.3,
+      full_detect_period_s: 0.3, min_shot_score: 0.5, max_mirror_disagreement: 0.2, min_front_eye_conf: 0.7,
+      min_side_eye_conf: 0.5, max_agreement: 0.3, max_side_mirror_disagreement: 0.3, max_side_agreement: 0.5,
+      min_eye_contrast: 0.2, gate_window_s: 0.5, gate_min_frames: 8, gate_min_ratio: 0.35, gate_min_passes: 3,
+      full_detect_min_frames: 3, search_min_frames: 6 },
     body_gate: { enabled: 'auto', model: '', input_size: 416, score_threshold: 0.3, class_id: 16, period_s: 0.25,
       hold_s: 0.75, margin: 0.15, head_score_threshold: 0.5 },
     tracker: { high_score: 0.5, low_score: 0.2, new_track_score: 0.55, match_iou: 0.2, low_match_iou: 0.5,

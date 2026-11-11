@@ -1,0 +1,535 @@
+{
+ "scope": "Dense coarse labels for the user video, every 10th frame, reviewed by Claude from contact sheets on 2026-11-11 in upright-face coordinates. front = clearly frontal with both eyes open (here rolled ~90 deg, dog lying down); reject = no clear usable face (back/top of head, hand over muzzle, closed or hidden eyes, profile, blur); uncertain = ambiguous yaw or borderline quality, excluded from scoring. Not a held-out benchmark.",
+ "video": "2611101816341481.mp4",
+ "sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06",
+ "labels": [
+  {
+   "frame": 0,
+   "expected": "reject"
+  },
+  {
+   "frame": 10,
+   "expected": "reject"
+  },
+  {
+   "frame": 20,
+   "expected": "reject"
+  },
+  {
+   "frame": 30,
+   "expected": "reject"
+  },
+  {
+   "frame": 40,
+   "expected": "reject"
+  },
+  {
+   "frame": 50,
+   "expected": "reject"
+  },
+  {
+   "frame": 60,
+   "expected": "reject"
+  },
+  {
+   "frame": 70,
+   "expected": "reject"
+  },
+  {
+   "frame": 80,
+   "expected": "reject"
+  },
+  {
+   "frame": 90,
+   "expected": "reject"
+  },
+  {
+   "frame": 100,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 110,
+   "expected": "reject"
+  },
+  {
+   "frame": 120,
+   "expected": "reject"
+  },
+  {
+   "frame": 130,
+   "expected": "reject"
+  },
+  {
+   "frame": 140,
+   "expected": "reject"
+  },
+  {
+   "frame": 150,
+   "expected": "reject"
+  },
+  {
+   "frame": 160,
+   "expected": "reject"
+  },
+  {
+   "frame": 170,
+   "expected": "reject"
+  },
+  {
+   "frame": 180,
+   "expected": "reject"
+  },
+  {
+   "frame": 190,
+   "expected": "reject"
+  },
+  {
+   "frame": 200,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 210,
+   "expected": "reject"
+  },
+  {
+   "frame": 220,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 230,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 240,
+   "expected": "reject"
+  },
+  {
+   "frame": 250,
+   "expected": "reject"
+  },
+  {
+   "frame": 260,
+   "expected": "front"
+  },
+  {
+   "frame": 270,
+   "expected": "front"
+  },
+  {
+   "frame": 280,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 290,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 300,
+   "expected": "reject"
+  },
+  {
+   "frame": 310,
+   "expected": "reject"
+  },
+  {
+   "frame": 320,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 330,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 340,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 350,
+   "expected": "reject"
+  },
+  {
+   "frame": 360,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 370,
+   "expected": "reject"
+  },
+  {
+   "frame": 380,
+   "expected": "reject"
+  },
+  {
+   "frame": 390,
+   "expected": "reject"
+  },
+  {
+   "frame": 400,
+   "expected": "reject"
+  },
+  {
+   "frame": 410,
+   "expected": "reject"
+  },
+  {
+   "frame": 420,
+   "expected": "reject"
+  },
+  {
+   "frame": 430,
+   "expected": "reject"
+  },
+  {
+   "frame": 440,
+   "expected": "reject"
+  },
+  {
+   "frame": 450,
+   "expected": "reject"
+  },
+  {
+   "frame": 460,
+   "expected": "reject"
+  },
+  {
+   "frame": 470,
+   "expected": "reject"
+  },
+  {
+   "frame": 480,
+   "expected": "reject"
+  },
+  {
+   "frame": 490,
+   "expected": "reject"
+  },
+  {
+   "frame": 500,
+   "expected": "reject"
+  },
+  {
+   "frame": 510,
+   "expected": "reject"
+  },
+  {
+   "frame": 520,
+   "expected": "reject"
+  },
+  {
+   "frame": 530,
+   "expected": "reject"
+  },
+  {
+   "frame": 540,
+   "expected": "reject"
+  },
+  {
+   "frame": 550,
+   "expected": "reject"
+  },
+  {
+   "frame": 560,
+   "expected": "reject"
+  },
+  {
+   "frame": 570,
+   "expected": "reject"
+  },
+  {
+   "frame": 580,
+   "expected": "reject"
+  },
+  {
+   "frame": 590,
+   "expected": "reject"
+  },
+  {
+   "frame": 600,
+   "expected": "reject"
+  },
+  {
+   "frame": 610,
+   "expected": "reject"
+  },
+  {
+   "frame": 620,
+   "expected": "reject"
+  },
+  {
+   "frame": 630,
+   "expected": "reject"
+  },
+  {
+   "frame": 640,
+   "expected": "reject"
+  },
+  {
+   "frame": 650,
+   "expected": "reject"
+  },
+  {
+   "frame": 660,
+   "expected": "reject"
+  },
+  {
+   "frame": 670,
+   "expected": "reject"
+  },
+  {
+   "frame": 680,
+   "expected": "reject"
+  },
+  {
+   "frame": 690,
+   "expected": "reject"
+  },
+  {
+   "frame": 700,
+   "expected": "reject"
+  },
+  {
+   "frame": 710,
+   "expected": "reject"
+  },
+  {
+   "frame": 720,
+   "expected": "reject"
+  },
+  {
+   "frame": 730,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 740,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 750,
+   "expected": "reject"
+  },
+  {
+   "frame": 760,
+   "expected": "reject"
+  },
+  {
+   "frame": 770,
+   "expected": "reject"
+  },
+  {
+   "frame": 780,
+   "expected": "reject"
+  },
+  {
+   "frame": 790,
+   "expected": "reject"
+  },
+  {
+   "frame": 800,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 810,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 820,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 830,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 840,
+   "expected": "reject"
+  },
+  {
+   "frame": 850,
+   "expected": "reject"
+  },
+  {
+   "frame": 860,
+   "expected": "reject"
+  },
+  {
+   "frame": 870,
+   "expected": "reject"
+  },
+  {
+   "frame": 880,
+   "expected": "reject"
+  },
+  {
+   "frame": 890,
+   "expected": "reject"
+  },
+  {
+   "frame": 900,
+   "expected": "reject"
+  },
+  {
+   "frame": 910,
+   "expected": "reject"
+  },
+  {
+   "frame": 920,
+   "expected": "reject"
+  },
+  {
+   "frame": 930,
+   "expected": "reject"
+  },
+  {
+   "frame": 940,
+   "expected": "reject"
+  },
+  {
+   "frame": 950,
+   "expected": "reject"
+  },
+  {
+   "frame": 960,
+   "expected": "reject"
+  },
+  {
+   "frame": 970,
+   "expected": "reject"
+  },
+  {
+   "frame": 980,
+   "expected": "reject"
+  },
+  {
+   "frame": 990,
+   "expected": "reject"
+  },
+  {
+   "frame": 1000,
+   "expected": "reject"
+  },
+  {
+   "frame": 1010,
+   "expected": "reject"
+  },
+  {
+   "frame": 1020,
+   "expected": "reject"
+  },
+  {
+   "frame": 1030,
+   "expected": "reject"
+  },
+  {
+   "frame": 1040,
+   "expected": "reject"
+  },
+  {
+   "frame": 1050,
+   "expected": "reject"
+  },
+  {
+   "frame": 1060,
+   "expected": "reject"
+  },
+  {
+   "frame": 1070,
+   "expected": "reject"
+  },
+  {
+   "frame": 1080,
+   "expected": "reject"
+  },
+  {
+   "frame": 1090,
+   "expected": "reject"
+  },
+  {
+   "frame": 1100,
+   "expected": "reject"
+  },
+  {
+   "frame": 1110,
+   "expected": "reject"
+  },
+  {
+   "frame": 1120,
+   "expected": "reject"
+  },
+  {
+   "frame": 1130,
+   "expected": "reject"
+  },
+  {
+   "frame": 1140,
+   "expected": "reject"
+  },
+  {
+   "frame": 1150,
+   "expected": "reject"
+  },
+  {
+   "frame": 1160,
+   "expected": "uncertain"
+  },
+  {
+   "frame": 1170,
+   "expected": "reject"
+  },
+  {
+   "frame": 1180,
+   "expected": "reject"
+  },
+  {
+   "frame": 1190,
+   "expected": "reject"
+  },
+  {
+   "frame": 1200,
+   "expected": "reject"
+  },
+  {
+   "frame": 1210,
+   "expected": "reject"
+  },
+  {
+   "frame": 1220,
+   "expected": "reject"
+  },
+  {
+   "frame": 1230,
+   "expected": "reject"
+  },
+  {
+   "frame": 1240,
+   "expected": "reject"
+  },
+  {
+   "frame": 1250,
+   "expected": "reject"
+  },
+  {
+   "frame": 1260,
+   "expected": "reject"
+  },
+  {
+   "frame": 1270,
+   "expected": "reject"
+  },
+  {
+   "frame": 1280,
+   "expected": "reject"
+  },
+  {
+   "frame": 1290,
+   "expected": "reject"
+  },
+  {
+   "frame": 1300,
+   "expected": "reject"
+  },
+  {
+   "frame": 1310,
+   "expected": "reject"
+  }
+ ]
+}
