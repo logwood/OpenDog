@@ -192,6 +192,8 @@ v0.x 的 `run-dog-*.cmd` 入口保持不变，可并行对照。
 用户 ONNX 的 Windows 安装、真实 Re-ID 联调、交付包与当前模型效果缺口见
 [`DOG_CAPTURE_V1_INTEGRATION_CN.md`](docs/DOG_CAPTURE_V1_INTEGRATION_CN.md)。质量优先运行配置在
 `assets/dog_capture/v1_reference/capture_quality.json`。
+当前 ONNX 的 CPU / CUDA 实时延迟、丢帧率、数值一致性修复和复现命令见
+[`DOG_CAPTURE_V1_SPEED_CN.md`](docs/DOG_CAPTURE_V1_SPEED_CN.md)。
 
 在 `src/Pet-ReID-IMAG/frontend/dog-capture`（TypeScript SDK + Vue 3 H5），服务端用
 `serve_pet_api.py --enable-capture` 挂载；协议、接口、嵌入方式（跳转 / 组件 / iframe / Android / iOS）和端到端实测见

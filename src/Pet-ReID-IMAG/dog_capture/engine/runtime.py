@@ -67,6 +67,11 @@ def resolve_providers(spec='auto', cache_dir=''):
             cache.mkdir(parents=True, exist_ok=True)
             options = {'trt_fp16_enable': True, 'trt_engine_cache_enable': True,
                        'trt_engine_cache_path': str(cache / 'tensorrt'), 'trt_timing_cache_enable': True}
+        elif provider == 'CUDAExecutionProvider':
+            # TF32 changed a YOLOX score across the species-gate threshold in
+            # the v1 video regression. Preserve FP32 inference by default;
+            # reduced precision needs its own accuracy/latency acceptance.
+            options = {'use_tf32': False}
         elif provider == 'CoreMLExecutionProvider':
             cache.mkdir(parents=True, exist_ok=True)
             options = {'ModelCacheDirectory': str(cache / 'coreml')}
@@ -100,5 +105,6 @@ def create_session(path, providers='auto', threads=0, cache_dir=''):
     if session is None:
         raise RuntimeError(f'Could not create an ONNX Runtime session for {path}: {errors}')
     info = {'model': str(path), 'requested': [name for name, _ in entries],
-            'used': session.get_providers(), 'fallback_errors': errors}
+            'used': session.get_providers(), 'provider_options': session.get_provider_options(),
+            'fallback_errors': errors}
     return session, info
