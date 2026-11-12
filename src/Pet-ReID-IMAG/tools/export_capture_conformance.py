@@ -108,8 +108,8 @@ def geometry_cases(config):
 def refine_cases():
     """Canonical crop geometry, eye-line tilt, upright frames and the eye-contrast evidence."""
     from dog_capture.engine.refine import (crop_matrix, eye_contrast, eye_line_deg, rotation_matrix,
-                                           upright_frame)
-    out = {'rotation': [], 'crop': [], 'tilt': [], 'upright': [], 'contrast': []}
+                                           upright_frame, warp_crop)
+    out = {'rotation': [], 'crop': [], 'tilt': [], 'upright': [], 'contrast': [], 'antialias': []}
     for angle in (0, 90, 180, 270, -90, 33.5, -71.25):
         out['rotation'].append({'angle': angle, 'size': 320, 'expected': r(rotation_matrix(angle, 320))})
     for box, angle, share in (((100, 100, 200, 160), 0, 0.35), ((10.5, 220, 650, 1068.7), 90, 0.35),
@@ -128,6 +128,16 @@ def refine_cases():
     for name, det in (('eyes', dets[0]), ('fur', shifted)):
         out['contrast'].append({'name': name, 'keypoints': r(det.keypoints), 'expected': r(eye_contrast(frame, det))})
     out['frame_bgr'] = pack(frame)
+    # anti-aliased crops: a textured close-up downsampled 2.5-9x (refine.warp_crop)
+    yy, xx = np.mgrid[:240, :320]
+    texture = np.stack([(xx * 7 + yy * 3) % 256, (np.sin(xx / 2.0) * np.cos(yy / 3.0) * 120 + 128),
+                        ((xx // 4 + yy // 3) % 2) * 200 + 30], -1).astype(np.uint8)
+    for box, angle, size in (((60, 40, 260, 224), 0, 64), ((36, 16, 304, 236), 37.5, 64),
+                             ((80, 60, 240, 200), -120, 48), ((40, 32, 280, 224), 90, 128)):
+        m = crop_matrix(box, angle, 0.35, size)
+        out['antialias'].append({'box': list(box), 'angle': angle, 'size': size, 'share': 0.35,
+                                 'expected_bgr': pack(warp_crop(texture, m, size, True))})
+    out['texture_bgr'] = pack(texture)
     return out
 
 

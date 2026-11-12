@@ -697,7 +697,8 @@ def test_landmarker_tracks_every_frame_and_the_detector_runs_only_for_shots():
 
 def test_landmarker_reads_the_roll_beyond_its_keypoint_range():
     image, detections = render(roll=150.0)
-    refiner = FaceRefiner(BlobDetector(), landmarker=BlobLandmarker())
+    # antialias off: the blob stand-in thresholds dark pixels, and area averaging greys its small eyes
+    refiner = FaceRefiner(BlobDetector(), RefineConfig(antialias='off'), landmarker=BlobLandmarker())
     refined = [d for d in refiner.refine(image, detections, 0.0, still=True) if d.extra.get('refined')]
     assert len(refined) == 1 and abs(wrap_deg(refined[0].extra['crop_tilt'])) < 10   # re-cropped upright
     assert refiner.landmarker.calls == 2             # read the roll, then the upright crop

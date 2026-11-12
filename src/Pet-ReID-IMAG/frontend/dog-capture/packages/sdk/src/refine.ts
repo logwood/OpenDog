@@ -10,7 +10,7 @@
  */
 import type { CaptureConfig } from './config';
 import type { FaceDetector } from './detectors';
-import { mirror, rotate, toGray, warpAffine, type Frame } from './image';
+import { crop as cropFrame, mirror, resize, rotate, toGray, warpAffine, type Frame } from './image';
 import { detectionReason, iou, type Box, type Detection, type KeypointSchema, type Point } from './schema';
 
 export type Mat3 = number[][];
@@ -27,6 +27,30 @@ export function invert(m: Mat3): Mat3 {
   const det = a * e - b * d;
   const ia = e / det, ib = -b / det, id = -d / det, ie = a / det;
   return [[ia, ib, -(ia * c + ib * f)], [id, ie, -(id * c + ie * f)], [0, 0, 1]];
+}
+
+/**
+ * The size x size crop `matrix` maps to (border 114), port of refine.warp_crop: downsampling more
+ * than 2x is done by area averaging the covered region first and warping at ~1:1 (bilinear point
+ * sampling at 10-18x aliases, and the model then sees noise that moves with the box).
+ */
+export function warpCrop(frame: Frame, matrix: Mat3, size: number, antialias = true): Frame {
+  const scale = Math.hypot(matrix[0][0], matrix[0][1]);
+  if (antialias && scale < 0.5) {
+    const corners = apply(invert(matrix), [[0, 0], [size, 0], [0, size], [size, size]]);
+    const xs = corners.map((p) => p[0]), ys = corners.map((p) => p[1]);
+    const x1 = Math.max(0, Math.floor(Math.min(...xs)) - 1), y1 = Math.max(0, Math.floor(Math.min(...ys)) - 1);
+    const x2 = Math.min(frame.width, Math.ceil(Math.max(...xs)) + 1), y2 = Math.min(frame.height, Math.ceil(Math.max(...ys)) + 1);
+    if (x2 - x1 >= 2 && y2 - y1 >= 2) {
+      const nw = Math.max(1, Math.floor((x2 - x1) * scale + 0.5)), nh = Math.max(1, Math.floor((y2 - y1) * scale + 0.5));
+      const small = resize(cropFrame(frame, x1, y1, x2, y2), nw, nh);
+      const rx = nw / (x2 - x1), ry = nh / (y2 - y1);
+      // pixel centres: small x = rx * (u - x1 + 0.5) - 0.5   (cv2 INTER_AREA)
+      const back: Mat3 = [[1 / rx, 0, x1 + 0.5 / rx - 0.5], [0, 1 / ry, y1 + 0.5 / ry - 0.5], [0, 0, 1]];
+      return warpAffine(small, matmul(matrix, back).slice(0, 2), size, size, 114);
+    }
+  }
+  return warpAffine(frame, matrix.slice(0, 2), size, size, 114);
 }
 
 export function apply(m: Mat3, points: Point[]): Point[] {
@@ -191,7 +215,9 @@ export class FaceRefiner {
   crop(frame: Frame, box: Box, angle: number, precise = false): { image: Frame; matrix: Mat3 } {
     const [size, share] = this.profile(precise);
     const matrix = cropMatrix(box, angle, share, size);
-    return { image: warpAffine(frame, matrix.slice(0, 2), size, size, 114), matrix };
+    const mode = this.config.antialias;
+    const smooth = mode === 'all' || (mode === 'tracker' && !!this.landmarker && !precise);
+    return { image: warpCrop(frame, matrix, size, smooth), matrix };
   }
 
   /** The face at the crop centre (the one being refined), not a neighbour. */

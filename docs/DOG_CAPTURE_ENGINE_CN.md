@@ -183,6 +183,9 @@ Ultralytics 还能直接导出 TFLite / CoreML / NCNN / RKNN / OpenVINO / Tensor
 `landmarks_unreliable`（五官位置无法确认）、`eyes_not_visible`（看不到睁开的眼睛）、`landmarks_unstable`（时有时无）。
 手机相关的两项：`refine.empty_search_period_s` / `empty_search_min_frames`（四向搜索一无所获的位置短时间内不再重搜，默认开）；
 `refine.crop_size`（动态输入模型上用更小的裁剪，默认 0 = 不变，224 的取舍见分析文档“手机”一节）。
+**跟踪网络（可选）**：模型目录里有 `dog_face_landmarks.onnx` 时，每帧用 128 px 的小网络跟踪、只在选图候选上用检测器精定位
+（`refine.landmarks` / `--landmarks`，`refine.antialias`，`refine.candidate_retry_s`）；浏览器引擎快 1.5–2.7 倍，但目前侧脸会漏采，
+详见 [`DOG_CAPTURE_LANDMARK_TRACKER_CN.md`](DOG_CAPTURE_LANDMARK_TRACKER_CN.md)。
 
 `python -m dog_capture config --write my.yaml` 会导出全部参数。常改的几项：
 

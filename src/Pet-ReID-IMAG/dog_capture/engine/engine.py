@@ -182,6 +182,7 @@ class _TrackContext:
         selection = replace(engine.config.selection, mode='best') if still else engine.config.selection
         self.shots = TrackShots(track_id, engine.view_names, selection,
                                 {v.name: v.shots for v in engine.config.pose.views})
+        self.retry_at = -math.inf   # next shot candidate allowed (refine.candidate_retry_s)
 
 
 
@@ -524,6 +525,9 @@ class CaptureEngine:
         if in_band and quality.passed and not eligible:
             self._near_miss(context, frame, det, target, state.view, quality, track.id, index, timestamp, still)
         tracked = det
+        landmarked = self.refiner is not None and self.refiner.landmarker is not None and not still
+        if landmarked and timestamp < context.retry_at:
+            eligible = False   # this track's last candidate failed a moment ago (refine.candidate_retry_s)
         if eligible and context.shots.wants(state.view, quality.score):
             # With a crop landmarker the per-frame keypoints are the tracker's; a shot candidate
             # gets the precise detector's (same view rule as the server's re-check), and those
@@ -538,6 +542,9 @@ class CaptureEngine:
                 problem = self._trusted(context, frame, det, target, timestamp, still)
             elif problem is not None:
                 self._gate_status[id(det)] = 'fail'
+            if problem and landmarked and problem != 'landmarks_unstable':
+                # (not while the temporal gate is still collecting its passes: those must be consecutive)
+                context.retry_at = timestamp + self.config.refine.candidate_retry_s
             if problem:
                 face.quality.reasons.append(problem)   # what the operator sees for this frame
                 if quality is not face.quality:

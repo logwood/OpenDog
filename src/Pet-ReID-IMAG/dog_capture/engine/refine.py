@@ -49,6 +49,29 @@ def crop_matrix(box, angle_deg, share, size):
     return rotation_matrix(angle_deg, size) @ scale
 
 
+def warp_crop(frame, matrix, size, antialias=True):
+    """The size x size crop ``matrix`` maps to (border 114).  Downsampling more than 2x (close-ups:
+    a 128 px crop of a 1080p face is 10-18x) is done by area averaging the covered region first
+    and warping at ~1:1, not by bilinear point sampling, which aliases: the model would see noise
+    that moves with sub-pixel shifts of the box (and that training crops, 2-5x, never had)."""
+    scale = math.hypot(matrix[0, 0], matrix[0, 1])
+    if antialias and scale < 0.5:
+        h, w = frame.shape[:2]
+        corners = apply(np.linalg.inv(matrix), [[0, 0], [size, 0], [0, size], [size, size]])
+        x1, y1 = max(0, math.floor(corners[:, 0].min()) - 1), max(0, math.floor(corners[:, 1].min()) - 1)
+        x2, y2 = min(w, math.ceil(corners[:, 0].max()) + 1), min(h, math.ceil(corners[:, 1].max()) + 1)
+        if x2 - x1 >= 2 and y2 - y1 >= 2:
+            nw, nh = max(1, math.floor((x2 - x1) * scale + 0.5)), max(1, math.floor((y2 - y1) * scale + 0.5))
+            small = cv2.resize(frame[y1:y2, x1:x2], (nw, nh), interpolation=cv2.INTER_AREA)
+            rx, ry = nw / (x2 - x1), nh / (y2 - y1)
+            # pixel centres: small x = rx * (u - x1 + 0.5) - 0.5   (cv2 INTER_AREA)
+            back = np.array([[1 / rx, 0, x1 + 0.5 / rx - 0.5], [0, 1 / ry, y1 + 0.5 / ry - 0.5], [0, 0, 1]])
+            return cv2.warpAffine(small, (matrix @ back)[:2], (size, size), flags=cv2.INTER_LINEAR,
+                                  borderMode=cv2.BORDER_CONSTANT, borderValue=(114, 114, 114))
+    return cv2.warpAffine(frame, matrix[:2], (size, size), flags=cv2.INTER_LINEAR,
+                          borderMode=cv2.BORDER_CONSTANT, borderValue=(114, 114, 114))
+
+
 def apply(matrix, points):
     p = np.asarray(points, np.float64).reshape(-1, 2)
     return p @ matrix[:2, :2].T + matrix[:2, 2]
@@ -184,9 +207,9 @@ class FaceRefiner:
     def crop(self, frame, box, angle, precise=False):
         size, share = self._profile(precise)
         matrix = crop_matrix(box, angle, share, size)
-        image = cv2.warpAffine(frame, matrix[:2], (size, size), flags=cv2.INTER_LINEAR,
-                               borderMode=cv2.BORDER_CONSTANT, borderValue=(114, 114, 114))
-        return image, matrix
+        mode = self.config.antialias
+        smooth = mode == 'all' or (mode == 'tracker' and self.landmarker is not None and not precise)
+        return warp_crop(frame, matrix, size, smooth), matrix
 
     @staticmethod
     def _pick(detections, size):

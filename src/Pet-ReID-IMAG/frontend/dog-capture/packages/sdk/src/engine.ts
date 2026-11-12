@@ -110,7 +110,7 @@ export interface FrameResult {
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-interface Context { classifier: ViewClassifier; shots: TrackShots }
+interface Context { classifier: ViewClassifier; shots: TrackShots; retryAt?: number }
 /** The detection a shot is judged on and kept with, and what was measured from it. */
 interface Sharpened { det: Detection; geometry: FaceGeometry; report: QualityReport; aligned: ReturnType<QualityAssessor['assess']>['aligned'] }
 
@@ -395,6 +395,9 @@ export class CaptureEngine {
     // With a crop landmarker the per-frame keypoints are the tracker's; a shot candidate gets the
     // precise detector's (same view rule as the server's re-check), and those are judged and kept.
     let pick: Sharpened = { det, geometry, report, aligned };
+    const landmarked = !!this.refiner?.landmarker;
+    // this track's last candidate failed a moment ago (refine.candidate_retry_s)
+    if (landmarked && t < (ctx.retryAt ?? -Infinity)) eligible = false;
     if (eligible && aligned && ctx.shots.wants(state.view!, report.score)) {
       const [sharp, early] = await this.sharpen(frame, det, state.view!, target, speed);
       let problem = early;
@@ -403,6 +406,8 @@ export class CaptureEngine {
       if (problem === null && eligible && pick.aligned && ctx.shots.wants(state.view!, pick.report.score)) {
         problem = await this.trusted(ctx, frame, pick.det, target, t);
       } else if (problem !== null) this.gateStatus.set(det, 'fail');
+      // (not while the temporal gate is still collecting its passes: those must be consecutive)
+      if (problem && landmarked && problem !== 'landmarks_unstable') ctx.retryAt = t + this.config.refine.candidate_retry_s;
       if (problem) {
         report.reasons.push(problem);   // what the operator sees for this frame
         if (pick.report !== report) pick.report.reasons.push(problem);

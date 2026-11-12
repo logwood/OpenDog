@@ -69,6 +69,16 @@ class RefineConfig:
     # faces, good keypoints: 320 -> 79 %, 256 -> 76 %, 224 -> 75 %; single-thread WASM
     # time 103 -> 64 -> 53 ms).  Ignored for fixed-shape models and while a CUDA Graph is active.
     crop_size: int = 0
+    # Crops that downsample more than 2x are area-averaged first (refine.warp_crop): close-ups in
+    # video are 6-18x for the landmarker's 128 px crop (its training crops: 2.6x median), and
+    # point sampling there aliases.  'tracker' = the landmarker's crops only; 'all' also the
+    # detector's (changes the inputs its shot-gate thresholds were calibrated on); 'off'.
+    antialias: str = 'tracker'
+    # With a landmarker: after a shot candidate fails a per-frame check (precise pass, view,
+    # landmarks, eyes; not the temporal gate still collecting passes), that track's next candidate
+    # waits this long (each check costs 1-3 detector runs, and a
+    # failing face otherwise retries every frame: two-side clip, 80 of 134 ms per frame).
+    candidate_retry_s: float = 0.25
     search_period_s: float = 0.5     # re-check the quarter turn this often, unless (edge option) the
     confident_score: float = 1.0     # crop score is at least this: then only every max_search_period_s.
     max_search_period_s: float = 2.0  # (Off by default: on rolled close-ups a wrong turn can score 0.6.)
@@ -280,6 +290,8 @@ class CaptureConfig:
               'detector.input_size must be 0 or a multiple of 32')
         check(0 < d.score_threshold < 1 and 0 < d.nms_iou < 1 and d.max_faces >= 1, 'detector thresholds')
         f = self.refine
+        check(f.antialias in ('off', 'tracker', 'all'), "refine.antialias must be 'off', 'tracker' or 'all'")
+        check(f.candidate_retry_s >= 0, 'refine.candidate_retry_s must be >= 0')
         check(f.crop_size == 0 or (96 <= f.crop_size <= 1024 and f.crop_size % 32 == 0),
               'refine.crop_size must be 0 or a multiple of 32 in 96..1024')
         check(0.1 <= f.share <= 0.9 and f.search_period_s > 0 and f.switch_margin >= 0 and f.carry_frames >= 0

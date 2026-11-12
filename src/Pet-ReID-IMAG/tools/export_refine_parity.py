@@ -59,11 +59,13 @@ def main():
             for det in refined:
                 item = det.to_dict()
                 item['upright_angle'] = round(float(det.extra['upright_angle']), 3)
+                item['region'] = [round(float(v), 3) for v in det.extra['region']]
                 item['eye_contrast'] = _plain(eye_contrast(frame, det))
                 if landmarker is not None:
                     sharp = refiner.precise(frame, det)
-                    item['precise'] = None if sharp is None else {**sharp.to_dict(),
-                                                                  'upright_angle': round(float(sharp.extra['upright_angle']), 3)}
+                    item['precise'] = None if sharp is None else {
+                        **sharp.to_dict(), 'upright_angle': round(float(sharp.extra['upright_angle']), 3),
+                        'region': [round(float(v), 3) for v in sharp.extra['region']]}
                     det = sharp or det
                 item['verify'] = _plain(refiner.verify(frame, det))
                 faces.append(item)

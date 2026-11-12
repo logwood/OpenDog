@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
-  ByteTracker, SETTLE_FACTOR, blurEffect, cropMatrix, eyeContrast, eyeLineDeg, rotationMatrix, uprightFrame, coreMask, defaultConfig, eyePatches, faceGeometry, fromBGR, getSchema, guidance,
+  ByteTracker, SETTLE_FACTOR, blurEffect, cropMatrix, eyeContrast, eyeLineDeg, rotationMatrix, uprightFrame, warpCrop, coreMask, defaultConfig, eyePatches, faceGeometry, fromBGR, getSchema, guidance,
   laplacianEnergy, mergeConfig, OneEuroFilter, QualityAssessor, similarity, toGray, TrackShots, ViewClassifier,
   type Detection, type Point,
 } from '../src';
@@ -62,6 +62,21 @@ describe('refine (canonical upright crops)', () => {
     for (const x of c.upright) {
       const frame = { width: x.width, height: x.height, data: new Uint8ClampedArray(x.width * x.height * 4) };
       mat(uprightFrame(frame, x.k).matrix, x.expected, 0);
+    }
+  });
+  it('area-averages crops that downsample more than 2x, like warp_crop', () => {
+    const [h, w] = c.texture_bgr.shape;
+    const texture = fromBGR(unpack(c.texture_bgr), w, h);
+    for (const x of c.antialias) {
+      const got = warpCrop(texture, cropMatrix(x.box, x.angle, x.share, x.size), x.size, true);
+      const want = fromBGR(unpack(x.expected_bgr), x.size, x.size);
+      let sum = 0, worst = 0, n = 0;
+      for (let i = 0; i < got.data.length; i += 4) for (let ch = 0; ch < 3; ch++) {
+        const d = Math.abs(got.data[i + ch] - want.data[i + ch]); sum += d; worst = Math.max(worst, d); n++;
+      }
+      // cv2 warps in 5-bit fixed point, this port in float: a few grey levels on sharp edges
+      expect(sum / n, `${x.angle} deg`).toBeLessThan(1.0);
+      expect(worst, `${x.angle} deg`).toBeLessThan(40);
     }
   });
   it('measures the eye-line tilt', () => {

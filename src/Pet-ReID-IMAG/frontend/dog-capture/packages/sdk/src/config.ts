@@ -15,7 +15,7 @@ export interface CaptureConfig {
     max_faces: number; schema: string; roi_zoom: boolean; roi_min_zoom: number; roi_period_s: number;
   };
   refine: {
-    enabled: boolean; landmarks: string; share: number; crop_size: number; search_period_s: number; confident_score: number; max_search_period_s: number;
+    enabled: boolean; landmarks: string; share: number; crop_size: number; antialias: 'off' | 'tracker' | 'all'; candidate_retry_s: number; search_period_s: number; confident_score: number; max_search_period_s: number;
     switch_margin: number; fine_min_deg: number;
     research_below: number; carry_frames: number; match_iou: number; full_detect_period_s: number;
     min_shot_score: number; max_mirror_disagreement: number; min_front_eye_conf: number; min_side_eye_conf: number;
@@ -63,7 +63,7 @@ export function defaultConfig(): CaptureConfig {
   return {
     detector: { kind: 'auto', model: '', input_size: 0, score_threshold: 0.35, nms_iou: 0.45, max_faces: 8,
       schema: '', roi_zoom: true, roi_min_zoom: 1.5, roi_period_s: 0.1 },
-    refine: { enabled: true, landmarks: '', share: 0.35, crop_size: 0, search_period_s: 0.5, confident_score: 1.0, max_search_period_s: 2.0,
+    refine: { enabled: true, landmarks: '', share: 0.35, crop_size: 0, antialias: 'tracker', candidate_retry_s: 0.25, search_period_s: 0.5, confident_score: 1.0, max_search_period_s: 2.0,
       switch_margin: 0.05, fine_min_deg: 8.0, research_below: 0.4, carry_frames: 3, match_iou: 0.3,
       full_detect_period_s: 0.3, min_shot_score: 0.5, max_mirror_disagreement: 0.2, min_front_eye_conf: 0.7,
       min_side_eye_conf: 0.5, max_agreement: 0.3, max_side_mirror_disagreement: 0.3, max_side_agreement: 0.5,
