@@ -192,6 +192,8 @@ class RuntimeConfig:
     rotate: str = 'auto'          # auto | 0 | 90 | 180 | 270 (clockwise, applied before detection)
     mirror: bool = False          # selfie camera: flip before detection
     still_images: bool = False    # unrelated photos: no temporal confirmation
+    cuda_graph: bool = False      # fixed-shape FP32 ONNX on the CUDA provider
+    thread_spinning: bool = True  # ONNX Runtime worker threads may spin while idle
 
 
 @dataclass

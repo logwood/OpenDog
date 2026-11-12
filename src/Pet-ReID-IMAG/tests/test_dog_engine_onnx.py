@@ -9,8 +9,9 @@ pytest.importorskip('onnxruntime')
 from onnx import TensorProto, helper, numpy_helper  # noqa: E402
 
 from dog_capture.engine import CaptureConfig, CaptureEngine  # noqa: E402
-from dog_capture.engine.detectors import (AnyFaceDetector, ScrfdDetector, YoloPoseDetector,  # noqa: E402
-                                          YoloxBodyGate, letterbox)
+from dog_capture.engine import detectors  # noqa: E402
+from dog_capture.engine.detectors import (AnyFaceDetector, OnnxDetector, ScrfdDetector,  # noqa: E402
+                                          YoloPoseDetector, YoloxBodyGate, letterbox)
 from dog_capture.engine.runtime import create_session, resolve_providers  # noqa: E402
 from dog_engine_synthetic import render  # noqa: E402
 
@@ -142,6 +143,42 @@ def test_providers_and_session_report(tmp_path):
     model = constant_model(tmp_path / 'c.onnx', 'images', 64, [('y', np.ones((1, 2)))])
     session, info = create_session(model, 'cpu')
     assert info['used'] == ['CPUExecutionProvider'] and not info['fallback_errors']
+
+
+@pytest.mark.parametrize('failure', ['initialization', 'replay'])
+def test_cuda_graph_fallback_retries_ordinary_inference(tmp_path, monkeypatch, failure):
+    model = constant_model(tmp_path / 'fallback.onnx', 'images', 32, [('y', np.ones((1, 2)))])
+    if failure == 'replay':
+        class FailingGraph:
+            shape = (1, 3, 32, 32)
+            closed = False
+
+            def run(self, _tensor):
+                raise RuntimeError('injected replay failure')
+
+            def close(self):
+                self.closed = True
+
+        graph = FailingGraph()
+
+        def open_graph(path, **settings):
+            session, info = create_session(path, **settings)
+            return session, info, graph
+
+        monkeypatch.setattr(detectors, 'create_cuda_graph_session', open_graph)
+
+    detector = OnnxDetector(model, providers='cpu', threads=1, cuda_graph=True, thread_spinning=False)
+    tensor = np.zeros((1, 3, 32, 32), np.float32)
+    np.testing.assert_array_equal(detector._run(tensor)[0], np.ones((1, 2)))
+    assert detector.runtime['used'] == ['CPUExecutionProvider']
+    status = detector.runtime['cuda_graph']
+    assert status['requested'] and not status['active']
+    assert status['fallback_reason'].startswith(failure)
+    if failure == 'replay':
+        assert graph.closed
+    settings = detector.session.get_session_options()
+    assert settings.get_session_config_entry('session.intra_op.allow_spinning') == '0'
+    assert settings.get_session_config_entry('session.inter_op.allow_spinning') == '0'
 
 
 def test_engine_runs_on_a_real_onnx_session(tmp_path):

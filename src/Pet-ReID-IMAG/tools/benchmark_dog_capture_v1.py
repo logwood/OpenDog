@@ -117,7 +117,11 @@ def verify_provider(model, tensor, output, label):
     options.enable_profiling = True
     options.profile_file_prefix = str(output / f'provider-{label}')
     options.log_severity_level = 3
-    providers = [(p, model.session.get_provider_options().get(p, {})) for p in model.runtime['used']]
+    providers = []
+    for provider in model.runtime['used']:
+        settings = dict(model.runtime['provider_options'].get(provider, {}))
+        settings.pop('enable_cuda_graph', None)  # profile individual kernels in an ordinary session
+        providers.append((provider, settings))
     session = ort.InferenceSession(str(model.model_path), sess_options=options, providers=providers)
     got = session.run(model.outputs, {model.input.name: tensor})
     profile = session.end_profiling()
@@ -168,7 +172,7 @@ def decoded_comparison(engine, config, frames):
     import numpy as np
     from dog_capture.engine.schema import box_iou_matrix
     from dog_capture.engine.zoo import build_engine
-    reference = build_engine(config.merged({'runtime': {'providers': 'cpu'}}))
+    reference = build_engine(config.merged({'runtime': {'providers': 'cpu', 'cuda_graph': False}}))
     reports = {}
     for name in ('detector', 'body_gate'):
         actual, cpu = getattr(engine, name), getattr(reference, name)
@@ -286,6 +290,8 @@ def main():
     parser.add_argument('--config', type=Path, default=ROOT / 'assets/dog_capture/v1_reference/capture_quality.json')
     parser.add_argument('--providers', default='cpu', choices=('cpu', 'cuda', 'tensorrt'))
     parser.add_argument('--threads', type=int, default=4)
+    parser.add_argument('--cuda-graph', action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument('--thread-spinning', action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument('--cv-threads', type=int, default=0, help='0 preserves the installed OpenCV default')
     parser.add_argument('--stage', choices=('micro', 'video', 'all'), default='all')
     parser.add_argument('--playback', choices=('offline', 'realtime', 'both'), default='both')
@@ -297,7 +303,7 @@ def main():
     parser.add_argument('--verify-provider', action='store_true')
     parser.add_argument('--verify-decoded', action='store_true', help='compare decoded sampled detections with CPU after timings')
     parser.add_argument('--verify-decoded-fp32', action='store_true',
-                        help='also check CUDA with TF32 disabled after all performance measurements')
+                        help='require CUDA FP32 and compare decoded detections with CPU after timings')
     args = parser.parse_args()
     if min(args.samples, args.runs, args.repeats, args.warmup, args.threads) <= 0 or args.cv_threads < 0:
         parser.error('samples/runs/repeats/warmup/threads must be positive; cv-threads must be nonnegative')
@@ -317,9 +323,13 @@ def main():
     from dog_capture.runtime import peak_rss_mb
     if args.cv_threads:
         cv2.setNumThreads(args.cv_threads)
-    config = CaptureConfig.load(args.config).merged({'runtime': {
-        'providers': args.providers, 'threads': args.threads,
-        'cache_dir': str(ROOT / '.tmp/dog-capture-v1-ort-cache')}})
+    runtime = {'providers': args.providers, 'threads': args.threads,
+               'cache_dir': str(ROOT / '.tmp/dog-capture-v1-ort-cache')}
+    for key in ('cuda_graph', 'thread_spinning'):
+        value = getattr(args, key)
+        if value is not None:
+            runtime[key] = value
+    config = CaptureConfig.load(args.config).merged({'runtime': runtime})
     report = {'created_utc': datetime.now(timezone.utc).isoformat(),
         'command': sys.argv, 'python': sys.version, 'executable': sys.executable,
         'platform': platform.platform(), 'processor': platform.processor(), 'logical_cpus': os.cpu_count(),
@@ -336,17 +346,22 @@ def main():
             'startup': 'new model sessions in an existing Python process; OS file cache not flushed'},
         'sources': [], 'micro': {}, 'videos': []}
 
-    def save():
-        (args.output / 'summary.json').write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf8')
-
     started = time.perf_counter()
     engine = build_engine(config)
     report['session_load_ms'] = (time.perf_counter() - started) * 1000
-    report['models'] = engine.describe()
     expected = ALIASES[args.providers]
-    for model in (engine.detector, engine.body_gate):
-        if model is None or expected not in model.runtime['used'] or model.runtime['fallback_errors']:
-            raise RuntimeError(f'Requested provider must run both models without fallback: {expected}')
+
+    def save():
+        report['models'] = engine.describe()
+        (args.output / 'summary.json').write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf8')
+        for model in (engine.detector, engine.body_gate):
+            if model is None or model.runtime['used'][0] != expected or model.runtime['fallback_errors']:
+                raise RuntimeError(f'Requested provider must run both models without fallback: {expected}')
+            graph = model.runtime['cuda_graph']
+            if config.runtime.cuda_graph and not graph['active']:
+                raise RuntimeError(f'{model.kind}: CUDA Graph fallback: {graph["fallback_reason"]}')
+
+    save()
     sample_sets = []
     for path in args.source:
         samples, info = sample_video(path, args.samples)
@@ -390,12 +405,10 @@ def main():
     if args.verify_decoded_fp32:
         for model in (engine.detector, engine.body_gate):
             options = model.session.get_provider_options()['CUDAExecutionProvider']
-            options['use_tf32'] = '0'
-            model.session.set_providers([('CUDAExecutionProvider', options), 'CPUExecutionProvider'])
-            if model.session.get_providers()[0] != 'CUDAExecutionProvider':
-                raise RuntimeError('Strict FP32 numerical check fell back from CUDA')
-        report['decoded_cpu_comparison_tf32_disabled'] = decoded_comparison(engine, config, frames)
-        report['strict_fp32_check_note'] = 'Numerical check only, after timers; performance above uses default CUDA options.'
+            if options.get('use_tf32') != '0':
+                raise RuntimeError('Strict FP32 numerical check requires use_tf32=0')
+        report['decoded_cpu_comparison_tf32_disabled'] = report['decoded_cpu_comparison']
+        report['strict_fp32_check_note'] = 'CUDA had use_tf32=0 throughout timing and decoded comparison.'
     save()
     print(args.output / 'summary.json', flush=True)
 

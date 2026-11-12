@@ -104,3 +104,23 @@ GPU 需要可用的 `onnxruntime-gpu` 和匹配的 CUDA/cuDNN DLL。`--preload-c
 相关 Python 回归 **83 项通过**；测速脚本编译与 CLI 帮助检查通过；新建 CUDA 会话返回实际 `use_tf32=0`。现有 Starlette/httpx 测试客户端的弃用提示不影响这些测试结果。
 
 本轮沿用 `high` 质量要求：用户视频没有合格照片，Wolfhound 仍缺右侧。这项测速不改变效果验收结论。H5 显示/网络、手机真机、Re-ID 和完整三视角采集等待时间不在这张原生速度表内。
+
+## 重定位后的提速选项
+
+Python 和 TypeScript SDK 在同一帧触发四方向重搜时，复用已经算过的基准方向（包括未检出），再计算其余三个方向。方向比较、关键点复核和选图门槛沿用原逻辑。
+
+原生 ONNX Runtime 提供两个独立选项：
+
+- `--providers cuda --cuda-graph` 为固定形状的 FP32 模型在同一线程预热并重放 CUDA Graph，复用 GPU 输入输出缓冲。初始化或重放失败时，按普通后端配置重建会话。查看结果中每个模型的 `runtime.cuda_graph.active` 和 `fallback_reason`。[ORT CUDA Graph 文档](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#using-cuda-graphs-preview)
+- `--providers cpu --no-thread-spinning` 让 ONNX Runtime 工作线程在空闲时休眠。默认沿用 ORT 的线程等待方式，可用 `--threads` 独立设置线程数。[ORT 线程文档](https://onnxruntime.ai/docs/performance/tune-performance/threading.html)
+
+`python -m dog_capture run`、`bench` 和上面的测速脚本都接受这两个开关。JSON/YAML 对应 `runtime.cuda_graph: true` 和 `runtime.thread_spinning: false`。测速时可用 `--no-cuda-graph` 跑普通 CUDA 对照，要求 Graph 时遇到回退会报告失败。
+
+在 RTX 4060 Laptop、ORT 1.26.0 上，以同帧复用开启、`high` 质量配置和 4 线程紧邻回放用户 30 FPS 视频各一轮：
+
+| 运行方式 | 实际处理 FPS | 帧提交至结果 P95 | 丢帧 / 输入帧 |
+|---|---:|---:|---:|
+| CUDA FP32 | 21.08 | 135.63 ms | 390 / 1314 |
+| CUDA Graph FP32 | 24.29 | 94.80 ms | 249 / 1314 |
+
+另一轮 Graph 回放得到用户视频 25.70 FPS 和 Wolfhound 23.73 FPS。两段视频离线共 2,526 帧，去掉耗时后逐帧报告与普通 CUDA FP32 基线一致，保存的 9 个 PNG 文件哈希一致。CPU 关闭线程空转的 2,742 帧离线对照也通过，包含三个防错夹具。原速高质量回放仍需继续做采集验收，用户视频无合格照片，Wolfhound 本轮收齐了正面和左侧。

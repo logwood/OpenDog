@@ -2,9 +2,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
-  buildManifest, CaptureEngine, encodeBundle, fromBGR, getSchema, sha256Hex, SignalRecorder, YoloPoseDetector,
+  buildManifest, CaptureEngine, defaultConfig, encodeBundle, FaceRefiner, fromBGR, getSchema, sha256Hex, SignalRecorder, YoloPoseDetector,
   YoloxBodyGate, type Detection, type Frame, type Runner, type SessionConfig,
 } from '../src';
 
@@ -71,6 +71,24 @@ describe('CaptureEngine', () => {
     expect(signals.prompt_order_followed).toBe(true);
     expect(signals.yaw_trace.length).toBeGreaterThan(3);
   });
+});
+
+it.each([null, .25])('reuses the examined base crop when tracking returns %s', async (weakScore) => {
+  const { frame, det } = frames.sharp;
+  const refiner = new FaceRefiner({ detect: async () => [] }, defaultConfig().refine);
+  let baseScore: number | null = .95;
+  const examine = vi.spyOn(refiner, 'examine').mockImplementation(async (_frame, box, angle) => {
+    const score = angle === 0 ? baseScore : angle === 90 ? .9 : null;
+    return score === null ? null : {
+      ...det, box, score, extra: { upright_angle: angle, crop_tilt: 0, region: box },
+    };
+  });
+  await refiner.refine(frame, [det], 0);
+  examine.mockClear();
+  baseScore = weakScore;
+  const refined = await refiner.refine(frame, [det], 1 / 30);
+  expect(examine.mock.calls.map(([, , angle]) => angle)).toEqual([0, 90, 180, 270]);
+  expect(refined[0].extra?.upright_angle).toBe(90);
 });
 
 function fakeRunner(size: number, output: Float32Array, dims: number[]): Runner {

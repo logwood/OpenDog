@@ -202,9 +202,10 @@ export class FaceRefiner {
     return { score: check.score, eyes: [conf[ie], conf[je]], mirror: mirrorGap, agreement: mean(check.keypoints, own) / span };
   }
 
-  private async search(frame: Frame, box: Box, base: number): Promise<Detection | null> {
+  private async search(frame: Frame, box: Box, base: number, baseDetection: Detection | null): Promise<Detection | null> {
     const results = new Map<number, Detection>();
-    for (let j = 0; j < 4; j++) {
+    if (baseDetection) results.set(0, baseDetection);
+    for (let j = 1; j < 4; j++) {
       const d = await this.examine(frame, box, base + 90 * j);
       if (d) results.set(j, d);
     }
@@ -243,13 +244,15 @@ export class FaceRefiner {
       const base = match ? match.angle : 0;
       const age = match ? t - match.searchedAt : 0, frames = match ? this.frame - match.searchedFrame : 0;
       // re-check the quarter turn when new or doubtful, else periodically (seconds and frames)
-      let due = still || !match || match.score < c.research_below
+      let d = await this.examine(frame, box, base);
+      const due = still || !match || match.score < c.research_below || !d || d.score < c.research_below
         || (frames >= c.search_min_frames
           && ((age >= c.search_period_s && match.score < c.confident_score) || age >= c.max_search_period_s));
-      let searchedAt = due ? t : match!.searchedAt;
-      let d = due ? await this.search(frame, box, base) : await this.examine(frame, box, base);
-      if (!due && (!d || d.score < c.research_below)) { d = await this.search(frame, box, base); searchedAt = t; due = true; }
-      if (still || due) d = await this.settle(frame, box, d);
+      const searchedAt = due ? t : match!.searchedAt;
+      if (due) {
+        d = await this.search(frame, box, base, d);
+        d = await this.settle(frame, box, d);
+      }
       if (!d) {
         if (source) out.push({ ...source, extra: { ...(source.extra ?? {}), upright_k: 0, refined: false } });
         if (match) rois.push({ ...match, misses: match.misses + 1 });

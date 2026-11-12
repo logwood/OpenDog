@@ -214,10 +214,10 @@ class FaceRefiner:
                 'agreement': float(np.mean(np.linalg.norm(points - own, axis=1)) / span)}
 
     # ---- orientation --------------------------------------------------
-    def _search(self, frame, box, base):
-        """Best of the four quarter turns around ``base`` (hysteresis towards ``base`` itself)."""
-        results = {}
-        for j in range(4):
+    def _search(self, frame, box, base, base_detection):
+        """Compare the base crop already examined on this frame with three quarter turns."""
+        results = {0: base_detection} if base_detection is not None else {}
+        for j in range(1, 4):
             det = self.examine(frame, box, base + 90.0 * j)
             if det is not None:
                 results[j] = det
@@ -266,15 +266,15 @@ class FaceRefiner:
             # Re-check the quarter turn when a face is new or doubtful; a confidently followed
             # face only as a safety net (each check costs four model runs).
             frames = 0 if match is None else self.frame - match.get('searched_frame', 0)
+            det = self.examine(frame, box, base)
             due = (still or match is None or match['score'] < c.research_below
+                   or det is None or det.score < c.research_below
                    or (frames >= c.search_min_frames
                        and ((age >= c.search_period_s and match['score'] < c.confident_score)
                             or age >= c.max_search_period_s)))
             searched_at = timestamp if due else match['searched_at']
-            det = self._search(frame, box, base) if due else self.examine(frame, box, base)
-            if not due and (det is None or det.score < c.research_below):
-                det, searched_at, due = self._search(frame, box, base), timestamp, True
-            if still or due:
+            if due:
+                det = self._search(frame, box, base, det)
                 det = self._settle(frame, box, det)
             if det is None:
                 if source is not None:       # keep the full-frame face, marked as not refined

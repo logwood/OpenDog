@@ -585,8 +585,8 @@ def test_per_view_shot_counts_and_required_views():
 
 
 # ---------------------------------------------------------------- canonical upright crops (refine.py)
-from dog_capture.engine.refine import (apply, crop_matrix, eye_contrast, rotation_matrix,  # noqa: E402
-                                       upright_frame)
+from dog_capture.engine.refine import (FaceRefiner, apply, crop_matrix, eye_contrast,  # noqa: E402
+                                       rotation_matrix, upright_frame)
 from dog_engine_synthetic import BlobDetector  # noqa: E402
 
 
@@ -615,6 +615,31 @@ def test_crop_matrix_puts_the_face_at_the_canonical_share():
     centre = apply(matrix, [[150, 130]])[0]
     assert np.allclose(centre, [160, 160])
     assert np.isclose(matrix[0, 0], 320 / (100 / 0.35))
+
+
+@pytest.mark.parametrize('weak_score', [None, .25])
+def test_immediate_orientation_search_reuses_base_crop(monkeypatch, weak_score):
+    image, detections = render()
+    source = detections[0]
+    refiner = FaceRefiner(BlobDetector())
+    angles = []
+    base_score = .95
+
+    def examine(_frame, box, angle):
+        angles.append(angle)
+        score = base_score if angle == 0 else .9 if angle == 90 else None
+        if score is None:
+            return None
+        return Detection(box, score, source.keypoints, source.schema,
+                         extra={'upright_angle': angle, 'crop_tilt': 0, 'region': box})
+
+    monkeypatch.setattr(refiner, 'examine', examine)
+    refiner.refine(image, detections, 0)
+    angles.clear()
+    base_score = weak_score
+    refined = refiner.refine(image, detections, 1 / 30)
+    assert angles == [0, 90, 180, 270]
+    assert refined[0].extra['upright_angle'] == 90
 
 
 def test_refiner_turns_a_lying_dog_upright_and_stores_the_shot_upright():

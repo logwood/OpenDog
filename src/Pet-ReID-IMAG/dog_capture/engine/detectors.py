@@ -18,11 +18,12 @@ import ast
 from dataclasses import replace
 import json
 from pathlib import Path
+from threading import Lock
 
 import cv2
 import numpy as np
 
-from .runtime import create_session
+from .runtime import create_cuda_graph_session, create_session
 from .schema import ANYFACE5, CORE3, SCHEMAS, Detection, KeypointSchema, get_schema, nms
 
 
@@ -53,13 +54,15 @@ class OnnxDetector:
     kind = 'onnx'
 
     def __init__(self, model, *, input_size=640, score_threshold=0.35, nms_iou=0.45, max_faces=8,
-                 providers='auto', threads=0, cache_dir=''):
+                 providers='auto', threads=0, cache_dir='', cuda_graph=False, thread_spinning=True):
         self.model_path = Path(model)
         from .zoo import verify_model
         self.sha256, self.sidecar = verify_model(model)
-        self.session, self.runtime = create_session(model, providers, threads, cache_dir)
-        self.input = self.session.get_inputs()[0]
-        self.outputs = [o.name for o in self.session.get_outputs()]
+        self._session_settings = dict(providers=providers, threads=threads, cache_dir=cache_dir,
+                                      thread_spinning=thread_spinning)
+        self._graph = None
+        self._load_session(cuda_graph=cuda_graph)
+        self._graph_lock = Lock() if self._graph is not None else None
         shape = self.input.shape
         fixed = isinstance(shape[2], int) and isinstance(shape[3], int)
         self.size = int(shape[2]) if fixed else int(input_size)
@@ -71,13 +74,41 @@ class OnnxDetector:
             raise ValueError(f'{model}: sidecar input_size disagrees with ONNX input {shape}')
         self.dtype = np.float16 if 'float16' in self.input.type else np.float32
 
+    def _load_session(self, *, cuda_graph=False, graph_error=None):
+        graph = None
+        if cuda_graph:
+            try:
+                session, info, graph = create_cuda_graph_session(self.model_path, **self._session_settings)
+            except Exception as exc:
+                graph_error = f'initialization: {exc}'.partition('\n')[0][:300]
+        if graph is None:
+            session, info = create_session(self.model_path, **self._session_settings)
+        if self._graph is not None:
+            self._graph.close()
+        self._graph, self.session, self.runtime = graph, session, info
+        info['cuda_graph'] = {'requested': cuda_graph or graph_error is not None,
+                              'active': graph is not None, 'fallback_reason': graph_error}
+        self.input = session.get_inputs()[0]
+        self.outputs = [output.name for output in session.get_outputs()]
+
     def warmup(self, runs=2):
         frame = np.zeros((self.size, self.size, 3), np.uint8)
         for _ in range(runs):
             self.detect(frame)
 
     def _run(self, tensor):
-        return self.session.run(self.outputs, {self.input.name: tensor.astype(self.dtype, copy=False)})
+        tensor = tensor.astype(self.dtype, copy=False)
+        if self._graph_lock is not None:
+            with self._graph_lock:
+                if self._graph is not None:
+                    if tensor.shape != self._graph.shape:
+                        raise ValueError(f'Expected CUDA Graph input {self._graph.shape}, got {tensor.shape}')
+                    try:
+                        return self._graph.run(tensor)
+                    except Exception as exc:
+                        reason = f'replay: {exc}'.partition('\n')[0][:300]
+                    self._load_session(graph_error=reason)
+        return self.session.run(self.outputs, {self.input.name: tensor})
 
     def describe(self):
         return {'kind': self.kind, 'model': str(self.model_path), 'sha256': self.sha256, 'input_size': self.size,

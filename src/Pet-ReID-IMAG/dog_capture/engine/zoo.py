@@ -169,7 +169,8 @@ def build_detector(config, kind=None, path=None):
         kind, path = find_face_model(config)
     d, r = config.detector, config.runtime
     common = dict(input_size=d.input_size, score_threshold=d.score_threshold, nms_iou=d.nms_iou,
-                  max_faces=d.max_faces, providers=r.providers, threads=r.threads, cache_dir=r.cache_dir)
+                  max_faces=d.max_faces, providers=r.providers, threads=r.threads, cache_dir=r.cache_dir,
+                  cuda_graph=r.cuda_graph, thread_spinning=r.thread_spinning)
     if kind == 'external':
         return None
     if kind == 'yolo_pose':
@@ -205,7 +206,8 @@ def build_body_gate(config, detector_kind):
     verify_model(path, entry.get('sha256') if not g.model else None)
     return detectors.YoloxBodyGate(path, class_id=g.class_id, input_size=g.input_size,
                                    score_threshold=g.score_threshold, providers=r.providers,
-                                   threads=r.threads, cache_dir=r.cache_dir)
+                                   threads=r.threads, cache_dir=r.cache_dir,
+                                   cuda_graph=r.cuda_graph, thread_spinning=r.thread_spinning)
 
 
 def build_engine(config):

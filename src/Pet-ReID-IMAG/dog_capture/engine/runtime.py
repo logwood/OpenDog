@@ -9,6 +9,7 @@ shipped.  The providers actually used are always reported, never assumed.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 
@@ -79,17 +80,31 @@ def resolve_providers(spec='auto', cache_dir=''):
     return entries
 
 
-def create_session(path, providers='auto', threads=0, cache_dir=''):
+def _session_options(ort, threads, thread_spinning):
+    options = ort.SessionOptions()
+    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    if threads:
+        options.intra_op_num_threads = int(threads)
+    if not thread_spinning:
+        options.add_session_config_entry('session.intra_op.allow_spinning', '0')
+        options.add_session_config_entry('session.inter_op.allow_spinning', '0')
+    options.log_severity_level = 3
+    return options
+
+
+def _session_info(path, entries, session, errors, thread_spinning):
+    return {'model': str(path), 'requested': [name for name, _ in entries],
+            'used': session.get_providers(), 'provider_options': session.get_provider_options(),
+            'fallback_errors': errors, 'thread_spinning': thread_spinning}
+
+
+def create_session(path, providers='auto', threads=0, cache_dir='', *, thread_spinning=True):
     """Returns (session, info) where info records requested and used providers."""
     ort = _ort()
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f'Model not found: {path}')
-    options = ort.SessionOptions()
-    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    if threads:
-        options.intra_op_num_threads = int(threads)
-    options.log_severity_level = 3
+    options = _session_options(ort, threads, thread_spinning)
     entries = resolve_providers(providers, cache_dir)
     errors = []
     session = None
@@ -104,7 +119,68 @@ def create_session(path, providers='auto', threads=0, cache_dir=''):
             errors.append(f'{attempt[0][0]}: {exc}'.splitlines()[0][:300])
     if session is None:
         raise RuntimeError(f'Could not create an ONNX Runtime session for {path}: {errors}')
-    info = {'model': str(path), 'requested': [name for name, _ in entries],
-            'used': session.get_providers(), 'provider_options': session.get_provider_options(),
-            'fallback_errors': errors}
-    return session, info
+    return session, _session_info(path, entries, session, errors, thread_spinning)
+
+
+class _CudaGraph:
+    def __init__(self, ort, session, device_id):
+        import numpy as np
+
+        inputs, outputs = session.get_inputs(), session.get_outputs()
+        if len(inputs) != 1 or not outputs or any(
+            value.type != 'tensor(float)' or value.shape is None
+            or not all(isinstance(dim, int) and dim > 0 for dim in value.shape)
+            for value in inputs + outputs
+        ):
+            raise ValueError('CUDA Graph requires one static FP32 input and static FP32 outputs')
+        self.shape = tuple(inputs[0].shape)
+        self._session = session
+        self._binding = session.io_binding()
+        self._input = ort.OrtValue.ortvalue_from_numpy(np.zeros(self.shape, np.float32), 'cuda', device_id)
+        self._binding.bind_ortvalue_input(inputs[0].name, self._input)
+        self._outputs = []
+        for output in outputs:
+            value = ort.OrtValue.ortvalue_from_shape_and_type(output.shape, np.float32, 'cuda', device_id)
+            self._outputs.append(value)
+            self._binding.bind_ortvalue_output(output.name, value)
+        # ORT stores captured CUDA graphs per thread. Warm and replay on one worker,
+        # even when callers change from startup to video or request threads.
+        self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='dog-capture-graph')
+        try:
+            self._worker.submit(session.run_with_iobinding, self._binding).result()
+        except BaseException:
+            self.close()
+            raise
+
+    def _replay(self, tensor):
+        import numpy as np
+
+        self._input.update_inplace(np.ascontiguousarray(tensor))
+        self._session.run_with_iobinding(self._binding)
+        return self._binding.copy_outputs_to_cpu()
+
+    def run(self, tensor):
+        return self._worker.submit(self._replay, tensor).result()
+
+    def close(self):
+        self._worker.shutdown()
+
+
+def create_cuda_graph_session(path, providers='auto', threads=0, cache_dir='', *, thread_spinning=True):
+    """Open and warm a CUDA Graph session, raising if ordinary inference is needed."""
+    ort = _ort()
+    entries = resolve_providers(providers, cache_dir)
+    name, cuda_options = entries[0]
+    if name != 'CUDAExecutionProvider':
+        raise RuntimeError('CUDA Graph requires CUDA as the first provider')
+    options = _session_options(ort, threads, thread_spinning)
+    session = ort.InferenceSession(str(path), sess_options=options,
+                                   providers=[(name, {**cuda_options, 'enable_cuda_graph': True}),
+                                              'CPUExecutionProvider'])
+    info = _session_info(path, entries, session, [], thread_spinning)
+    actual = info['provider_options'].get(name, {})
+    if info['used'][0] != name or actual.get('enable_cuda_graph') != '1' or actual.get('use_tf32') != '0':
+        raise RuntimeError('ONNX Runtime did not activate FP32 CUDA Graph')
+    session.disable_fallback()
+    graph = _CudaGraph(ort, session, int(actual.get('device_id', '0')))
+    return session, info, graph

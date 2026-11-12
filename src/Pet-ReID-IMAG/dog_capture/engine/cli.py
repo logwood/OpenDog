@@ -37,6 +37,8 @@ def _overrides(args):
         put('body_gate', 'enabled', 'off')
     put('runtime', 'providers', args.providers)
     put('runtime', 'threads', args.threads)
+    put('runtime', 'cuda_graph', args.cuda_graph)
+    put('runtime', 'thread_spinning', args.thread_spinning)
     put('runtime', 'rotate', args.rotate)
     if args.mirror:
         put('runtime', 'mirror', True)
@@ -346,6 +348,11 @@ def main(argv=None):
     bench.add_argument('--no-body-gate', action='store_true')
     bench.add_argument('--mirror', action='store_true')
     bench.set_defaults(func=cmd_bench)
+    for command in (run, bench):
+        command.add_argument('--cuda-graph', action=argparse.BooleanOptionalAction, default=None,
+                             help='warm and use FP32 CUDA Graph with CUDA first, falling back to ordinary inference')
+        command.add_argument('--thread-spinning', action=argparse.BooleanOptionalAction, default=None,
+                             help='allow ONNX Runtime worker threads to spin while idle (default: enabled)')
     models = sub.add_parser('models', help='list, verify, import and download models')
     models.add_argument('--download', help='model name from the list, or "all" for downloadable ones')
     models.add_argument('--import-face', help='install the registered dog_face_pose.onnx reference')
