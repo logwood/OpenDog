@@ -116,8 +116,18 @@ def _session_info(path, entries, session, errors, thread_spinning, threads=0,
             'spin_backoff_max': spin_backoff_max if thread_spinning else 1}
 
 
+def cpu_model_target():
+    """Conservative compatibility identity for locally compiled CPU graphs."""
+    import platform
+    import cv2
+    ort = _ort()
+    return {'ort_version': ort.__version__, 'ort_build': ort.get_build_info(),
+            'machine': platform.machine(), 'processor': platform.processor(),
+            'system': platform.system(), 'cpu_features': cv2.getCPUFeaturesLine()}
+
+
 def create_session(path, providers='auto', threads=0, cache_dir='', *, thread_spinning=True,
-                   spin_duration_us=-1, spin_backoff_max=1):
+                   spin_duration_us=-1, spin_backoff_max=1, cpu_compiled=None):
     """Returns (session, info) where info records requested and used providers."""
     ort = _ort()
     path = Path(path)
@@ -125,6 +135,12 @@ def create_session(path, providers='auto', threads=0, cache_dir='', *, thread_sp
         raise FileNotFoundError(f'Model not found: {path}')
     options = _session_options(ort, threads, thread_spinning, spin_duration_us, spin_backoff_max)
     entries = resolve_providers(providers, cache_dir)
+    if cpu_compiled is not None:
+        if cpu_compiled.get('version') != 1 or cpu_compiled.get('target') != cpu_model_target():
+            raise ValueError('CPU graph target differs; rebuild with compile_dog_capture_cpu.py on this device')
+        if [name for name, _ in entries] != ['CPUExecutionProvider']:
+            raise ValueError('Locally compiled CPU graphs require providers=cpu')
+        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     errors = []
     session = None
     # Try the full list, then progressively drop the first (fastest) provider.
@@ -138,8 +154,11 @@ def create_session(path, providers='auto', threads=0, cache_dir='', *, thread_sp
             errors.append(f'{attempt[0][0]}: {exc}'.splitlines()[0][:300])
     if session is None:
         raise RuntimeError(f'Could not create an ONNX Runtime session for {path}: {errors}')
-    return session, _session_info(path, entries, session, errors, thread_spinning, threads,
-                                  spin_duration_us, spin_backoff_max)
+    info = _session_info(path, entries, session, errors, thread_spinning, threads,
+                         spin_duration_us, spin_backoff_max)
+    if cpu_compiled is not None:
+        info['cpu_compiled'] = cpu_compiled
+    return session, info
 
 
 class _CudaGraph:

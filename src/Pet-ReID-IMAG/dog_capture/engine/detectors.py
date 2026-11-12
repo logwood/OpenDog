@@ -26,6 +26,7 @@ import cv2
 import numpy as np
 
 from .runtime import create_cuda_graph_session, create_session
+from .resampling import resize_area
 from .schema import ANYFACE5, CORE3, SCHEMAS, Detection, KeypointSchema, get_schema, nms
 
 
@@ -34,7 +35,8 @@ def letterbox(image, size, center=True, pad_value=114):
     h, w = image.shape[:2]
     ratio = min(size / h, size / w)
     nw, nh = max(1, round(w * ratio)), max(1, round(h * ratio))
-    resized = cv2.resize(image, (nw, nh), interpolation=cv2.INTER_AREA if ratio < 1 else cv2.INTER_LINEAR)
+    resized = (resize_area(image, (nw, nh)) if ratio < 1 else
+               cv2.resize(image, (nw, nh), interpolation=cv2.INTER_LINEAR))
     canvas = np.full((size, size, 3), pad_value, np.uint8)
     px, py = ((size - nw) // 2, (size - nh) // 2) if center else (0, 0)
     canvas[py:py + nh, px:px + nw] = resized
@@ -64,6 +66,11 @@ class OnnxDetector:
         self._session_settings = dict(providers=providers, threads=threads, cache_dir=cache_dir,
                                       thread_spinning=thread_spinning, spin_duration_us=spin_duration_us,
                                       spin_backoff_max=spin_backoff_max)
+        compiled = self.sidecar.get('cpu_compiled')
+        if compiled is not None:
+            if not isinstance(compiled, dict) or cuda_graph:
+                raise ValueError('Invalid CPU compilation metadata or incompatible CUDA Graph request')
+            self._session_settings['cpu_compiled'] = compiled
         self._graph = None
         self._load_session(cuda_graph=cuda_graph)
         self._graph_lock = Lock() if self._graph is not None else None
@@ -96,11 +103,35 @@ class OnnxDetector:
                               'active': graph is not None, 'fallback_reason': graph_error}
         self.input = session.get_inputs()[0]
         self.outputs = [output.name for output in session.get_outputs()]
+        compiled = self.sidecar.get('cpu_compiled') or {}
+        self.conditional_score_input = compiled.get('conditional_score_input')
+        embedded = session.get_modelmeta().custom_metadata_map or {}
+        if embedded.get('dog_capture.conditional_score_input') != self.conditional_score_input:
+            raise ValueError('CPU conditional graph requires its matching compilation sidecar')
+        if self.conditional_score_input:
+            inputs = session.get_inputs()
+            if (len(inputs) != 2 or inputs[1].name != self.conditional_score_input
+                    or inputs[1].shape != [] or inputs[1].type != 'tensor(float)'):
+                raise ValueError('CPU conditional graph and sidecar input contract disagree')
 
     def warmup(self, runs=2):
         frame = np.zeros((self.size, self.size, 3), np.uint8)
+        if self.conditional_score_input:
+            # A blank image normally skips the pose heads. Warm them explicitly
+            # so the first real face does not pay their allocation/setup cost.
+            tensor = self.preprocess(frame)[0]
+            for _ in range(runs):
+                self.session.run(self.outputs, self._feed(tensor, threshold=-np.inf))
+            return
         for _ in range(runs):
             self.detect(frame)
+
+    def _feed(self, tensor, *, threshold=None):
+        feed = {self.input.name: tensor.astype(self.dtype, copy=False)}
+        if self.conditional_score_input:
+            feed[self.conditional_score_input] = np.asarray(
+                self.score_threshold if threshold is None else threshold, np.float32)
+        return feed
 
     def _run(self, tensor):
         tensor = tensor.astype(self.dtype, copy=False)
@@ -114,7 +145,7 @@ class OnnxDetector:
                     except Exception as exc:
                         reason = f'replay: {exc}'.partition('\n')[0][:300]
                     self._load_session(graph_error=reason)
-        return self.session.run(self.outputs, {self.input.name: tensor})
+        return self.session.run(self.outputs, self._feed(tensor))
 
     def describe(self):
         return {'kind': self.kind, 'model': str(self.model_path), 'sha256': self.sha256, 'input_size': self.size,

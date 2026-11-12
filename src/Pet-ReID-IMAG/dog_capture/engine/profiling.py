@@ -121,6 +121,8 @@ class CaptureProfiler:
                 self._patch(model, '_run', 'network.' + name)
             for module, function, label in (
                 (detectors, 'letterbox', 'model.letterbox'), (detectors, '_rgb_tensor', 'image.pack'),
+                (detectors, 'resize_area', 'image.resize'), (refine, 'resize_area', 'image.resize'),
+                (alignment, 'resize_area', 'image.resize'),
                 (detectors, 'nms', 'model.nms'), (engine_module, 'as_bgr', 'image.input'),
                 (engine_module, 'rotate_frame', 'image.rotate'), (engine_module, 'face_geometry', 'pose.geometry'),
                 (engine_module, 'eye_contrast', 'quality.eye_contrast'),

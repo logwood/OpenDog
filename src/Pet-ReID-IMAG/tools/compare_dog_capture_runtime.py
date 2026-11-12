@@ -1,8 +1,10 @@
 """Check capture decisions against an earlier engine/refiner on every video frame.
 
-Both implementations use the current, unchanged model adapters with separate ORT
-sessions. The reference uses the supplied config; the current implementation adds
---optimized-config. This tests numerical and decision parity, not throughput.
+The default keeps current adapters for compatibility with old engine revisions.
+--isolated-reference loads the complete old package, including image sampling
+and model adapters. Conditional empty outputs are accepted only when the original
+scores prove no detection passes the same threshold. All nonempty outputs remain
+bit-exact. This checks numerical and decision parity, not throughput.
 """
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ import argparse
 from collections import Counter
 import gc
 import hashlib
+import importlib
 import importlib.util
 import json
 from pathlib import Path
@@ -45,18 +48,54 @@ def load_reference(root):
     return modules['engine'].CaptureEngine, hashes
 
 
+def load_isolated_reference(root):
+    """Load the complete old package, including adapters and image sampling."""
+    directory = root.resolve() / 'src/Pet-ReID-IMAG/dog_capture'
+    namespace = '_capture_reference_' + digest(str(directory).encode())[:12]
+    spec = importlib.util.spec_from_file_location(namespace, directory / '__init__.py',
+                                                submodule_search_locations=[str(directory)])
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[namespace] = module
+    spec.loader.exec_module(module)
+    factory = importlib.import_module(namespace + '.engine.zoo').build_engine
+    config_class = importlib.import_module(namespace + '.engine.config').CaptureConfig
+    hashes = {path.name: digest(path.read_bytes()) for path in (directory / 'engine').glob('*.py')}
+    return lambda config: factory(config_class().merged(config.to_dict())), hashes
+
+
 def trace_models(engine, trace, counts):
     for label, model in (('face', engine.detector), ('body', engine.body_gate),
                          ('landmarks', engine.refiner.landmarker)):
         if model is None:
             continue
-        def run(tensor, original=model._run, label=label):
+        def run(tensor, original=model._run, label=label, model=model):
             result = original(tensor)
             key = (label, tensor.shape, tensor.dtype.str, digest(tensor.tobytes()))
-            trace[key] = [(v.shape, v.dtype.str, digest(v.tobytes())) for v in result]
+            outputs = [(v.shape, v.dtype.str, digest(v.tobytes())) for v in result]
+            width = 4 + getattr(model, 'num_classes', 0) + getattr(model, 'num_kpts', 0) * getattr(model, 'kpt_dims', 0)
+            raw_pose = (label == 'face' and len(result) == 1 and result[0].ndim == 3
+                        and result[0].shape[:2] == (1, width) and width > 4)
+            empty = raw_pose and not np.any(result[0][:, 4:4 + model.num_classes] >= model.score_threshold)
+            skipped = bool(raw_pose and getattr(model, 'conditional_score_input', None)
+                           and result[0].shape[-1] == 0)
+            trace[key] = {'outputs': outputs, 'empty': bool(empty), 'skipped_heads': skipped}
             counts[label] += 1
             return result
         model._run = run
+
+
+def compare_outputs(reference, current):
+    """Only an explicit conditional empty result may omit unused raw heads."""
+    bad, skipped = [], 0
+    for key, value in current.items():
+        old = reference.get(key)
+        if old is not None and old['outputs'] == value['outputs']:
+            continue
+        if old is not None and old['empty'] and value['skipped_heads']:
+            skipped += 1
+        else:
+            bad.append(key[0])
+    return bad, skipped
 
 
 def normalize_diagnostics(reference, current, refine):
@@ -117,6 +156,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--reference-cpu-qos', choices=('inherit', 'high'), default='inherit')
     parser.add_argument('--optimized-cpu-qos', choices=('inherit', 'high'), default='inherit')
+    parser.add_argument('--isolated-reference', action='store_true',
+                        help='Use the full old package, required when adapters or image sampling changed')
     args = parser.parse_args()
     if args.output.exists():
         parser.error('Use a fresh output directory')
@@ -124,13 +165,19 @@ def main():
     cv2.setNumThreads(1)
     config = CaptureConfig.load(args.config).merged({'runtime': {'providers': 'cpu'}})
     optimized = config.merged(json.loads(args.optimized_config.read_text(encoding='utf8')))
-    reference_class, hashes = load_reference(args.reference_root)
+    reference_factory, hashes = (load_isolated_reference(args.reference_root) if args.isolated_reference
+                                  else load_reference(args.reference_root))
     report = {'method': __doc__, 'reference_source_sha256': hashes,
-              'config': config.to_dict(), 'optimized_config': optimized.to_dict(), 'videos': [], 'cpu_policies': {}}
+              'config': config.to_dict(), 'optimized_config': optimized.to_dict(), 'videos': [], 'cpu_policies': {},
+              'isolated_reference': args.isolated_reference}
     policies = {'reference': args.reference_cpu_qos, 'optimized': args.optimized_cpu_qos}
     for path in args.source:
-        old_models = build_engine(config)
-        original = reference_class(config, old_models.detector, old_models.body_gate, old_models.refiner.landmarker)
+        old_models = None
+        if args.isolated_reference:
+            original = reference_factory(config)
+        else:
+            old_models = build_engine(config)
+            original = reference_factory(config, old_models.detector, old_models.body_gate, old_models.refiner.landmarker)
         current = build_engine(optimized)
         engines = {'reference': original, 'optimized': current}
         for engine in engines.values():
@@ -143,7 +190,7 @@ def main():
         counts = {name: Counter() for name in engines}
         for name, engine in engines.items():
             trace_models(engine, traces[name], counts[name])
-        mismatches, n, skipped = [], 0, 0
+        mismatches, n, skipped, skipped_heads = [], 0, 0, 0
         source = VideoSource(path)
         declared = int(source.capture.get(cv2.CAP_PROP_FRAME_COUNT))
         try:
@@ -157,8 +204,8 @@ def main():
                 old, new = (results[name].to_dict() for name in ('reference', 'optimized'))
                 old.pop('timings_ms'); new.pop('timings_ms')
                 skipped += normalize_diagnostics(old, new, config.refine)
-                bad_outputs = [key[0] for key, val in traces['optimized'].items()
-                               if traces['reference'].get(key) != val]
+                bad_outputs, empty_heads = compare_outputs(traces['reference'], traces['optimized'])
+                skipped_heads += empty_heads
                 if old != new or numeric_faces(results['reference']) != numeric_faces(results['optimized']) or bad_outputs:
                     mismatches.append({'frame': index, 'frame_result_differs': old != new,
                                        'raw_output_models_differ': bad_outputs})
@@ -174,6 +221,7 @@ def main():
         row = {'video': str(path), 'sha256': digest(path.read_bytes()), 'frames': n,
                'model_calls': {name: dict(value) for name, value in counts.items()},
                'mirror_diagnostics_skipped': skipped, 'mismatches': mismatches,
+               'conditional_empty_heads_skipped': skipped_heads,
                'selection_identical': selection['reference'] == selection['optimized'], 'selection': selection}
         for name, bundle in bundles.items():
             directory = args.output / path.stem / name

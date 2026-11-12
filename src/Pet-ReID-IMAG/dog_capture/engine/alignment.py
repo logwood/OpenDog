@@ -20,6 +20,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .resampling import resize_area
+
 PETFACE_DOG_224 = {
     'left_eye': (56.0, 94.75487264), 'right_eye': (168.0, 94.57845561),
     'nose': (112.2124176, 150.36327108),
@@ -107,7 +109,7 @@ def align_face(frame, points: dict, size=224, template=PETFACE_DOG_224, out_size
             f = scale / 0.8
             roi = frame[y1:y2, x1:x2]
             rw, rh = max(1, round((x2 - x1) * f)), max(1, round((y2 - y1) * f))
-            source = cv2.resize(roi, (rw, rh), interpolation=cv2.INTER_AREA)
+            source = resize_area(roi, (rw, rh))
             fx, fy = rw / (x2 - x1), rh / (y2 - y1)
             pre = np.array([[fx, 0, -fx * x1], [0, fy, -fy * y1], [0, 0, 1]], np.float64)
             warp_matrix = (np.vstack([matrix, [0, 0, 1]]) @ np.linalg.inv(pre))[:2]

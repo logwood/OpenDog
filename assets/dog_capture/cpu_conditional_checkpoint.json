@@ -1,0 +1,44 @@
+{
+  "schema": "dog_capture_cpu_conditional_v1",
+  "original_checkpoint_retained": true,
+  "local_directory": "models/pretrained/dog_capture_cpu_conditional_v1",
+  "model": "models/pretrained/dog_capture_cpu_conditional_v1/dog_face_pose_cpu.onnx",
+  "configuration": "models/pretrained/dog_capture_cpu_conditional_v1/capture.json",
+  "metadata": {
+    "kind": "yolo_pose",
+    "schema": "dogface6",
+    "kpt_shape": [
+      6,
+      3
+    ],
+    "input_size": 320,
+    "source_weights": "/tmp/claude-0/-home-user-OpenDog/e43a0a33-2b4a-5e73-809a-6ec999a35337/scratchpad/models/dogface6_e12_best.pt",
+    "sha256": "f03f36f197f14725f2c8a61f955926b7fedf16b6d4a12bf9c55c371a736f3e9c",
+    "license": "Trained with Ultralytics (AGPL-3.0) on StanfordExtra/Stanford Dogs (research use)",
+    "cpu_compiled": {
+      "version": 1,
+      "target": {
+        "ort_version": "1.26.0",
+        "ort_build": "ORT Build Info: git-branch=HEAD, git-commit-id=8c546c37b4, fp8-kv-cache=1, build type=Release",
+        "machine": "AMD64",
+        "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+        "system": "Windows",
+        "cpu_features": "SSE SSE2 SSE3 *SSE4.1 *SSE4.2 *AVX *FP16 *AVX2 *AVX512-SKX?"
+      },
+      "source_sha256": "48c2b9f580a6b29f6ec92f81d58bffcb06c609b4da4d77e4c85f259dc1b8d74c",
+      "conditional_score_input": "capture_gate_threshold",
+      "head_nodes": 68,
+      "score_and_shared_nodes": 251,
+      "output_width": 23
+    }
+  },
+  "size_bytes": 10902729,
+  "compiler": "src/Pet-ReID-IMAG/tools/compile_dog_capture_cpu.py",
+  "build": "python src/Pet-ReID-IMAG/tools/compile_dog_capture_cpu.py --config ORIGINAL_FULL_CAPTURE_CONFIG --output NEW_CPU_MODEL_DIR",
+  "deployment": "Use the generated capture.json; rebuild on CPU/ORT target change. Original portable models remain unchanged.",
+  "not_for": [
+    "CUDA Graph",
+    "TensorRT",
+    "WASM/mobile deployment without a separate compatible build"
+  ]
+}

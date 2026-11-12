@@ -117,13 +117,15 @@ def verify_provider(model, tensor, output, label):
     options.enable_profiling = True
     options.profile_file_prefix = str(output / f'provider-{label}')
     options.log_severity_level = 3
+    if model.runtime.get('cpu_compiled'):
+        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     providers = []
     for provider in model.runtime['used']:
         settings = dict(model.runtime['provider_options'].get(provider, {}))
         settings.pop('enable_cuda_graph', None)  # profile individual kernels in an ordinary session
         providers.append((provider, settings))
     session = ort.InferenceSession(str(model.model_path), sess_options=options, providers=providers)
-    got = session.run(model.outputs, {model.input.name: tensor})
+    got = session.run(model.outputs, model._feed(tensor))
     profile = session.end_profiling()
     events = json.loads(Path(profile).read_text(encoding='utf8'))
     nodes = Counter(event.get('args', {}).get('provider') for event in events
@@ -137,7 +139,7 @@ def verify_provider(model, tensor, output, label):
         cpu_options.intra_op_num_threads = 4
         reference = ort.InferenceSession(str(model.model_path), sess_options=cpu_options,
                                         providers=['CPUExecutionProvider'])
-        want = reference.run(model.outputs, {model.input.name: tensor})
+        want = reference.run(model.outputs, model._feed(tensor))
         result['cpu_comparison'] = [{'shape': list(a.shape),
             'max_abs_difference': float(np.max(np.abs(a - b))),
             'mean_abs_difference': float(np.mean(np.abs(a - b))),

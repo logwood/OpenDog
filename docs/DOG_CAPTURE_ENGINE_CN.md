@@ -187,6 +187,12 @@ Ultralytics 还能直接导出 TFLite / CoreML / NCNN / RKNN / OpenVINO / Tensor
 （`refine.landmarks` / `--landmarks`，`refine.antialias`，`refine.candidate_retry_s`）；浏览器引擎快 1.5–2.7 倍，但目前侧脸会漏采，
 详见 [`DOG_CAPTURE_LANDMARK_TRACKER_CN.md`](DOG_CAPTURE_LANDMARK_TRACKER_CN.md)。
 
+**本机 CPU 结构优化（2026-11-13）**：面积缩放自动采用采样权重相同的双条带实现；可用
+`tools/compile_dog_capture_cpu.py --config ORIGINAL_FULL_CAPTURE_CONFIG --output NEW_CPU_MODEL_DIR`
+从原始 checkpoint 构建条件分支模型，再使用生成的 `capture.json`。无有效候选时只省去框/关键点分支，
+保持原检测机会与阈值。产物校验 CPU / ORT 目标，换设备或运行时需重建。完整视频精度回归、实际实时耗时和使用方法见
+[`DOG_CAPTURE_LANDMARK_TRACKER_CN.md` 第 11 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#11-网络分支与近景面积缩放的结构优化2026-11-13)。
+
 `python -m dog_capture config --write my.yaml` 会导出全部参数。常改的几项：
 
 ```yaml

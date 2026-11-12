@@ -373,3 +373,111 @@ python src/Pet-ReID-IMAG/tools/benchmark_dog_capture_v1.py --config CAPTURE_CONF
 主回归 **148 项通过、1 项因缺少可选 Brotli 包跳过**；比较器修正后相关 4 项通过（其中 3 项已包含在主回归中），总计 149 项不同测试通过。测试覆盖计时自耗时核对、工作线程追踪、异常恢复、QoS 的自动启用/跨平台/失败行为及宿主策略恢复。
 
 原生 `python -m dog_capture run ... --realtime` 默认 `auto` 的实际前三秒检查：读取并处理 **91 / 91 帧、零丢帧、处理 P95 25.99 ms**，策略读回为 HighQoS，OpenCV 为 1 线程，原视频帧数正确记录为 1,314。使用 CLI 原有每模型 2 次预热；没有合格照片时按既有约定返回 2，报告正常生成。所有原始记录和精简汇总在 `flow_optimization_20261113/`；随代码提交的可审阅结果为 [flow_profile_benchmark.json](../assets/dog_capture/flow_profile_benchmark.json)。
+
+## 11. 网络分支与近景面积缩放的结构优化（2026-11-13）
+
+本轮以 `f170e36911762bb2a5bb4ad2e7b1202cfbbb8e3a` 为完整对照，两边都使用上一节已验收的 HighQoS、4 个 ORT 线程、1,000 μs 忙等窗口、退避 8 和 1 个 OpenCV 线程。改动集中在网络内部的执行依赖和缩放的任务拆分。
+
+### 先筛查覆盖面
+
+两段视频完整审计发现，同帧相同输入的重复网络调用为零；面积缩放的相同请求只有 30 / 2,076 和 16 / 1,649 次。输入缓存的覆盖面太小，没有增加缓存和失效管理。将图像改成 BGRA、逐通道缩放、平面排列的实验也没有采用：虽然像素一致，整体比原始 BGR 缩放慢约 2–3 倍。
+
+用户视频 628 次脸部调用中有 477 次没有分数达到原阈值；Wolfhound 为 1 / 286 次。因此网络优化应根据原分数条件省去无用分支，而不是降低全帧检测频率。后者会影响重新捕获，前者不改变任何检测机会。
+
+### 无候选时省去框与关键点分支
+
+新增 `tools/compile_dog_capture_cpu.py`。先让 ORT 在部署 CPU 上完成原图优化，再保留分数及其共享祖先节点，在原有框与关键点分支外加 ONNX `If`。全部原分数均低于本次调用的阈值时，返回 `[1, 23, 0]` 空候选；只要有分数达到阈值，就运行全部原分支并返回完整原始 anchors。等于阈值保留，阈值是运行时输入，NMS 顺序不变。先比较每个分数再归约布尔结果，避免 NaN 掩盖另一有效候选。
+
+本机图中 251 个分数/共享节点常规运行，68 个框/关键点节点按条件运行。只是改变计算依赖，没有改变权重、精度格式、网络输入尺寸或阈值。直接在未优化 ONNX 上加 `If` 的初版被否决：正样本慢约 8%–11%，原始输出出现最高约 1.83e-4 的差异。先固定 CPU 融合结果后，真实输入交替微测中的空候选推理缩短约 27%–29%，有候选时接近原速，正样本输出逐位相同。
+
+CPU 编译产物的 sidecar 记录原始模型 SHA256、产物 SHA256、ORT 版本/构建、CPU 和系统特征。加载时验证，使用 `ORT_DISABLE_ALL` 保留已完成的融合；目标不符时明确要求在当前设备重建。原 portable checkpoint 保留。空白图像一般不会走有效分支，因此生产 `warmup()` 显式运行全部 heads，避免首次出现狗脸时才分配该分支资源。常规调用的阈值不会被预热修改。
+
+图结构和部署约束参考 [ONNX If](https://onnx.ai/onnx/operators/onnx__If.html) 与 [ORT 离线图优化说明](https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html)。这个产物用于本机 CPU，手机、浏览器和 GPU 继续使用各自适配的原模型，不能直接复制 CPU 融合图。
+
+### 在采样定义完全相同的位置拆分缩放
+
+`resampling.resize_area()` 覆盖跟踪裁剪、对齐裁剪和下采样 letterbox。[OpenCV 面积缩放实现](https://raw.githubusercontent.com/opencv/opencv/5.x/modules/imgproc/src/resize.cpp) 按输出像素数决定并行粒度；近景大图缩成小网络输入时，源像素很多，却可能只有一个任务。
+
+新实现把符合条件的大幅 BGR uint8 下采样拆成两条独立条带：优先按行，否则按列。只在源/目标共同整数边界切开，并逐项检查 OpenCV 的 FP32 面积权重、1e-3 边缘截断和末行/列裁切是否与整幅缩放一致。使用一个共享辅助线程，调用线程处理另一条带，返回前等待全部完成；小图、其他布局/格式、放大或不等价切点回到原 OpenCV 调用。没有改变目标大小、抗锯齿、裁剪矩阵、原图像素或帧间状态。
+
+真实 ROI 的四轮交替筛查中，按行拆分平均缩短约 20%–24%；增加列拆分覆盖另外 4 个样本，这些新增样本缩放时间进一步下降约 35%–40%。四条带比两条带附加收益很小，且有额外线程开销，所以没有采用。全套像素测试覆盖随机/边缘纹理、非连续 ROI、整数/分数缩放、横向舍入和异常收尾。
+
+### 严格数值验收与可复现入口
+
+比较工具增加 `--isolated-reference`，把旧 checkout 的整个 `dog_capture` 包独立加载，包含旧模型适配器、对齐和采样函数，防止两边误用同一份新缩放代码。对无候选网络分支，只有相同输入的原始分数已经证明没有有效候选，才允许省去 raw heads；任何有效候选仍要求原始输出哈希逐位一致。
+
+最终版共 **2,526 帧零差异**：全部网络输入、有效候选网络输出、未舍入的框/关键点/姿态/质量分、逐帧决策以及最终原图/对齐图的像素哈希一致。478 次空候选没有生成原来未使用的框和关键点，不能声称这些 raw 数组也相同。模型调用数仍为用户视频 **628 / 125 / 1,178**、Wolfhound **286 / 1 / 1,233**（脸 / 身体 / 关键点）。最终选图仍为用户视频无图，Wolfhound 正面第 20 帧、左侧第 278 帧。这里证明的是这两段完整输入的回归一致性，不是扩展数据集的准确率。
+
+本机已归档 `models/pretrained/dog_capture_cpu_conditional_v1/` 的模型、sidecar 和完整 `capture.json`。原始 checkpoint 和视频沿用原归档。本轮构建器从缓存的 ORT 优化图重新生成的条件图与验收模型字节一致；其 SHA256 为 `f03f36f197f14725f2c8a61f955926b7fedf16b6d4a12bf9c55c371a736f3e9c`。部署到另一台 CPU 或升级 ORT 时从原 checkpoint 重建：
+
+```bash
+python src/Pet-ReID-IMAG/tools/compile_dog_capture_cpu.py --config ORIGINAL_FULL_CAPTURE_CONFIG --output NEW_CPU_MODEL_DIR
+```
+
+在 `src/Pet-ReID-IMAG` 目录运行采集：
+
+```bash
+python -m dog_capture run VIDEO --config ABSOLUTE_CPU_MODEL_DIR/capture.json --realtime --output NEW_CAPTURE_DIR
+```
+
+构建时需要 `onnx`，部署推理不新增这个依赖。`ORIGINAL_FULL_CAPTURE_CONFIG` 应指向归档原始模型和原采集规则；编译器生成的完整配置仅替换脸部模型并指定 CPU，其他规则继承。本机原始完整配置为 `artifacts/runs/dog_capture/runtime_optimization_20261113/cpu_realtime_config.json`。输出模型目录和报告目录均需是新目录。
+
+```bash
+python src/Pet-ReID-IMAG/tools/compare_dog_capture_runtime.py --reference-root F170E36_CHECKOUT --isolated-reference --config ORIGINAL_FULL_CAPTURE_CONFIG --optimized-config CPU_MODEL_DIR/capture.json --reference-cpu-qos high --optimized-cpu-qos high --source USER_VIDEO --source WOLFHOUND_VIDEO --output NEW_COMPARISON_DIR
+python src/Pet-ReID-IMAG/tools/benchmark_dog_capture_v1.py --config CPU_MODEL_DIR/capture.json --source USER_VIDEO --source WOLFHOUND_VIDEO --providers cpu --threads 4 --cv-threads 1 --cpu-qos high --stage video --playback realtime --warmup 15 --repeats 1 --samples 4 --output NEW_BENCHMARK_DIR
+```
+
+Python 主回归 **194 项通过、2 项跳过**：跳过的是未下载的旧 TFLite confidence-export fixture 和未安装的可选 Brotli。新增条件图测试覆盖边界阈值、NaN、动态阈值、CPU 目标不符、分支预热、provider 剖析和错误 head 顺序。浏览器 SDK 未改动；本机 CPU 分支不作为其模型更新。
+
+另从原始 checkpoint 实际重新运行完整编译命令：ORT 自动生成的 `ReorderOutput` 节点名称会变化，文件 SHA256 不保证跨构建相同。去掉节点名称并排序 initializer/value_info 后，两份图完全相同（算子、连接、属性、权重和 metadata 都保留）；24 个真实视频网络输入的输出逐位一致。每次构建都生成与该产物匹配的 sidecar 哈希，不硬套本机归档文件的哈希。
+
+### 最终实际实时回放
+
+使用完整原视频、原始 PTS 和容量为 1 的生产队列，每模型预热 15 次；原版 A → 优化 A → 优化 B → 原版 B，B 轮反转视频顺序。全部推理任务串行，系统频率和外部负载未锁定。以下为未安装剖析钩子的实测值：
+
+| 视频 / 轮次 | FPS | 平均处理 | P95 | P99 | 丢帧 |
+|---|---:|---:|---:|---:|---:|
+| 用户 / 原版 A | 30.01 | 13.13 ms | 27.95 ms | 35.83 ms | 0 |
+| 用户 / 优化 A | 29.98 | 13.18 ms | 27.58 ms | 34.77 ms | 1 |
+| 用户 / 优化 B | 30.00 | 12.74 ms | 28.43 ms | 36.77 ms | 0 |
+| 用户 / 原版 B | 30.00 | 14.56 ms | 30.13 ms | 38.22 ms | 0 |
+| Wolfhound / 原版 A | 24.01 | 12.38 ms | 29.48 ms | 43.39 ms | 0 |
+| Wolfhound / 优化 A | 24.01 | 11.73 ms | 28.73 ms | 43.52 ms | 0 |
+| Wolfhound / 优化 B | 24.01 | 12.14 ms | 29.08 ms | 43.44 ms | 0 |
+| Wolfhound / 原版 B | 24.01 | 12.86 ms | 29.58 ms | 46.31 ms | 0 |
+
+拼接全部处理帧再计算分位数，不对单轮 P95/P99 求平均：
+
+| 视频 | 平均处理：原版 → 优化 | P95：原版 → 优化 | P99：原版 → 优化 |
+|---|---:|---:|---:|
+| 用户 | **13.85 → 12.96 ms（-6.4%）** | 29.29 → 28.03 ms | 37.62 → 35.53 ms |
+| Wolfhound | **12.62 → 11.94 ms（-5.4%）** | 29.56 → 29.00 ms | 44.16 → 43.60 ms |
+
+输入原本已接近 30 / 24 fps 上限，本轮收益体现在处理时间，不能宣称 FPS 大幅提高。用户优化 A 平均值略慢于原版 A，Wolfhound A 的 P99 也没有下降，不能说所有轮次、所有指标都变快。
+
+优化两轮共丢 **1 / 5,052 帧（0.020%）**，原版为 0。丢的是用户优化 A 的第 1 帧：启动输入迟到最大 53.25 ms，而第 0 帧实际处理 18.92 ms。记录支持启动输入/排队造成丢帧，不能把它说成网络耗时超过帧预算；保留在结果中，没有删掉启动帧或换测量起点。生产者迟到没有逐帧落盘，因此不进一步推断具体系统事件。
+
+优化组计划视频时刻至结果的 P95 为 28.69–30.34 ms；最大值用户 72.28 ms（含这次启动迟到）、Wolfhound 55.67 ms，仍无硬实时上界。四轮选图完全一致：用户无图，Wolfhound 正面 20 / 左侧 278 帧。计时包含采集引擎的检测、跟踪、姿态、质量和选图；计划时刻至结果还包含解码迟到与排队，不包含预览/UI、网络、ReID、摄像头驱动和最终文件保存。
+
+原生 CLI 默认 `auto`、每模型 2 次预热的前三秒验收：**91 / 91 帧、零丢帧、处理 P95 28.22 ms**，HighQoS 读回与 OpenCV 单线程均正确，报告正常生成；没有合格照片时按原约定返回 2。
+
+### 贡献拆分、剩余大头与后续排序
+
+按同帧交替原版、只改缩放、只改网络、组合四种实现，使用独立采集状态并尽量共享相同网络会话，另做完整两视频消融。每帧的比较和视频解码不进入处理计时；这是连续离线诊断，不能替代上面的实时结果：
+
+| 视频 | 原版 | 只改缩放 | 只改网络 | 组合 |
+|---|---:|---:|---:|---:|
+| 用户，平均 ms | 8.344 | 7.719 | 7.586 | 6.949 |
+| Wolfhound，平均 ms | 6.988 | 6.302 | 7.031 | 6.509 |
+
+用户视频的网络和缩放收益均可观测；Wolfhound 几乎没有空候选，网络分支没有正收益，主要依靠缩放。组合结果有测量噪声，Wolfhound 组合均值高于只改缩放；不把两项微测收益直接相加预测生产速度。这个消融里也有 180 ms 级长尾，完整保留于证据文件。
+
+![完整开销与全部最终实时轮次](../assets/dog_capture/structure_profile/overview.svg)
+
+新的全帧累计调用树：[用户视频](../assets/dog_capture/structure_profile/user_flow.svg)、[Wolfhound](../assets/dog_capture/structure_profile/wolfhound_flow.svg)。缩放父区间包括分片派发、主线程计算和等待；其主线程原生缩放是子区间，统计独占耗时不重复相加。辅助线程计算与主线程重叠，不再作为额外串行耗时相加。调用次数包括这些嵌套区间，不把它当作逻辑裁剪次数对比。
+
+带插桩的完整离线剖析中，所有缩放开销：用户 **2.123 → 1.601 ms / 帧**，Wolfhound **1.813 → 1.401 ms / 帧**，下降约 25% / 23%；用户脸部网络 **3.914 → 3.146 ms / 帧**。Wolfhound 脸部网络 **1.969 → 2.023 ms / 帧**，符合空候选几乎不存在、门控没有省算力的情况。
+
+优化后全部网络仍占整帧约 **45%–57%**，最慢 5% 帧里约 **65%–67%**；缩放约 **18%–20%**，输入打包约 2%–3%。下一步仍优先检查有效候选的精定位/复检链及网络执行，需证明判定时序与重新捕获不变；跨帧异步化和减少检测周期并非当前可以低成本直接替换的步骤。两视频没有相同网络输入可复用，不继续增加低命中缓存；小数组打包保持后排。
+
+全部初版与最终版实时轮次、消融、网络/缩放筛查、源文件和模型哈希、重建验证、CLI 与回归测试汇总在 [structure_optimization_benchmark.json](../assets/dog_capture/structure_optimization_benchmark.json)，CPU 产物记录在 [cpu_conditional_checkpoint.json](../assets/dog_capture/cpu_conditional_checkpoint.json)。原始计时、完整 profile/trace、选图和复现实验脚本保存在本机 `artifacts/runs/dog_capture/structure_optimization_20261113/`。初版只按行拆分时的四轮混合结果也保留，未挑选最快轮次替换验收数据。
