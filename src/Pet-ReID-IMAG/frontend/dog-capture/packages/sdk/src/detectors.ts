@@ -104,6 +104,43 @@ export class YoloPoseDetector implements FaceDetector {
   }
 }
 
+/**
+ * The crop landmark model (tools/train_dog_face_landmarks.py; port of detectors.CropLandmarker):
+ * one dog face centred on a canonical crop, at any roll.  Output [1, 3K + 6]: keypoints (x, y) * K,
+ * face box centre x, y and long side, presence logit, visibility logits * K, cos/sin of the roll.
+ */
+export class CropLandmarker implements FaceDetector {
+  readonly rotationInvariant = true;
+  schema: KeypointSchema;
+  constructor(private runner: Runner, public options: { schema?: string; share?: number; keypointMaxRoll?: number;
+    scoreThreshold?: number; yawScale?: number } = {}) {
+    this.schema = getSchema(options.schema || 'dogface6');
+    if (options.yawScale !== undefined) this.schema = { ...this.schema, yawScale: options.yawScale };
+  }
+
+  get size() { return this.runner.inputSize; }
+  get share() { return this.options.share ?? 0.35; }
+  get keypointMaxRoll() { return this.options.keypointMaxRoll ?? 45; }
+  runsAt(size: number) { return size === this.runner.inputSize; }
+
+  async detect(crop: Frame): Promise<Detection[]> {
+    const size = this.runner.inputSize;
+    if (crop.width !== size || crop.height !== size) throw new Error(`CropLandmarker takes ${size} px crops`);
+    const [out] = await this.runner.run(chw(crop, 'rgb', 1 / 255), [1, 3, size, size]);
+    const k = this.schema.names.length, o = out.data;
+    if (o.length !== 3 * k + 6) throw new Error(`expected ${3 * k + 6} landmark outputs, got ${o.length}`);
+    const sigmoid = (v: number) => 1 / (1 + Math.exp(-v));
+    const presence = sigmoid(o[2 * k + 3]);
+    const [cx, cy, side] = [o[2 * k], o[2 * k + 1], o[2 * k + 2]];
+    if (presence < (this.options.scoreThreshold ?? 0.05) || !(side > 0)) return [];
+    const keypoints = [...Array(k).keys()].map((j) => [o[2 * j], o[2 * j + 1]] as Point);
+    const kpScores = [...Array(k).keys()].map((j) => sigmoid(o[2 * k + 4 + j]));
+    return [{ box: [cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2], score: presence, keypoints,
+      schema: this.schema, kpScores, source: 'crop_landmarks',
+      extra: { roll_deg: Math.atan2(o[3 * k + 5], o[3 * k + 4]) * 180 / Math.PI } }];
+  }
+}
+
 /** Ultralytics stores kpt_names as "{0: ['left_eye', ...]}"; use it when it names eyes and nose. */
 export function schemaFromNames(names?: string[]): KeypointSchema | null {
   if (!names?.length) return null;

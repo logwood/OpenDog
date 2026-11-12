@@ -51,7 +51,7 @@ def _sha256(path):
 def build_capture_router(*, base_config, engine_factory, model_files, gallery=None, embedder=None, api_key=None,
                          store=None, signer=None, consistency_threshold=None, stability_threshold=None,
                          allow_client_commit=None):
-    """``model_files``: {'face': Path, 'gate': Path|None} served to clients;
+    """``model_files``: {'face': Path, 'gate': Path|None, 'landmarks': Path|None} served to clients;
     ``gallery``: object with enroll(pet_id, uploads, display_name=) / identify(payload, top_k=)."""
     store = store or SessionStore()
     signer = signer or TokenSigner()
@@ -104,7 +104,8 @@ def build_capture_router(*, base_config, engine_factory, model_files, gallery=No
             session.state = 'capturing'
         models = {item['role']: {'url': f'/v1/capture/models/{name}?sha256={item["sha256"]}', 'sha256': item['sha256'],
                                  'bytes': item['bytes'], **{k: item['meta'][k] for k in
-                                                            ('kind', 'schema', 'input_size', 'kpt_shape', 'yaw_scale')
+                                                            ('kind', 'schema', 'input_size', 'kpt_shape', 'yaw_scale',
+                                                             'share', 'keypoint_max_roll')
                                                             if k in item['meta']}}
                   for name, item in served.items()}
         return {'protocol': PROTOCOL, 'session_id': session.id, 'purpose': session.purpose,
@@ -289,7 +290,7 @@ def _static_files(directory):
 def mount_capture(app, service=None, *, api_key=None, models_dir=None, config=None, **kwargs):
     """Attach ``/v1/capture`` and the ``/capture/`` H5 to an existing FastAPI app."""
     from ..engine import CaptureConfig
-    from ..engine.zoo import build_body_gate, build_detector, find_face_model
+    from ..engine.zoo import build_body_gate, build_detector, build_landmarker, find_face_model
 
     if models_dir is not None:
         os.environ['DOG_CAPTURE_MODELS'] = str(models_dir)
@@ -298,17 +299,20 @@ def mount_capture(app, service=None, *, api_key=None, models_dir=None, config=No
     kind, path = find_face_model(base)
     detector = build_detector(base, kind, path)
     gate = build_body_gate(base, kind)
+    # The re-check runs the same crop networks as the client: tracker (landmarker) then precise.
+    landmarker = build_landmarker(base, kind)
     from ..engine import CaptureEngine
 
     def engine_factory(config_dict):
         return CaptureEngine(CaptureConfig.from_dict(config_dict).merged(
-            {'runtime': {'still_images': True, 'rotate': '0'}}), detector, gate)
+            {'runtime': {'still_images': True, 'rotate': '0'}}), detector, gate, landmarker)
 
     staging = getattr(getattr(service, 'store', None), 'staging_root', None)
     signer = TokenSigner(secret_file=Path(staging) / 'capture_secret.txt' if staging else None)
     router, store = build_capture_router(
         base_config=base, engine_factory=engine_factory,
-        model_files={'face': path if kind != 'dogflw' else None, 'gate': getattr(gate, 'model_path', None)},
+        model_files={'face': path if kind != 'dogflw' else None, 'gate': getattr(gate, 'model_path', None),
+                     'landmarks': getattr(landmarker, 'model_path', None)},
         gallery=service, embedder=recognition_embedder(service) if service is not None else None,
         api_key=api_key, signer=signer, **kwargs)
     app.include_router(router)

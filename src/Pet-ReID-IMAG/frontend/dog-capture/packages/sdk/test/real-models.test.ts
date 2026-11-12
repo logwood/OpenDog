@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createOrtRunner, defaultConfig, eyeContrast, FaceRefiner, fromBGR, YoloPoseDetector, YoloxBodyGate } from '../src';
+import { createOrtRunner, CropLandmarker, defaultConfig, eyeContrast, FaceRefiner, fromBGR, YoloPoseDetector, YoloxBodyGate } from '../src';
 
 const dir = process.env.DOG_CAPTURE_REAL;
 const ready = !!dir && existsSync(resolve(dir, 'ref.json'));
@@ -43,8 +43,13 @@ describe.skipIf(!refineReady)('refinement with the real face model (tools/export
     const runner = await createOrtRunner(ort, new Uint8Array(readFileSync(resolve(dir!, 'dog_face_pose.onnx'))), ['wasm']);
     runner.inputSize = ref.model_input;
     const detector = new YoloPoseDetector(runner, { kpt: [6, 3] });
-    const refiner = new FaceRefiner(detector, { ...defaultConfig().refine, crop_size: ref.crop_size ?? 0 });
-    expect(refiner.size).toBe(ref.crop_size || ref.model_input);
+    let landmarker = null;
+    if (ref.landmarks) {   // the crop landmarker tracks; faces[].precise = the detector on its upright crop
+      const lmRunner = await createOrtRunner(ort, new Uint8Array(readFileSync(resolve(dir!, ref.landmarks.file))), ['wasm']);
+      landmarker = new CropLandmarker(lmRunner, { share: ref.landmarks.share, keypointMaxRoll: ref.landmarks.keypoint_max_roll });
+    }
+    const refiner = new FaceRefiner(detector, { ...defaultConfig().refine, crop_size: ref.crop_size ?? 0 }, landmarker);
+    expect(refiner.size).toBe(ref.landmarks?.input_size || ref.crop_size || ref.model_input);
     for (const item of ref.frames) {
       const frame = fromBGR(new Uint8Array(readFileSync(resolve(dir!, item.file))), item.w, item.h);
       const found = await detector.detect(frame);
@@ -62,7 +67,18 @@ describe.skipIf(!refineReady)('refinement with the real face model (tools/export
         // (cv2 warps in 5-bit fixed point, this port in float: the brightness-range term moves a little)
         eyeContrast(frame, { ...d, keypoints: e.keypoints }).forEach((v, k) => expect(Math.abs(v - e.eye_contrast[k]), label).toBeLessThan(0.05));
         eyeContrast(frame, d).forEach((v, k) => expect(Math.abs(v - e.eye_contrast[k]), label).toBeLessThan(0.12));
-        const v = await refiner.verify(frame, d);
+        let checked = d;
+        if (landmarker) {
+          const sharp = await refiner.precise(frame, d);
+          expect(sharp === null, label).toBe(e.precise === null);
+          if (sharp && e.precise) {
+            const piod = Math.hypot(e.precise.keypoints[0][0] - e.precise.keypoints[1][0], e.precise.keypoints[0][1] - e.precise.keypoints[1][1]);
+            sharp.keypoints.forEach(([x, y], k) => expect(Math.hypot(x - e.precise.keypoints[k][0], y - e.precise.keypoints[k][1]) / piod, label).toBeLessThan(0.04));
+            expect(Math.abs(Number(sharp.extra!.upright_angle) - e.precise.upright_angle), label).toBeLessThan(3);
+            checked = sharp;
+          }
+        }
+        const v = await refiner.verify(frame, checked);
         expect(Math.abs(v.score - e.verify.score), label).toBeLessThan(0.05);
         v.eyes.forEach((x, k) => expect(Math.abs(x - e.verify.eyes[k]), label).toBeLessThan(0.04));
         expect(Math.abs(v.mirror - e.verify.mirror), label).toBeLessThan(0.05);

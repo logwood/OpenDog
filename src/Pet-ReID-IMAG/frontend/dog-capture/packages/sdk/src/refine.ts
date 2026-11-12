@@ -137,21 +137,44 @@ interface Roi {
   misses: number;
 }
 
+/** The per-frame crop network (detectors.CropLandmarker): one face at any roll on a canonical crop. */
+export interface Landmarker extends FaceDetector {
+  readonly size: number; readonly share: number; readonly keypointMaxRoll: number; readonly rotationInvariant: boolean;
+}
+
+/**
+ * Per-face region of interest (port of refine.FaceRefiner).  With a `landmarker` it does every
+ * per-frame crop run (tracker profile) and the four-way search is not needed; the detector keeps
+ * the precise profile: `precise()` on shot candidates and `verify()` (calibrated on it).
+ */
 export class FaceRefiner {
   rois: Roi[] = [];
   /** Searches that found no face at any turn: [t, frame, cx, cy, size] (refine.empty_search_*). */
   empty: [number, number, number, number, number][] = [];
   readonly size: number;
+  readonly preciseSize: number;
+  readonly share: number;
   private frame = 0;
 
-  constructor(private detector: FaceDetector, private config: RefineConfig) {
+  constructor(private detector: FaceDetector, private config: RefineConfig, readonly landmarker: Landmarker | null = null) {
     const native = detector.size ?? 320, wanted = config.crop_size || native;
-    this.size = wanted === native || detector.runsAt?.(wanted) ? wanted : native;
+    this.preciseSize = wanted === native || detector.runsAt?.(wanted) ? wanted : native;
+    this.size = landmarker ? landmarker.size : this.preciseSize;
+    this.share = landmarker?.share || config.share;
   }
 
-  /** The face model on a crop of `this.size` (smaller than the full-frame pass if configured). */
-  private detect(image: Frame) {
-    return this.size === (this.detector.size ?? this.size) ? this.detector.detect(image) : this.detector.detect(image, this.size);
+  private get rotationInvariant() { return !!this.landmarker?.rotationInvariant; }
+
+  /** (size, share) of the crops for the tracker or the precise model. */
+  private profile(precise: boolean): [number, number] {
+    return precise || !this.landmarker ? [this.preciseSize, this.config.share] : [this.size, this.share];
+  }
+
+  /** The crop model: the landmarker (tracker profile), else the face detector (refine.crop_size). */
+  private detect(image: Frame, precise = false) {
+    if (this.landmarker && !precise) return this.landmarker.detect(image);
+    return this.preciseSize === (this.detector.size ?? this.preciseSize) ? this.detector.detect(image)
+      : this.detector.detect(image, this.preciseSize);
   }
 
   reset() { this.rois = []; this.empty = []; }
@@ -165,29 +188,36 @@ export class FaceRefiner {
     return this.empty.some((e) => Math.hypot(e[2] - cx, e[3] - cy) <= 0.5 * Math.max(e[4], size));
   }
 
-  crop(frame: Frame, box: Box, angle: number): { image: Frame; matrix: Mat3 } {
-    const matrix = cropMatrix(box, angle, this.config.share, this.size);
-    return { image: warpAffine(frame, matrix.slice(0, 2), this.size, this.size, 114), matrix };
+  crop(frame: Frame, box: Box, angle: number, precise = false): { image: Frame; matrix: Mat3 } {
+    const [size, share] = this.profile(precise);
+    const matrix = cropMatrix(box, angle, share, size);
+    return { image: warpAffine(frame, matrix.slice(0, 2), size, size, 114), matrix };
   }
 
-  private pick(found: Detection[]): Detection | null {
-    const c = this.size / 2;
+  /** The face at the crop centre (the one being refined), not a neighbour. */
+  private pick(found: Detection[], size: number): Detection | null {
+    const c = size / 2;
     let best: Detection | null = null, bestKey = -Infinity;
     for (const d of found) {
       if (detectionReason(d) !== null) continue;
-      const key = d.score / (1 + Math.hypot((d.box[0] + d.box[2]) / 2 - c, (d.box[1] + d.box[3]) / 2 - c) / (0.25 * this.size));
+      const key = d.score / (1 + Math.hypot((d.box[0] + d.box[2]) / 2 - c, (d.box[1] + d.box[3]) / 2 - c) / (0.25 * size));
       if (key > bestKey) { bestKey = key; best = d; }
     }
     return best;
   }
 
+  private async look(image: Frame, precise = false) { return this.pick(await this.detect(image, precise), image.width); }
+
   /** Detect on the crop turned `angle`; a Detection in frame coordinates or null. */
-  async examine(frame: Frame, box: Box, angle: number): Promise<Detection | null> {
-    const { image, matrix } = this.crop(frame, box, angle);
-    const d = this.pick(await this.detect(image));
+  async examine(frame: Frame, box: Box, angle: number, precise = false): Promise<Detection | null> {
+    const { image, matrix } = this.crop(frame, box, angle, precise);
+    const d = await this.look(image, precise);
     if (!d) return null;
     const inverse = invert(matrix);
-    const tilt = eyeLineDeg(d), upright = wrapDeg(angle - tilt);
+    const roll = precise ? undefined : d.extra?.roll_deg as number | undefined;
+    // a landmarker beyond its keypoint range: its roll head says which way is up
+    const tilt = roll !== undefined && Math.abs(roll) > (this.landmarker?.keypointMaxRoll ?? 45) ? roll : eyeLineDeg(d);
+    const upright = wrapDeg(angle - tilt);
     // the face's own extent (square, centred on it): the next crop is built from this, not from
     // the bound of a rotated rectangle, which would grow frame after frame
     const [[cx, cy]] = apply(inverse, [[(d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2]]);
@@ -204,25 +234,49 @@ export class FaceRefiner {
    */
   async verify(frame: Frame, d: Detection): Promise<Verification> {
     const quarter = 90 * Math.round(Number(d.extra?.upright_angle ?? 0) / 90);
-    const { image, matrix } = this.crop(frame, (d.extra?.region as Box | undefined) ?? d.box, quarter);
-    const check = this.pick(await this.detect(image));
+    const { image, matrix } = this.crop(frame, (d.extra?.region as Box | undefined) ?? d.box, quarter, true);
+    const check = await this.look(image, true);
     const ie = d.schema.names.indexOf('left_eye'), je = d.schema.names.indexOf('right_eye');
     const own = apply(matrix, d.keypoints);
     const span = Math.max(Math.hypot(own[ie][0] - own[je][0], own[ie][1] - own[je][1]), 1e-6);
     if (!check) return { score: 0, eyes: [0, 0], mirror: Infinity, agreement: Infinity };
     const mean = (a: Point[], b: Point[]) => a.reduce((s, p, i) => s + Math.hypot(p[0] - b[i][0], p[1] - b[i][1]), 0) / a.length;
-    const other = this.pick(await this.detect(mirror(image)));
+    const other = await this.look(mirror(image), true);
     let mirrorGap = Infinity;
     if (other) {
       const flip = flipIndex(other.schema);
-      const back = flip.map((j) => [this.size - 1 - other.keypoints[j][0], other.keypoints[j][1]] as Point);
+      const back = flip.map((j) => [image.width - 1 - other.keypoints[j][0], other.keypoints[j][1]] as Point);
       mirrorGap = mean(check.keypoints, back) / span;
     }
     const conf = check.kpScores ?? check.keypoints.map(() => 1);
     return { score: check.score, eyes: [conf[ie], conf[je]], mirror: mirrorGap, agreement: mean(check.keypoints, own) / span };
   }
 
+  /**
+   * Shot candidate with a landmarker: the face detector once on the tracker's upright crop (plus a
+   * re-crop if its eye line still tilts more than fine_min_deg).  Without one: `d` itself.
+   */
+  async precise(frame: Frame, d: Detection): Promise<Detection | null> {
+    if (!this.landmarker || d.source === 'external') return d;
+    const region = (d.extra?.region as Box | undefined) ?? d.box;
+    let sharp = await this.examine(frame, region, Number(d.extra?.upright_angle ?? 0), true);
+    if (sharp && Math.abs(Number(sharp.extra!.crop_tilt)) > this.config.fine_min_deg) {
+      const again = await this.examine(frame, region, Number(sharp.extra!.upright_angle), true);
+      if (again && again.score >= sharp.score - 0.05) sharp = again;
+    }
+    if (!sharp) return null;
+    sharp.bodyBox = d.bodyBox; sharp.bodyScore = d.bodyScore;
+    for (const k of ['full_score', 'carried']) if (d.extra && k in d.extra) sharp.extra![k] = d.extra[k];
+    sharp.extra!.refined = true;
+    sharp.extra!.tracker_score = d.score;
+    return sharp;
+  }
+
   private async search(frame: Frame, box: Box, base: number, baseDetection: Detection | null): Promise<Detection | null> {
+    if (this.rotationInvariant) {   // the landmarker reads any roll: the base crop is the answer
+      if (baseDetection) { baseDetection.extra!.search_margin = 1; baseDetection.extra!.search_kept = true; }
+      return baseDetection;
+    }
     const results = new Map<number, Detection>();
     if (baseDetection) results.set(0, baseDetection);
     for (let j = 1; j < 4; j++) {

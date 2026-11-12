@@ -33,6 +33,7 @@ def _overrides(args):
     put('detector', 'input_size', args.input_size)
     put('detector', 'score_threshold', args.score)
     put('body_gate', 'model', args.body_model)
+    put('refine', 'landmarks', getattr(args, 'landmarks', None))
     if args.no_body_gate:
         put('body_gate', 'enabled', 'off')
     put('runtime', 'providers', args.providers)
@@ -74,7 +75,7 @@ def cmd_run(args):
         engine = CaptureEngine(config, None, build_body_gate(config, 'external'))
     else:
         engine = build_engine(config)
-    for model in (engine.detector, engine.body_gate):
+    for model in (engine.detector, engine.body_gate, getattr(engine.refiner, 'landmarker', None)):
         if hasattr(model, 'warmup'):
             model.warmup()
     output = choose_output_dir(args.output, args.source, REPO_ROOT)
@@ -315,6 +316,8 @@ def main(argv=None):
     run.add_argument('--input-size', type=int)
     run.add_argument('--score', type=float, help='face detector score threshold')
     run.add_argument('--body-model', help='YOLOX ONNX for the dog species gate')
+    run.add_argument('--landmarks', help="crop landmark ONNX for per-frame tracking, or 'off' (default: "
+                     "dog_face_landmarks.onnx in the model directory if present)")
     run.add_argument('--no-body-gate', action='store_true')
     run.add_argument('--providers', help='auto | cpu | cuda | tensorrt | coreml | directml | openvino, comma list')
     run.add_argument('--threads', type=int)

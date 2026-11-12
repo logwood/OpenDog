@@ -126,15 +126,27 @@ class FaceRefiner:
     updates it for the next frame (one model run per face per frame); the four quarter
     turns are re-checked every ``search_period_s``.  Photos (and the server re-check):
     quarter-turn search, then one immediate re-crop at the measured residual.
+
+    ``landmarker`` (detectors.CropLandmarker): a small network made for this crop that
+    reads any roll.  It then does every per-frame crop run in place of the detector (the
+    *tracker* profile), and the four-way search is not needed: one run gives the upright
+    angle, the re-crop at the residual (``fine_min_deg``) does the rest.  The detector keeps
+    the *precise* profile: ``precise()`` runs it once on the tracker's upright crop for shot
+    candidates, and ``verify()`` (calibrated on it) always uses it.
     """
 
-    def __init__(self, detector, config: RefineConfig | None = None):
+    def __init__(self, detector, config: RefineConfig | None = None, landmarker=None):
         self.detector = detector
         self.config = config or RefineConfig()
+        self.landmarker = landmarker
+        self.rotation_invariant = bool(getattr(landmarker, 'rotation_invariant', False))
+        # the landmarker was trained at its own face share (its sidecar); keep the crops it knows
+        self.share = float(getattr(landmarker, 'share', None) or self.config.share)
         native = int(getattr(detector, 'size', 320))
         wanted = self.config.crop_size or native
         runs_at = getattr(detector, 'runs_at', None)
-        self.size = wanted if wanted == native or (runs_at is not None and runs_at(wanted)) else native
+        self.precise_size = wanted if wanted == native or (runs_at is not None and runs_at(wanted)) else native
+        self.size = int(landmarker.size) if landmarker is not None else self.precise_size
         self.rois = []   # [{'box', 'region', 'angle', 'searched_at', 'searched_frame', 'score', 'misses'}]
         self.empty = []  # searches that found no face at any turn: [(timestamp, frame, cx, cy, size)]
         self.frame = 0
@@ -153,34 +165,48 @@ class FaceRefiner:
         cx, cy, size = _box_place(box)
         return any(math.hypot(e[2] - cx, e[3] - cy) <= 0.5 * max(e[4], size) for e in self.empty)
 
-    def _detect(self, image):
-        """The face model on a crop of ``self.size`` (smaller than the full-frame pass if configured)."""
-        if self.size == getattr(self.detector, 'size', self.size):
+    def _profile(self, precise):
+        """(size, share) of the crops for the tracker or the precise model."""
+        if precise or self.landmarker is None:
+            return self.precise_size, self.config.share
+        return self.size, self.share
+
+    def _detect(self, image, precise=False):
+        """The crop model: the landmarker (tracker profile, if any), else the face detector
+        (smaller than its full-frame pass if refine.crop_size)."""
+        if self.landmarker is not None and not precise:
+            return self.landmarker.detect(image)
+        if self.precise_size == getattr(self.detector, 'size', self.precise_size):
             return self.detector.detect(image)
-        return self.detector.detect(image, size=self.size)
+        return self.detector.detect(image, size=self.precise_size)
 
     # ---- one crop -----------------------------------------------------
-    def crop(self, frame, box, angle):
-        matrix = crop_matrix(box, angle, self.config.share, self.size)
-        image = cv2.warpAffine(frame, matrix[:2], (self.size, self.size), flags=cv2.INTER_LINEAR,
+    def crop(self, frame, box, angle, precise=False):
+        size, share = self._profile(precise)
+        matrix = crop_matrix(box, angle, share, size)
+        image = cv2.warpAffine(frame, matrix[:2], (size, size), flags=cv2.INTER_LINEAR,
                                borderMode=cv2.BORDER_CONSTANT, borderValue=(114, 114, 114))
         return image, matrix
 
-    def _pick(self, detections):
+    @staticmethod
+    def _pick(detections, size):
         """The face at the crop centre (the one being refined), not a neighbour."""
         if not detections:
             return None
-        centre = self.size / 2
+        centre = size / 2
 
         def key(d):
             cx, cy = (d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2
-            return d.score / (1 + math.hypot(cx - centre, cy - centre) / (0.25 * self.size))
+            return d.score / (1 + math.hypot(cx - centre, cy - centre) / (0.25 * size))
         return max(detections, key=key)
 
-    def examine(self, frame, box, angle):
+    def _look(self, image, precise=False):
+        return self._pick([d for d in self._detect(image, precise) if d.validate() is None], image.shape[0])
+
+    def examine(self, frame, box, angle, precise=False):
         """Detect on the crop turned ``angle``; returns a Detection in frame coordinates or None."""
-        image, matrix = self.crop(frame, box, angle)
-        det = self._pick([d for d in self._detect(image) if d.validate() is None])
+        image, matrix = self.crop(frame, box, angle, precise)
+        det = self._look(image, precise)
         if det is None:
             return None
         inverse = np.linalg.inv(matrix)
@@ -193,6 +219,9 @@ class FaceRefiner:
         half = max(x2 - x1, y2 - y1) / 2 / math.hypot(matrix[0, 0], matrix[0, 1])
         region = [centre[0] - half, centre[1] - half, centre[0] + half, centre[1] + half]
         tilt = eye_line_deg(det)
+        roll = None if precise else det.extra.get('roll_deg')
+        if roll is not None and abs(roll) > getattr(self.landmarker, 'keypoint_max_roll', 45.0):
+            tilt = roll   # landmarker beyond its keypoint range: its roll head says which way is up
         upright = wrap_deg(angle - tilt)
         return Detection(box_back, det.score, apply(inverse, det.keypoints), det.schema,
                          kp_scores=det.kp_scores, source=f'{det.source or "detector"}+refined',
@@ -200,13 +229,12 @@ class FaceRefiner:
                                 'crop_angle': wrap_deg(angle), 'crop_tilt': tilt, 'crop_score': float(det.score),
                                 'region': region})
 
-    def _mirror_points(self, image):
-        other = self._pick([d for d in self._detect(np.ascontiguousarray(image[:, ::-1]))
-                            if d.validate() is None])
+    def _mirror_points(self, image, precise=True):
+        other = self._look(np.ascontiguousarray(image[:, ::-1]), precise)
         if other is None:
             return None
         points = np.asarray(other.keypoints, np.float64).copy()
-        points[:, 0] = self.size - 1 - points[:, 0]
+        points[:, 0] = image.shape[1] - 1 - points[:, 0]
         return points[flip_index(other.schema)]
 
     def verify(self, frame, det):
@@ -220,8 +248,8 @@ class FaceRefiner:
         ``det`` (both in units of the predicted eye distance; inf if lost).
         """
         quarter = 90.0 * round(det.extra.get('upright_angle', 0.0) / 90.0)
-        image, matrix = self.crop(frame, det.extra.get('region', det.box), quarter)
-        check = self._pick([d for d in self._detect(image) if d.validate() is None])
+        image, matrix = self.crop(frame, det.extra.get('region', det.box), quarter, precise=True)
+        check = self._look(image, precise=True)
         eyes = [det.schema.index('left_eye'), det.schema.index('right_eye')]
         own = apply(matrix, det.keypoints)
         span = max(float(np.linalg.norm(own[eyes[0]] - own[eyes[1]])), 1e-6)
@@ -234,9 +262,33 @@ class FaceRefiner:
                 'mirror': math.inf if mirrored is None else float(np.mean(np.linalg.norm(points - mirrored, axis=1)) / span),
                 'agreement': float(np.mean(np.linalg.norm(points - own, axis=1)) / span)}
 
+    def precise(self, frame, det):
+        """Shot candidate with a landmarker: the face detector once on the tracker's upright crop
+        (plus a re-crop if its own eye line still tilts more than ``fine_min_deg``).  Without a
+        landmarker the detection already is the precise one.  None if the detector does not
+        find the face there."""
+        if self.landmarker is None or det.source == 'external':
+            return det
+        region = det.extra.get('region', det.box)
+        sharp = self.examine(frame, region, det.extra.get('upright_angle', 0.0), precise=True)
+        if sharp is not None and abs(sharp.extra['crop_tilt']) > self.config.fine_min_deg:
+            again = self.examine(frame, region, sharp.extra['upright_angle'], precise=True)
+            sharp = again if again is not None and again.score >= sharp.score - 0.05 else sharp
+        if sharp is None:
+            return None
+        sharp.body_box, sharp.body_score = det.body_box, det.body_score
+        sharp.extra.update({k: v for k, v in det.extra.items() if k in ('full_score', 'carried')})
+        sharp.extra['refined'] = True
+        sharp.extra['tracker_score'] = float(det.score)
+        return sharp
+
     # ---- orientation --------------------------------------------------
     def _search(self, frame, box, base, base_detection):
         """Compare the base crop already examined on this frame with three quarter turns."""
+        if self.rotation_invariant:   # the landmarker reads any roll: the base crop is the answer
+            if base_detection is not None:
+                base_detection.extra['search_margin'], base_detection.extra['search_kept'] = 1.0, True
+            return base_detection
         results = {0: base_detection} if base_detection is not None else {}
         for j in range(1, 4):
             det = self.examine(frame, box, base + 90.0 * j)

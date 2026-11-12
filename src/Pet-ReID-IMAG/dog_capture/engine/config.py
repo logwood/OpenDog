@@ -59,6 +59,10 @@ class RefineConfig:
     keypoints within 0.25 IOD 19 % (full frame, 0 deg) -> 79 % (crop + orientation search).
     """
     enabled: bool = True
+    # The crop network: '' = dog_face_landmarks.onnx from the model directory if present (a
+    # small model made for this crop, any roll: one run per face per frame, no four-way
+    # search; tools/train_dog_face_landmarks.py), else the face detector itself; a path; 'off'.
+    landmarks: str = ''
     share: float = 0.35              # face long side / crop side (training faces: median 0.30)
     # Square crop size in pixels; 0 = the model's input size.  A dynamic-shape export of the
     # same weights can run the crops smaller than the full-frame pass (validation, rotated

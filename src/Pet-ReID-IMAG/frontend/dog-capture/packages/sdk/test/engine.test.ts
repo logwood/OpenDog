@@ -125,6 +125,36 @@ it('runs refinement crops at refine.crop_size only on a model that can', async (
   expect(new YoloPoseDetector({ inputSize: 320, run: async () => [] }, { kpt: [6, 3] }).runsAt(224)).toBe(false);
 });
 
+/** A canonical anyface5 face centred on a size x size crop (eyes level). */
+function centredFace(size: number, score: number, rollDeg?: number): Detection {
+  const u = size * 0.35 / 2.1;   // the face long side is share * size; eye distance ~ half of it
+  const c = size / 2;
+  return { box: [c - 1.05 * u, c - 0.8 * u, c + 1.05 * u, c + 1.3 * u], score, schema: getSchema('anyface5'),
+    keypoints: [[c - 0.5 * u, c], [c + 0.5 * u, c], [c, c + 0.5 * u], [c - 0.46 * u, c + 0.63 * u], [c + 0.46 * u, c + 0.63 * u]],
+    kpScores: [0.95, 0.95, 0.95, 0.9, 0.9], extra: rollDeg === undefined ? {} : { roll_deg: rollDeg } };
+}
+
+it('tracks with a crop landmarker: no four-way search, the detector only for the precise pass', async () => {
+  const { frame, det } = frames.sharp;
+  let roll = 0, lmCalls = 0, detCalls = 0;
+  const landmarker = { size: 128, share: 0.35, keypointMaxRoll: 55, rotationInvariant: true,
+    detect: async () => { lmCalls++; return [centredFace(128, 0.95, roll)]; } };
+  const detector = { size: 320, detect: async () => { detCalls++; return [centredFace(320, 0.8)]; } };
+  const refiner = new FaceRefiner(detector, defaultConfig().refine, landmarker);
+  const [tracked] = await refiner.refine(frame, [det], 0, true);
+  expect(tracked.extra?.refined).toBe(true);
+  expect([lmCalls, detCalls]).toEqual([1, 0]);            // upright: one tracker run, no search
+  const sharp = await refiner.precise(frame, tracked);
+  expect(detCalls).toBe(1);
+  expect(sharp?.extra?.tracker_score).toBe(0.95);
+  expect(sharp?.source).toBe('detector+refined');   // the precise model's keypoints
+  roll = 120;                                             // beyond the keypoint range: the roll head turns the crop
+  lmCalls = 0;
+  const [turned] = await refiner.refine(frame, [det], 0, true);
+  expect(lmCalls).toBe(2);
+  expect(Math.abs(Number(turned.extra?.crop_angle) - (-120))).toBeLessThan(1e-6);
+});
+
 function fakeRunner(size: number, output: Float32Array, dims: number[]): Runner {
   return { inputSize: size, run: async () => [{ data: output, dims }] };
 }

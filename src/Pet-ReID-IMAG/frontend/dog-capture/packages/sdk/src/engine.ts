@@ -11,7 +11,7 @@ import { guidance, type Guidance } from './guidance';
 import { crop, mirror, rotate, type Frame } from './image';
 import { faceGeometry, ViewClassifier, type FaceGeometry, type ViewState } from './pose';
 import { QualityAssessor, type QualityReport } from './quality';
-import { eyeContrast, FaceRefiner, transformDetection, uprightFrame } from './refine';
+import { eyeContrast, FaceRefiner, transformDetection, uprightFrame, type Landmarker } from './refine';
 import { detectionReason, height, iou, width, type Box, type Detection } from './schema';
 import { TrackShots, type CaptureEvent, type Shot } from './selection';
 import { ByteTracker, type Track } from './tracking';
@@ -111,6 +111,8 @@ export interface FrameResult {
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 interface Context { classifier: ViewClassifier; shots: TrackShots }
+/** The detection a shot is judged on and kept with, and what was measured from it. */
+interface Sharpened { det: Detection; geometry: FaceGeometry; report: QualityReport; aligned: ReturnType<QualityAssessor['assess']>['aligned'] }
 
 export class CaptureEngine {
   readonly config: CaptureConfig;
@@ -149,7 +151,7 @@ export class CaptureEngine {
     level: string; needed: string; weakest: string | null }>();
 
   constructor(config: Partial<CaptureConfig> | Record<string, unknown> = {}, public detector: FaceDetector | null = null,
-    public bodyGate: BodyGate | null = null, mask?: Uint8Array) {
+    public bodyGate: BodyGate | null = null, mask?: Uint8Array, landmarker: Landmarker | null = null) {
     this.config = mergeConfig(defaultConfig(), config);
     this.views = new Map(this.config.pose.views.map((v) => [v.name, v]));
     this.viewNames = this.config.pose.views.map((v) => v.name);
@@ -157,7 +159,7 @@ export class CaptureEngine {
     this.assessor = new QualityAssessor(this.config.quality, mask);
     this.tracker = new ByteTracker(this.config.tracker);
     this.orientation = new OrientationLock(this.config.runtime.rotate);
-    this.refiner = detector && this.config.refine.enabled ? new FaceRefiner(detector, this.config.refine) : null;
+    this.refiner = detector && this.config.refine.enabled ? new FaceRefiner(detector, this.config.refine, landmarker) : null;
   }
 
   private skipFullDetection(t: number, probe: boolean) {
@@ -390,24 +392,37 @@ export class CaptureEngine {
     if (inBand && report.passed && !eligible && this.trackNearMisses) {
       await this.nearMiss(ctx, frame, det, target, state.view!, report, track.id, index, t);
     }
+    // With a crop landmarker the per-frame keypoints are the tracker's; a shot candidate gets the
+    // precise detector's (same view rule as the server's re-check), and those are judged and kept.
+    let pick: Sharpened = { det, geometry, report, aligned };
     if (eligible && aligned && ctx.shots.wants(state.view!, report.score)) {
+      const [sharp, early] = await this.sharpen(frame, det, state.view!, target, speed);
+      let problem = early;
+      if (sharp) { pick = sharp; eligible = sharp.report.passed && ctx.shots.eligibleLevel(sharp.report.level); }
       // Landmarks first, sharpness second: a confident hallucination must not win on texture.
-      const problem = await this.trusted(ctx, frame, det, target, t);
-      if (problem) { report.reasons.push(problem); report.passed = false; eligible = false; }
+      if (problem === null && eligible && pick.aligned && ctx.shots.wants(state.view!, pick.report.score)) {
+        problem = await this.trusted(ctx, frame, pick.det, target, t);
+      } else if (problem !== null) this.gateStatus.set(det, 'fail');
+      if (problem) {
+        report.reasons.push(problem);   // what the operator sees for this frame
+        if (pick.report !== report) pick.report.reasons.push(problem);
+        report.passed = false; eligible = false;
+      }
     }
-    if (eligible && aligned && ctx.shots.wants(state.view!, report.score)) {
+    if (eligible && pick.aligned && ctx.shots.wants(state.view!, pick.report.score)) {
       // The kept frame is turned (losslessly) so the face is upright for the recognizer.
-      const k = geometry.upright_k;
-      let uprightImage = frame, shotDet = det, shotGeometry = geometry;
+      const { det: chosen, geometry: chosenGeometry, report: chosenReport } = pick;
+      const k = chosenGeometry.upright_k;
+      let uprightImage = frame, shotDet = chosen, shotGeometry = chosenGeometry;
       if (k) {
         const turned = uprightFrame(frame, k);
         uprightImage = turned.frame;
-        shotDet = transformDetection(det, turned.matrix);
+        shotDet = transformDetection(chosen, turned.matrix);
         shotDet.extra = { ...(shotDet.extra ?? {}), upright_k: 0 };
         shotGeometry = faceGeometry(shotDet, this.config.pose);
       }
-      const shot: Shot = { view: state.view!, trackId: track.id, frameIndex: index, timeS: t, score: report.score,
-        quality: report, geometry: shotGeometry, detection: shotDet,
+      const shot: Shot = { view: state.view!, trackId: track.id, frameIndex: index, timeS: t, score: chosenReport.score,
+        quality: chosenReport, geometry: shotGeometry, detection: shotDet,
         frame: this.config.output.keep_frames ? copyFrame(uprightImage) : null, rotationDeg: (rotation + 90 * k) % 360,
         confirmedAt: null };
       const [newEvents, kept] = ctx.shots.offer(shot, state, t);
@@ -416,10 +431,30 @@ export class CaptureEngine {
     }
     this.pushEvents(events);
     if (this.refiner && det.source !== 'external') {
-      this.gateHistory.push([t, ...place(det), this.gateStatus.get(det) ?? 'present']);
-      this.gateStatus.delete(det);
+      this.gateHistory.push([t, ...place(det), this.gateStatus.get(pick.det) ?? this.gateStatus.get(det) ?? 'present']);
+      this.gateStatus.delete(det); this.gateStatus.delete(pick.det);
     }
     return [face, events];
+  }
+
+  /**
+   * Shot candidate with a crop landmarker: the precise detector on the tracker's upright crop
+   * (FaceRefiner.precise); its keypoints must still put the face in `view` with the server's rule
+   * (band +- pose.exit_margin, roll limit) and quality is re-measured on them (engine.py _sharpen).
+   */
+  private async sharpen(frame: Frame, det: Detection, view: string, target: ViewSpec | null, speed: number):
+    Promise<[Sharpened | null, string | null]> {
+    if (!this.refiner?.landmarker || det.source === 'external') return [null, null];
+    const started = now();
+    const sharp = await this.refiner.precise(frame, det);
+    this.timings.precise = (this.timings.precise ?? 0) + now() - started;
+    if (!sharp) return [null, 'landmarks_unreliable'];
+    const geometry = faceGeometry(sharp, this.config.pose);
+    const spec = this.views.get(view)!, margin = this.config.pose.exit_margin;
+    if (!(geometry.valid && spec.lower - margin <= geometry.yaw && geometry.yaw <= spec.upper + margin
+      && Math.abs(geometry.roll_deg) <= spec.max_roll_deg)) return [null, 'view_unconfirmed'];
+    const { report, aligned } = this.assessor.assess(frame, sharp, geometry, target, speed, true);
+    return [{ det: sharp, geometry, report, aligned }, null];
   }
 
   /** Reason code if this face's landmarks cannot be trusted for a shot (see engine.py _unreliable). */

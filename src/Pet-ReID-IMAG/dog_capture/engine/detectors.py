@@ -8,6 +8,8 @@ ONNX decoders (no framework code at runtime, only NumPy + ONNX Runtime):
                       (``tools/export_anyface_onnx.py``); 5 points.
 ``ScrfdDetector``     InsightFace SCRFD graph (anchor-free, strides 8/16/32,
                       2 anchors); 5 points.  For an SCRFD retrained on dog faces.
+``CropLandmarker``    keypoints of the one face on a canonical crop, any roll (the refiner's
+                      per-frame tracking network; ``tools/train_dog_face_landmarks.py``).
 ``YoloxBodyGate``     YOLOX COCO detector, used only to confirm the face is a dog's.
 
 Adapters: ``LegacyDogFlwDetector`` wraps the v0.x DogFLW TFLite cascade.
@@ -218,6 +220,52 @@ class YoloPoseDetector(OnnxDetector):
             kps = out[:, 4 + self.num_classes:].reshape(-1, k, d)
         visibility = kps[:, :, 2] if d == 3 else None
         return self._finish(boxes, scores, kps[:, :, :2], visibility, ratio, pad, frame.shape, self.schema)
+
+
+class CropLandmarker(OnnxDetector):
+    """One dog face centred on a canonical crop, at any roll (tools/train_dog_face_landmarks.py).
+
+    The refiner's tracking network: ``detect(crop)`` returns at most one Detection in crop
+    pixels -- 6 keypoints, the face box (centre and long side), the presence probability as
+    the score, per-keypoint visibility as ``kp_scores`` and the face's roll at any angle as
+    ``extra['roll_deg']`` (clockwise, like refine.eye_line_deg).  Keypoints are trained within
+    ``keypoint_max_roll`` of upright; beyond that only the roll is meaningful, and the refiner
+    re-crops upright.  It does not search the image: the full-frame detector finds faces, this
+    follows them.  ``rotation_invariant``: no four-way orientation search is needed.
+    """
+    kind = 'crop_landmarks'
+    rotation_invariant = True
+
+    def __init__(self, model, schema='', **kwargs):
+        super().__init__(model, **kwargs)
+        self.schema = get_schema(schema or self.sidecar.get('schema') or 'dogface6')
+        self.share = float(self.sidecar.get('share', 0.35))
+        self.keypoint_max_roll = float(self.sidecar.get('keypoint_max_roll', 45.0))
+        k = len(self.schema)
+        width = self.session.get_outputs()[0].shape[-1]
+        if isinstance(width, int) and width != 3 * k + 6:
+            raise ValueError(f'{model}: expected {3 * k + 6} outputs for {k} keypoints, got {width}')
+
+    def runs_at(self, size):
+        return size == self.size
+
+    def detect(self, image, size=None):
+        if image.shape[:2] != (self.size, self.size):
+            raise ValueError(f'CropLandmarker takes {self.size} px crops, got {image.shape[:2]}')
+        out = self._run(_rgb_tensor(image))[0][0].astype(np.float64)
+        k = len(self.schema)
+        points = out[:2 * k].reshape(k, 2)
+        cx, cy, side = out[2 * k:2 * k + 3]
+        logits = out[2 * k + 3:]
+        presence = float(1 / (1 + np.exp(-logits[0])))
+        if presence < self.score_threshold or not side > 0:
+            return []
+        box = np.array([cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2], np.float32)
+        visible = (1 / (1 + np.exp(-logits[1:1 + k]))).astype(np.float32)
+        cos, sin = logits[1 + k:3 + k]
+        det = Detection(box, presence, points.astype(np.float32), self.schema, visible, source=self.kind)
+        det.extra['roll_deg'] = float(np.degrees(np.arctan2(sin, cos)))
+        return [det]
 
 
 class AnyFaceDetector(OnnxDetector):

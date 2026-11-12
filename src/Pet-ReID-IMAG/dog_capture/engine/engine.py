@@ -186,14 +186,14 @@ class _TrackContext:
 
 
 class CaptureEngine:
-    def __init__(self, config: CaptureConfig | None = None, detector=None, body_gate=None):
+    def __init__(self, config: CaptureConfig | None = None, detector=None, body_gate=None, landmarker=None):
         self.config = config or CaptureConfig()
         self.config.validate()
         self.detector = detector
         self.body_gate = body_gate
         # Crop refinement needs a model that can be run on an image (not the legacy DogFLW cascade).
         refinable = detector is not None and hasattr(detector, 'size') and self.config.refine.enabled
-        self.refiner = FaceRefiner(detector, self.config.refine) if refinable else None
+        self.refiner = FaceRefiner(detector, self.config.refine, landmarker) if refinable else None
         self.full_detected = -math.inf
         self.full_detected_frame = -10 ** 9
         self.views = {v.name: v for v in self.config.pose.views}
@@ -523,13 +523,26 @@ class CaptureEngine:
         eligible = in_band and quality.passed and context.shots.eligible_level(quality.level)
         if in_band and quality.passed and not eligible:
             self._near_miss(context, frame, det, target, state.view, quality, track.id, index, timestamp, still)
+        tracked = det
         if eligible and context.shots.wants(state.view, quality.score):
+            # With a crop landmarker the per-frame keypoints are the tracker's; a shot candidate
+            # gets the precise detector's (same view rule as the server's re-check), and those
+            # are what is judged and kept.
+            sharp, problem = self._sharpen(frame, det, state.view, target, speed)
+            if sharp is not None:
+                det, geometry, quality, aligned = sharp
+                eligible = quality.passed and context.shots.eligible_level(quality.level)
             # Landmarks first, sharpness second: a confident but hallucinated face (the model on a
             # dog lying sideways with closed eyes) must not win on texture or exposure.
-            problem = self._trusted(context, frame, det, target, timestamp, still)
+            if problem is None and eligible and context.shots.wants(state.view, quality.score):
+                problem = self._trusted(context, frame, det, target, timestamp, still)
+            elif problem is not None:
+                self._gate_status[id(det)] = 'fail'
             if problem:
-                quality.reasons.append(problem)
-                quality.passed, eligible = False, False
+                face.quality.reasons.append(problem)   # what the operator sees for this frame
+                if quality is not face.quality:
+                    quality.reasons.append(problem)
+                face.quality.passed, eligible = False, False
         if eligible and context.shots.wants(state.view, quality.score):
             size = self.config.output.aligned_size
             crop = aligned.image if size == aligned.image.shape[0] else align_face(
@@ -549,8 +562,33 @@ class CaptureEngine:
             events += new
         self.events.extend(events)
         if self.refiner is not None and not still and det.source != 'external':
-            self.gate_history.append((timestamp, *_place(det), self._gate_status.pop(id(det), 'present')))
+            status = self._gate_status.pop(id(det), None) or self._gate_status.pop(id(tracked), 'present')
+            self._gate_status.pop(id(tracked), None)
+            self.gate_history.append((timestamp, *_place(tracked), status))
         return face, events
+
+    def _sharpen(self, frame, det, view, target, speed):
+        """((det, geometry, quality, aligned) from the precise model, problem) for a shot candidate.
+
+        Only with a crop landmarker (refine.landmarks): the detector runs once on the tracker's
+        upright crop (FaceRefiner.precise).  Its keypoints must still put the face in ``view``
+        with the server's rule (band +- pose.exit_margin, roll limit); quality is re-measured
+        on them.  Without a landmarker: (None, None), the tracker keypoints are the precise ones.
+        """
+        if self.refiner is None or self.refiner.landmarker is None or det.source == 'external':
+            return None, None
+        started = time.perf_counter()
+        sharp = self.refiner.precise(frame, det)
+        self._timing('precise', started)
+        if sharp is None:
+            return None, 'landmarks_unreliable'
+        geometry = face_geometry(sharp, self.config.pose)
+        spec, margin = self.views[view], self.config.pose.exit_margin
+        if not (geometry.valid and spec.lower - margin <= geometry.yaw <= spec.upper + margin
+                and abs(geometry.roll_deg) <= spec.max_roll_deg):
+            return None, 'view_unconfirmed'
+        quality, aligned = self.assessor.assess(frame, sharp, geometry, target, speed, full=True)
+        return (sharp, geometry, quality, aligned), None
 
     def _unreliable(self, frame, det, target=None):
         """Reason code if this face's landmarks cannot be trusted for a shot, else None.
@@ -716,6 +754,11 @@ class CaptureEngine:
             det = found[best]
         else:
             det = max(found, key=lambda d: d.width * d.height * d.score)
+        if self.refiner is not None and self.refiner.landmarker is not None and det.extra.get('refined'):
+            sharp = self.refiner.precise(frame, det)   # the same precise pass a client shot went through
+            if sharp is None:
+                return {'ok': False, 'reasons': ['landmarks_unreliable'], 'faces': len(found), 'box_iou': iou}
+            det = sharp
         geometry = face_geometry(det, self.config.pose)
         margin = self.config.pose.exit_margin if exit_margin is None else exit_margin
         view = None

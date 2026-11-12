@@ -57,15 +57,16 @@ export function createCaptureSession(options: { apiBase: string; sessionId: stri
       const face = await fetchModel(options.apiBase, cfg.models.face!);
       state.progress = 0.6;
       const gate = cfg.models.gate ? await fetchModel(options.apiBase, cfg.models.gate) : null;
+      const landmarks = cfg.models.landmarks ? await fetchModel(options.apiBase, cfg.models.landmarks) : null;
       state.progress = 0.8;
       state.message = '正在初始化推理引擎…';
       worker = new Worker(new URL('../../../sdk/src/worker.ts', import.meta.url), { type: 'module' });
       rpc = new WorkerRPC(worker);
       // ?backend=wasm|webgpu|auto (default auto: WebGPU only on a hardware GPU that measures faster)
       const backend = new URLSearchParams(location.search).get('backend') ?? 'auto';
-      const ready = await call<{ providers: unknown }>({ type: 'init', config: cfg, models: { face, gate },
+      const ready = await call<{ providers: unknown }>({ type: 'init', config: cfg, models: { face, gate, landmarks },
         wasmPaths: `${import.meta.env.BASE_URL}ort/`, backend },
-      [face, ...(gate ? [gate] : [])], 'ready', 120_000);
+      [face, ...(gate ? [gate] : []), ...(landmarks ? [landmarks] : [])], 'ready', 120_000);
       state.providers = ready.providers;
       state.progress = 1;
       state.phase = 'ready';

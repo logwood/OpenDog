@@ -1,6 +1,6 @@
 /** dog-capture/1 protocol client: session config, models, signals, package upload. */
 import type { CaptureConfig } from './config';
-import { createOrtRunner, YoloPoseDetector, YoloxBodyGate } from './detectors';
+import { createOrtRunner, CropLandmarker, YoloPoseDetector, YoloxBodyGate } from './detectors';
 import { CaptureEngine, type FrameResult } from './engine';
 import type { Frame } from './image';
 import { detectionToJSON } from './schema';
@@ -9,12 +9,13 @@ import type { Shot, TrackShots } from './selection';
 export const PROTOCOL = 'dog-capture/1';
 export const SDK_VERSION = 'dog-capture-sdk/1.0.0';
 
-export interface ModelInfo { url: string; sha256: string; bytes?: number; kind?: string; schema?: string; input_size?: number; kpt_shape?: number[]; yaw_scale?: number }
+export interface ModelInfo { url: string; sha256: string; bytes?: number; kind?: string; schema?: string; input_size?: number; kpt_shape?: number[]; yaw_scale?: number;
+  share?: number; keypoint_max_roll?: number }
 export interface SessionConfig {
   protocol: string; session_id: string; purpose: 'enroll' | 'identify';
   policy: { name: string; views: CaptureConfig['pose']['views']; view_order: string[]; max_duration_s: number;
     max_attempts?: number; selection?: object };
-  engine: CaptureConfig; models: { face?: ModelInfo; gate?: ModelInfo };
+  engine: CaptureConfig; models: { face?: ModelInfo; gate?: ModelInfo; landmarks?: ModelInfo };
   upload: { image_format: string; jpeg_quality: number; max_long_side: number; max_bytes_per_image: number; max_shots: number };
   expires_at: number; client_commit: boolean; state: string;
 }
@@ -62,7 +63,7 @@ export async function fetchModel(apiBase: string, info: ModelInfo): Promise<Arra
 }
 
 /** Engine wired to onnxruntime-web sessions for the session's models. */
-export async function createEngine(config: SessionConfig, models: { face: ArrayBuffer; gate?: ArrayBuffer | null },
+export async function createEngine(config: SessionConfig, models: { face: ArrayBuffer; gate?: ArrayBuffer | null; landmarks?: ArrayBuffer | null },
   ort: Parameters<typeof createOrtRunner>[0], providers: string[] = ['webgpu', 'wasm']) {
   const faceInfo = config.models.face!;
   const faceRunner = await createOrtRunner(ort, models.face, providers);
@@ -79,8 +80,19 @@ export async function createEngine(config: SessionConfig, models: { face: ArrayB
       scoreThreshold: config.engine.body_gate.score_threshold });
     gateProviders = gateRunner.providers;
   }
-  const engine = new CaptureEngine(config.engine, detector, gate);
-  return { engine, providers: { face: faceRunner.providers, gate: gateProviders } };
+  // the per-frame crop network (tools/train_dog_face_landmarks.py), when the server ships one
+  let landmarker = null, landmarkProviders: string[] = [];
+  const lmInfo = config.models.landmarks;
+  if (models.landmarks && lmInfo && config.engine.refine?.landmarks !== 'off') {
+    const lmRunner = await createOrtRunner(ort, models.landmarks, providers);
+    if (lmInfo.input_size) lmRunner.inputSize = lmInfo.input_size;
+    landmarker = new CropLandmarker(lmRunner, { schema: lmInfo.schema, share: lmInfo.share,
+      keypointMaxRoll: lmInfo.keypoint_max_roll, scoreThreshold: 0.05,
+      yawScale: typeof faceInfo.yaw_scale === 'number' ? faceInfo.yaw_scale : undefined });
+    landmarkProviders = lmRunner.providers;
+  }
+  const engine = new CaptureEngine(config.engine, detector, gate, undefined, landmarker);
+  return { engine, providers: { face: faceRunner.providers, gate: gateProviders, landmarks: landmarkProviders } };
 }
 
 /** Reserved liveness / anti-replay evidence (recorded, not judged, in protocol v1). */

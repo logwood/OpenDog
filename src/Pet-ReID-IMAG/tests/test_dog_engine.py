@@ -585,13 +585,13 @@ def test_per_view_shot_counts_and_required_views():
 
 
 # ---------------------------------------------------------------- canonical upright crops (refine.py)
-from dog_capture.engine.refine import (FaceRefiner, apply, crop_matrix, eye_contrast,  # noqa: E402
+from dog_capture.engine.refine import (FaceRefiner, apply, crop_matrix, eye_contrast, wrap_deg,  # noqa: E402
                                        rotation_matrix, upright_frame)
-from dog_engine_synthetic import BlobDetector  # noqa: E402
+from dog_engine_synthetic import BlobDetector, BlobLandmarker  # noqa: E402
 
 
-def refined_engine(detector, **overrides):
-    return CaptureEngine(CaptureConfig().merged({'runtime': {'rotate': '0'}, **overrides}), detector)
+def refined_engine(detector, landmarker=None, **overrides):
+    return CaptureEngine(CaptureConfig().merged({'runtime': {'rotate': '0'}, **overrides}), detector, None, landmarker)
 
 
 def test_rotation_matrix_quarter_turns_match_cv2_rotate():
@@ -676,6 +676,39 @@ def test_refiner_crop_size_needs_a_model_that_can_run_it():
     assert refiner.size == 224
     image, detections = render()
     assert refiner.refine(image, detections, 0, still=True)[0].extra['refined']
+
+
+def test_landmarker_tracks_every_frame_and_the_detector_runs_only_for_shots():
+    image, _ = render(roll=90.0)                     # a dog lying down: no four-way search needed
+    detector, landmarker = BlobDetector(), BlobLandmarker()
+    engine = refined_engine(detector, landmarker)
+    for i in range(20):
+        result = engine.process(image, i / 30, i)
+    face = result.faces[0]
+    assert abs(face.geometry.roll_deg) < 5 and face.geometry.upright_k in (1, 3)
+    assert face.detection.source == 'crop_landmarks+refined'
+    assert landmarker.calls >= 20                    # one tracker run per frame (+ a re-crop on new faces)
+    crops = detector.calls - detector.full_calls     # detector runs on crops: precise pass + shot checks only
+    assert 0 < crops < 20
+    shot = engine.finalize().best('front')
+    assert shot.detection.source == 'blobs+refined'  # the shot keeps the precise keypoints
+    assert abs(shot.geometry.roll_deg) < 5
+
+
+def test_landmarker_reads_the_roll_beyond_its_keypoint_range():
+    image, detections = render(roll=150.0)
+    refiner = FaceRefiner(BlobDetector(), landmarker=BlobLandmarker())
+    refined = [d for d in refiner.refine(image, detections, 0.0, still=True) if d.extra.get('refined')]
+    assert len(refined) == 1 and abs(wrap_deg(refined[0].extra['crop_tilt'])) < 10   # re-cropped upright
+    assert refiner.landmarker.calls == 2             # read the roll, then the upright crop
+
+
+def test_server_recheck_uses_the_same_precise_pass():
+    image, _ = render(roll=90.0)
+    engine = refined_engine(BlobDetector(), BlobLandmarker(), runtime={'still_images': True, 'rotate': '0'})
+    check = engine.verify_shot(image, claimed_view='front')
+    assert check['ok'], check['reasons']
+    assert check['detection']['source'] == 'blobs+refined'
 
 
 def test_refiner_turns_a_lying_dog_upright_and_stores_the_shot_upright():

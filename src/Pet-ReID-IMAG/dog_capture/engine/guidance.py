@@ -27,7 +27,7 @@ QUALITY_CODES = ('face_too_small', 'face_clipped', 'too_dark', 'overexposed', 'l
                  'blurred', 'eyes_or_nose_occluded')
 POSE_REASONS = {'eyes_unresolved', 'implausible_eye_span', 'implausible_nose_position',
                 'extreme_pose', 'inconsistent_landmarks', 'eyes_coincide', 'alignment_failed',
-                'landmarks_unreliable', 'landmarks_unstable'}
+                'landmarks_unreliable', 'landmarks_unstable', 'view_unconfirmed'}
 ALIASES = {'eyes_not_visible': 'eyes_or_nose_occluded'}   # shot-gate reason -> operator message
 
 

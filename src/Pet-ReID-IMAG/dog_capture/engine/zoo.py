@@ -210,9 +210,38 @@ def build_body_gate(config, detector_kind):
                                    cuda_graph=r.cuda_graph, thread_spinning=r.thread_spinning)
 
 
+LANDMARKS_FILE = 'dog_face_landmarks.onnx'
+
+
+def find_landmarks(config):
+    """Path of the crop landmark model (refine.landmarks), or None to refine with the detector."""
+    choice = config.refine.landmarks
+    if choice == 'off' or not config.refine.enabled:
+        return None
+    if choice:
+        path = Path(choice)
+        if not path.is_file():
+            raise FileNotFoundError(f'refine.landmarks: {path} not found')
+        return path
+    path = model_dir() / LANDMARKS_FILE
+    return path if path.is_file() else None
+
+
+def build_landmarker(config, detector_kind=None):
+    from . import detectors
+    if detector_kind in ('dogflw', 'external'):
+        return None
+    path = find_landmarks(config)
+    if path is None:
+        return None
+    r = config.runtime
+    return detectors.CropLandmarker(path, score_threshold=0.05, providers=r.providers, threads=r.threads,
+                                    cache_dir=r.cache_dir, thread_spinning=r.thread_spinning)
+
+
 def build_engine(config):
     from .engine import CaptureEngine
     kind, path = find_face_model(config)
     detector = build_detector(config, kind, path)
     gate = build_body_gate(config, kind)
-    return CaptureEngine(config, detector, gate)
+    return CaptureEngine(config, detector, gate, build_landmarker(config, kind))

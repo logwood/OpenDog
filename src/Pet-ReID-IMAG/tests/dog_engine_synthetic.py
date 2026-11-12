@@ -141,3 +141,24 @@ class BlobDetector:
 
     def describe(self):
         return {'kind': 'blobs'}
+
+
+class BlobLandmarker(BlobDetector):
+    """A stand-in crop landmarker (detectors.CropLandmarker): reads any roll at 128 px, reports
+    the roll like the trained roll head, and keeps one face.  ``detect`` counts its runs."""
+    size = 128
+    share = 0.35
+    keypoint_max_roll = 55.0
+    rotation_invariant = True
+    kind = 'crop_landmarks'
+
+    def detect(self, image, size=None):
+        assert image.shape[:2] == (self.size, self.size), 'the landmarker only sees its own crops'
+        found = super().detect(image)[:1]
+        for det in found:
+            det.score = 0.95                       # presence: no upright bias
+            a, b = det.keypoints[0], det.keypoints[1]
+            det.extra['roll_deg'] = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
+            det.source = 'crop_landmarks'
+        return found
+
