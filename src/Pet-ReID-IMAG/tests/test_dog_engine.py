@@ -8,7 +8,7 @@ import pytest
 
 from dog_capture.engine import CaptureConfig, CaptureEngine, Detection, ViewSpec
 from dog_capture.engine.alignment import PETFACE_DOG_224, align_face, umeyama_similarity
-from dog_capture.engine.config import PoseConfig
+from dog_capture.engine.config import PoseConfig, RefineConfig
 from dog_capture.engine.engine import OrientationLock, rotate_frame
 from dog_capture.engine.pose import ViewClassifier, face_geometry
 from dog_capture.engine.quality import QualityAssessor, blur_effect
@@ -640,6 +640,42 @@ def test_immediate_orientation_search_reuses_base_crop(monkeypatch, weak_score):
     refined = refiner.refine(image, detections, 1 / 30)
     assert angles == [0, 90, 180, 270]
     assert refined[0].extra['upright_angle'] == 90
+
+
+def test_empty_orientation_search_waits_before_repeating_at_that_place(monkeypatch):
+    image, detections = render()
+    refiner = FaceRefiner(BlobDetector())
+    angles = []
+    monkeypatch.setattr(refiner, 'examine', lambda _frame, _box, angle: angles.append(angle))   # nothing anywhere
+    counts = []
+    for t in (0, 1 / 30, 2 / 30, 0.3):
+        angles.clear()
+        refiner.refine(image, detections, t)
+        counts.append(len(angles))
+    # a four-way search found nothing: the next frames only look at the current crop, until
+    # empty_search_period_s and empty_search_min_frames have passed
+    assert counts == [4, 1, 1, 4]
+    refiner.config.empty_search_period_s = 0.0   # off: search on every unusable frame
+    angles.clear()
+    refiner.refine(image, detections, 0.31)
+    assert len(angles) == 4
+
+
+def test_refiner_crop_size_needs_a_model_that_can_run_it():
+    assert FaceRefiner(BlobDetector(), RefineConfig(crop_size=224)).size == 320   # fixed-size model
+
+    class Dynamic(BlobDetector):
+        def runs_at(self, size):
+            return True
+
+        def detect(self, image, size=None):
+            assert size in (None, 224)
+            return super().detect(image)
+
+    refiner = FaceRefiner(Dynamic(), RefineConfig(crop_size=224))
+    assert refiner.size == 224
+    image, detections = render()
+    assert refiner.refine(image, detections, 0, still=True)[0].extra['refined']
 
 
 def test_refiner_turns_a_lying_dog_upright_and_stores_the_shot_upright():

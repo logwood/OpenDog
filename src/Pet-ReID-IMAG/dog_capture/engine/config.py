@@ -38,7 +38,10 @@ DEFAULT_VIEWS = (ViewSpec('front', 0.0, -0.13, 0.13),
 class DetectorConfig:
     kind: str = 'auto'            # auto | yolo_pose | anyface | scrfd | dogflw | external
     model: str = ''               # path; '' = look up the model directory
-    input_size: int = 640         # square network input for ONNX detectors
+    # Square network input of the full-frame pass.  0 = the model's own: its fixed ONNX shape, or
+    # for a dynamic-shape export the size in its sidecar (640 if it records none).  Fixed-shape
+    # models always run at their own size.
+    input_size: int = 0
     score_threshold: float = 0.35
     nms_iou: float = 0.45
     max_faces: int = 8
@@ -57,6 +60,11 @@ class RefineConfig:
     """
     enabled: bool = True
     share: float = 0.35              # face long side / crop side (training faces: median 0.30)
+    # Square crop size in pixels; 0 = the model's input size.  A dynamic-shape export of the
+    # same weights can run the crops smaller than the full-frame pass (validation, rotated
+    # faces, good keypoints: 320 -> 79 %, 256 -> 76 %, 224 -> 75 %; single-thread WASM
+    # time 103 -> 64 -> 53 ms).  Ignored for fixed-shape models and while a CUDA Graph is active.
+    crop_size: int = 0
     search_period_s: float = 0.5     # re-check the quarter turn this often, unless (edge option) the
     confident_score: float = 1.0     # crop score is at least this: then only every max_search_period_s.
     max_search_period_s: float = 2.0  # (Off by default: on rolled close-ups a wrong turn can score 0.6.)
@@ -101,6 +109,14 @@ class RefineConfig:
     # Ambiguous faces (rolled ~45 deg: turns score alike) therefore keep being re-checked.
     backoff_margin: float = 0.10
     max_backoff: int = 4
+    # A four-way search that finds no face at any turn is not repeated at that place (while the
+    # crop there stays unusable) for this long and this many frames: on hands, fur and the back
+    # of the head it otherwise runs on every frame (user video: 2.96 -> 2.33 model runs per
+    # frame; the front and two-side clips are unchanged).  A weak find still counts as a find:
+    # its angle lets the next crop settle.  A face that appears there is found at most this
+    # much later.  0 = off.
+    empty_search_period_s: float = 0.25
+    empty_search_min_frames: int = 2
 
 
 @dataclass
@@ -256,16 +272,20 @@ class CaptureConfig:
                                self.selection, self.output, self.runtime)
         check(d.kind in ('auto', 'yolo_pose', 'anyface', 'scrfd', 'dogflw', 'external'),
               f'detector.kind={d.kind!r}')
-        check(32 <= d.input_size <= 2048 and d.input_size % 32 == 0, 'detector.input_size must be a multiple of 32')
+        check(d.input_size == 0 or (32 <= d.input_size <= 2048 and d.input_size % 32 == 0),
+              'detector.input_size must be 0 or a multiple of 32')
         check(0 < d.score_threshold < 1 and 0 < d.nms_iou < 1 and d.max_faces >= 1, 'detector thresholds')
         f = self.refine
+        check(f.crop_size == 0 or (96 <= f.crop_size <= 1024 and f.crop_size % 32 == 0),
+              'refine.crop_size must be 0 or a multiple of 32 in 96..1024')
         check(0.1 <= f.share <= 0.9 and f.search_period_s > 0 and f.switch_margin >= 0 and f.carry_frames >= 0
               and 0 <= f.fine_min_deg <= 45
               and 0 < f.match_iou < 1 and f.full_detect_period_s >= 0 and 0 <= f.confident_score <= 1
               and f.max_search_period_s >= f.search_period_s and f.gate_window_s > 0
               and 0 <= f.gate_min_ratio <= 1 and f.gate_min_passes >= 1 and f.gate_min_frames >= 1
               and f.full_detect_min_frames >= 1 and f.search_min_frames >= 1 and f.backoff_margin >= 0
-              and f.max_backoff >= 1, 'refine settings')
+              and f.max_backoff >= 1 and f.empty_search_period_s >= 0 and f.empty_search_min_frames >= 0,
+              'refine settings')
         check(0 <= f.min_shot_score < 1 and 0 <= f.research_below < 1 and f.max_mirror_disagreement > 0
               and 0 <= f.min_front_eye_conf < 1 and 0 <= f.min_side_eye_conf < 1 and f.max_agreement > 0
               and f.max_side_mirror_disagreement > 0 and f.max_side_agreement > 0

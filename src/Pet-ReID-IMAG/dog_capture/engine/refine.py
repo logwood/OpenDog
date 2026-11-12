@@ -131,12 +131,33 @@ class FaceRefiner:
     def __init__(self, detector, config: RefineConfig | None = None):
         self.detector = detector
         self.config = config or RefineConfig()
-        self.size = int(getattr(detector, 'size', 320))
+        native = int(getattr(detector, 'size', 320))
+        wanted = self.config.crop_size or native
+        runs_at = getattr(detector, 'runs_at', None)
+        self.size = wanted if wanted == native or (runs_at is not None and runs_at(wanted)) else native
         self.rois = []   # [{'box', 'region', 'angle', 'searched_at', 'searched_frame', 'score', 'misses'}]
+        self.empty = []  # searches that found no face at any turn: [(timestamp, frame, cx, cy, size)]
         self.frame = 0
 
     def reset(self):
         self.rois = []
+        self.empty = []
+
+    def _searched_empty(self, box, timestamp):
+        """A search found no face at this place a moment ago (refine.empty_search_*)."""
+        c = self.config
+        if c.empty_search_period_s <= 0:
+            return False
+        self.empty = [e for e in self.empty if timestamp - e[0] < c.empty_search_period_s
+                      or self.frame - e[1] < c.empty_search_min_frames]
+        cx, cy, size = _box_place(box)
+        return any(math.hypot(e[2] - cx, e[3] - cy) <= 0.5 * max(e[4], size) for e in self.empty)
+
+    def _detect(self, image):
+        """The face model on a crop of ``self.size`` (smaller than the full-frame pass if configured)."""
+        if self.size == getattr(self.detector, 'size', self.size):
+            return self.detector.detect(image)
+        return self.detector.detect(image, size=self.size)
 
     # ---- one crop -----------------------------------------------------
     def crop(self, frame, box, angle):
@@ -159,7 +180,7 @@ class FaceRefiner:
     def examine(self, frame, box, angle):
         """Detect on the crop turned ``angle``; returns a Detection in frame coordinates or None."""
         image, matrix = self.crop(frame, box, angle)
-        det = self._pick([d for d in self.detector.detect(image) if d.validate() is None])
+        det = self._pick([d for d in self._detect(image) if d.validate() is None])
         if det is None:
             return None
         inverse = np.linalg.inv(matrix)
@@ -180,7 +201,7 @@ class FaceRefiner:
                                 'region': region})
 
     def _mirror_points(self, image):
-        other = self._pick([d for d in self.detector.detect(np.ascontiguousarray(image[:, ::-1]))
+        other = self._pick([d for d in self._detect(np.ascontiguousarray(image[:, ::-1]))
                             if d.validate() is None])
         if other is None:
             return None
@@ -200,7 +221,7 @@ class FaceRefiner:
         """
         quarter = 90.0 * round(det.extra.get('upright_angle', 0.0) / 90.0)
         image, matrix = self.crop(frame, det.extra.get('region', det.box), quarter)
-        check = self._pick([d for d in self.detector.detect(image) if d.validate() is None])
+        check = self._pick([d for d in self._detect(image) if d.validate() is None])
         eyes = [det.schema.index('left_eye'), det.schema.index('right_eye')]
         own = apply(matrix, det.keypoints)
         span = max(float(np.linalg.norm(own[eyes[0]] - own[eyes[1]])), 1e-6)
@@ -275,10 +296,16 @@ class FaceRefiner:
                    or (frames >= c.search_min_frames * backoff
                        and ((age >= c.search_period_s * backoff and match['score'] < c.confident_score)
                             or age >= c.max_search_period_s)))
-            searched_at = timestamp if due else match['searched_at']
+            if (due and not still and (det is None or det.score < c.research_below)
+                    and self._searched_empty(box, timestamp)):
+                due = False   # this crop is unusable and no turn here showed a face a moment ago: wait
+            fresh = due or match is None
+            searched_at = timestamp if fresh else match['searched_at']
             if due:
                 det = self._search(frame, box, base, det)
                 det = self._settle(frame, box, det)
+                if det is None:
+                    self.empty.append((timestamp, self.frame, *_box_place(box)))
             if det is None:
                 if source is not None:       # keep the full-frame face, marked as not refined
                     source.extra = {**source.extra, 'upright_k': 0, 'refined': False}
@@ -303,12 +330,18 @@ class FaceRefiner:
             rois.append({'box': np.asarray(det.box, np.float32), 'region': det.extra['region'],
                          'angle': det.extra['upright_angle'],
                          'searched_at': searched_at,
-                         'searched_frame': self.frame if due else match.get('searched_frame', 0),
+                         'searched_frame': self.frame if fresh else match.get('searched_frame', 0),
                          'backoff': _backoff(c, backoff, det) if due else backoff,
                          'score': det.score, 'misses': misses})
         if not still:
             self.rois = rois
         return _dedupe(out)
+
+
+def _box_place(box):
+    """Centre and long side of a box (where a face is, independent of track ids)."""
+    x1, y1, x2, y2 = (float(v) for v in box)
+    return (x1 + x2) / 2, (y1 + y2) / 2, max(x2 - x1, y2 - y1)
 
 
 def _backoff(config, backoff, det):

@@ -139,14 +139,31 @@ interface Roi {
 
 export class FaceRefiner {
   rois: Roi[] = [];
+  /** Searches that found no face at any turn: [t, frame, cx, cy, size] (refine.empty_search_*). */
+  empty: [number, number, number, number, number][] = [];
   readonly size: number;
   private frame = 0;
 
   constructor(private detector: FaceDetector, private config: RefineConfig) {
-    this.size = detector.size ?? 320;
+    const native = detector.size ?? 320, wanted = config.crop_size || native;
+    this.size = wanted === native || detector.runsAt?.(wanted) ? wanted : native;
   }
 
-  reset() { this.rois = []; }
+  /** The face model on a crop of `this.size` (smaller than the full-frame pass if configured). */
+  private detect(image: Frame) {
+    return this.size === (this.detector.size ?? this.size) ? this.detector.detect(image) : this.detector.detect(image, this.size);
+  }
+
+  reset() { this.rois = []; this.empty = []; }
+
+  /** A search found no face at this place a moment ago. */
+  private searchedEmpty(box: Box, t: number) {
+    const c = this.config;
+    if (c.empty_search_period_s <= 0) return false;
+    this.empty = this.empty.filter((e) => t - e[0] < c.empty_search_period_s || this.frame - e[1] < c.empty_search_min_frames);
+    const [cx, cy, size] = boxPlace(box);
+    return this.empty.some((e) => Math.hypot(e[2] - cx, e[3] - cy) <= 0.5 * Math.max(e[4], size));
+  }
 
   crop(frame: Frame, box: Box, angle: number): { image: Frame; matrix: Mat3 } {
     const matrix = cropMatrix(box, angle, this.config.share, this.size);
@@ -167,7 +184,7 @@ export class FaceRefiner {
   /** Detect on the crop turned `angle`; a Detection in frame coordinates or null. */
   async examine(frame: Frame, box: Box, angle: number): Promise<Detection | null> {
     const { image, matrix } = this.crop(frame, box, angle);
-    const d = this.pick(await this.detector.detect(image));
+    const d = this.pick(await this.detect(image));
     if (!d) return null;
     const inverse = invert(matrix);
     const tilt = eyeLineDeg(d), upright = wrapDeg(angle - tilt);
@@ -188,13 +205,13 @@ export class FaceRefiner {
   async verify(frame: Frame, d: Detection): Promise<Verification> {
     const quarter = 90 * Math.round(Number(d.extra?.upright_angle ?? 0) / 90);
     const { image, matrix } = this.crop(frame, (d.extra?.region as Box | undefined) ?? d.box, quarter);
-    const check = this.pick(await this.detector.detect(image));
+    const check = this.pick(await this.detect(image));
     const ie = d.schema.names.indexOf('left_eye'), je = d.schema.names.indexOf('right_eye');
     const own = apply(matrix, d.keypoints);
     const span = Math.max(Math.hypot(own[ie][0] - own[je][0], own[ie][1] - own[je][1]), 1e-6);
     if (!check) return { score: 0, eyes: [0, 0], mirror: Infinity, agreement: Infinity };
     const mean = (a: Point[], b: Point[]) => a.reduce((s, p, i) => s + Math.hypot(p[0] - b[i][0], p[1] - b[i][1]), 0) / a.length;
-    const other = this.pick(await this.detector.detect(mirror(image)));
+    const other = this.pick(await this.detect(mirror(image)));
     let mirrorGap = Infinity;
     if (other) {
       const flip = flipIndex(other.schema);
@@ -254,13 +271,17 @@ export class FaceRefiner {
       // re-check the quarter turn when new or doubtful, else periodically (seconds and frames, stretched
       // while the turn keeps being confirmed clearly)
       let d = await this.examine(frame, box, base);
-      const due = still || !match || match.score < c.research_below || !d || d.score < c.research_below
+      let due = still || !match || match.score < c.research_below || !d || d.score < c.research_below
         || (frames >= c.search_min_frames * backoff
           && ((age >= c.search_period_s * backoff && match.score < c.confident_score) || age >= c.max_search_period_s));
-      const searchedAt = due ? t : match!.searchedAt;
+      // this crop is unusable and no turn here showed a face a moment ago: wait (empty_search_*)
+      if (due && !still && (!d || d.score < c.research_below) && this.searchedEmpty(box, t)) due = false;
+      const fresh = due || !match;
+      const searchedAt = fresh ? t : match!.searchedAt;
       if (due) {
         d = await this.search(frame, box, base, d);
         d = await this.settle(frame, box, d);
+        if (!d) this.empty.push([t, this.frame, ...boxPlace(box)]);
       }
       if (!d) {
         if (source) out.push({ ...source, extra: { ...(source.extra ?? {}), upright_k: 0, refined: false } });
@@ -275,12 +296,17 @@ export class FaceRefiner {
       // missed by a detector that ran (or a weak crop): count it; skipped detector: the crop vouches
       const misses = source ? 0 : (fullRan || !confirmed ? before + 1 : before);
       rois.push({ box: d.box, region: d.extra!.region as Box, angle: Number(d.extra!.upright_angle), searchedAt,
-        searchedFrame: due ? this.frame : (match?.searchedFrame ?? 0),
+        searchedFrame: fresh ? this.frame : (match?.searchedFrame ?? 0),
         backoff: due ? nextBackoff(c, backoff, d) : backoff, score: d.score, misses });
     }
     if (!still) this.rois = rois;
     return dedupe(out);
   }
+}
+
+/** Centre and long side of a box (where a face is, independent of track ids). */
+function boxPlace(box: Box): [number, number, number] {
+  return [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2, Math.max(box[2] - box[0], box[3] - box[1])];
 }
 
 /** Next search-interval multiplier after a search: grows while the turn is clearly confirmed. */

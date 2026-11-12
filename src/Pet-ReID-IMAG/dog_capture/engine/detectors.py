@@ -53,7 +53,7 @@ def read_sidecar(model_path):
 class OnnxDetector:
     kind = 'onnx'
 
-    def __init__(self, model, *, input_size=640, score_threshold=0.35, nms_iou=0.45, max_faces=8,
+    def __init__(self, model, *, input_size=0, score_threshold=0.35, nms_iou=0.45, max_faces=8,
                  providers='auto', threads=0, cache_dir='', cuda_graph=False, thread_spinning=True):
         self.model_path = Path(model)
         from .zoo import verify_model
@@ -65,7 +65,9 @@ class OnnxDetector:
         self._graph_lock = Lock() if self._graph is not None else None
         shape = self.input.shape
         fixed = isinstance(shape[2], int) and isinstance(shape[3], int)
-        self.size = int(shape[2]) if fixed else int(input_size)
+        # a dynamic export runs full frames at the size asked for, else the one it was made for
+        self.size = int(shape[2]) if fixed else int(input_size or self.sidecar.get('input_size') or 640)
+        self.dynamic = not fixed   # may also run at other square sizes (refine.crop_size)
         if fixed and shape[2] != shape[3]:
             raise ValueError(f'Only square detector inputs are supported, got {shape}')
         self.score_threshold, self.nms_iou, self.max_faces = score_threshold, nms_iou, max_faces
@@ -173,9 +175,13 @@ class YoloPoseDetector(OnnxDetector):
         names = self.metadata.get('names')
         self.num_classes = len(ast.literal_eval(names)) if names else int(self.sidecar.get('num_classes', 1))
 
-    def preprocess(self, frame):
-        canvas, ratio, pad = letterbox(frame, self.size)
+    def preprocess(self, frame, size=None):
+        canvas, ratio, pad = letterbox(frame, size or self.size)
         return _rgb_tensor(canvas), ratio, pad
+
+    def runs_at(self, size):
+        """True if this model can run on a square input of ``size`` (refinement crops)."""
+        return size == self.size or (self.dynamic and self._graph is None)
 
     @staticmethod
     def _schema_from_names(value):
@@ -195,8 +201,8 @@ class YoloPoseDetector(OnnxDetector):
         pairs = tuple((n, 'right_' + n[5:]) for n in names if n.startswith('left_') and 'right_' + n[5:] in names)
         return KeypointSchema('custom_' + '_'.join(names)[:40], names, pairs)
 
-    def detect(self, frame):
-        tensor, ratio, pad = self.preprocess(frame)
+    def detect(self, frame, size=None):
+        tensor, ratio, pad = self.preprocess(frame, size)
         out = self._run(tensor)[0][0]
         k, d = self.num_kpts, self.kpt_dims
         if out.shape[-1] == 6 + k * d and out.shape[0] <= 1000:  # end-to-end export (NMS in graph)

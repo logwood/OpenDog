@@ -43,7 +43,8 @@ describe.skipIf(!refineReady)('refinement with the real face model (tools/export
     const runner = await createOrtRunner(ort, new Uint8Array(readFileSync(resolve(dir!, 'dog_face_pose.onnx'))), ['wasm']);
     runner.inputSize = ref.model_input;
     const detector = new YoloPoseDetector(runner, { kpt: [6, 3] });
-    const refiner = new FaceRefiner(detector, defaultConfig().refine);
+    const refiner = new FaceRefiner(detector, { ...defaultConfig().refine, crop_size: ref.crop_size ?? 0 });
+    expect(refiner.size).toBe(ref.crop_size || ref.model_input);
     for (const item of ref.frames) {
       const frame = fromBGR(new Uint8Array(readFileSync(resolve(dir!, item.file))), item.w, item.h);
       const found = await detector.detect(frame);

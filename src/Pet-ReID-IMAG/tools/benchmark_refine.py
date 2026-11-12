@@ -22,9 +22,10 @@ parser.add_argument('--model', required=True)
 parser.add_argument('--faces', type=int, default=500)
 parser.add_argument('--shares', default='0.25,0.35,0.5')
 parser.add_argument('--out', default='benchmark_refine.json')
+parser.add_argument('--input-size', type=int, default=0, help='crop size for a dynamic-shape model (0 = the model size)')
 ARGS = parser.parse_args()
 N, SHARES = ARGS.faces, [float(s) for s in ARGS.shares.split(',')]
-det = YoloPoseDetector(ARGS.model, score_threshold=0.15)
+det = YoloPoseDetector(ARGS.model, score_threshold=0.15, **({'input_size': ARGS.input_size} if ARGS.input_size else {}))
 ROT = {1: cv2.ROTATE_90_CLOCKWISE, 2: cv2.ROTATE_180, 3: cv2.ROTATE_90_COUNTERCLOCKWISE}
 FLIP = [1, 0, 2, 3, 5, 4]
 
@@ -53,8 +54,9 @@ def unrot(p, k, w, h):
     return p
 
 
-def square_crop(img, cx, cy, side, out=320):
+def square_crop(img, cx, cy, side, out=None):
     """crop a side x side square centred at (cx, cy) (pad 114), resized to out; returns crop and scale/offset"""
+    out = out or det.size
     s = out / side
     M = np.float32([[s, 0, out / 2 - s * cx], [0, s, out / 2 - s * cy]])
     crop = cv2.warpAffine(img, M, (out, out), flags=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR,
@@ -116,7 +118,7 @@ for f in files:
         for k in range(4):
             res = run(rot(crop, k))
             if res is None: cands.append(None); continue
-            kp = unrot(res[1], k, 320, 320)
+            kp = unrot(res[1], k, det.size, det.size)
             kp = (kp - [ox, oy]) / s                      # crop -> rotated image
             kp = unrot(kp, r, w, h)                        # rotated image -> original
             err = float(np.mean(np.linalg.norm(kp[vis] - gk[vis, :2], axis=1)) / iod)

@@ -9,10 +9,17 @@ import { getSchema, nms, SCHEMAS, type Box, type Detection, type KeypointSchema,
 export interface TensorOut { data: Float32Array; dims: number[] }
 export interface Runner {
   inputSize: number;
+  /** The model has a free input size, so it can also run on other square sizes (refine.crop_size). */
+  dynamic?: boolean;
   run(input: Float32Array, dims: number[]): Promise<TensorOut[]>;
 }
 
-export interface FaceDetector { detect(frame: Frame): Promise<Detection[]>; readonly size?: number }
+export interface FaceDetector {
+  /** `size`: a square input other than the model's own (only where runsAt(size)). */
+  detect(frame: Frame, size?: number): Promise<Detection[]>;
+  readonly size?: number;
+  runsAt?(size: number): boolean;
+}
 export interface BodyGate { detect(frame: Frame): Promise<{ boxes: Box[]; scores: number[] }> }
 
 function chw(canvas: Frame, order: 'rgb' | 'bgr', scale: number): Float32Array {
@@ -55,11 +62,13 @@ export class YoloPoseDetector implements FaceDetector {
     }
   }
 
-  /** Square network input (the refiner crops faces at exactly this size). */
+  /** Square network input of the full-frame pass (the refiner crops at this size unless refine.crop_size). */
   get size() { return this.runner.inputSize; }
 
-  async detect(frame: Frame): Promise<Detection[]> {
-    const size = this.runner.inputSize;
+  /** True if the model can run on a square input of `size` (a dynamic-shape export can). */
+  runsAt(size: number) { return size === this.runner.inputSize || !!this.runner.dynamic; }
+
+  async detect(frame: Frame, size: number = this.runner.inputSize): Promise<Detection[]> {
     const { canvas, ratio, pad } = letterbox(frame, size);
     const [out] = await this.runner.run(chw(canvas, 'rgb', 1 / 255), [1, 3, size, size]);
     const [k, d] = this.options.kpt;
@@ -165,9 +174,10 @@ export async function createOrtRunner(ort: {
   const inputName = session.inputNames[0];
   const meta = session.inputMetadata?.[0] ?? session.inputMetadata?.[inputName];
   const shape: unknown[] = meta?.shape ?? meta?.dimensions ?? [];
-  const inputSize = typeof shape[2] === 'number' ? (shape[2] as number) : 320;
+  const dynamic = typeof shape[2] !== 'number' || typeof shape[3] !== 'number';
+  const inputSize = dynamic ? 320 : (shape[2] as number);
   return {
-    inputSize, providers: used, metadata: {},
+    inputSize, dynamic, providers: used, metadata: {},
     async release() { await session.release?.(); },
     async run(input: Float32Array, dims: number[]) {
       const outputs = await session.run({ [inputName]: new ort.Tensor('float32', input, dims) });

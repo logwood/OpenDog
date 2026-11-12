@@ -228,7 +228,7 @@ def train(args):
 def export(args):
     from ultralytics import YOLO
     model = YOLO(args.weights)
-    path = Path(model.export(format='onnx', imgsz=args.imgsz, opset=args.opset, simplify=True, dynamic=False))
+    path = Path(model.export(format='onnx', imgsz=args.imgsz, opset=args.opset, simplify=True, dynamic=args.dynamic))
     target = Path(args.output) if args.output else REPO / 'models' / 'pretrained' / 'dog_capture_v1' / 'dog_face_pose.onnx'
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(path, target)
@@ -237,6 +237,8 @@ def export(args):
     meta = {'kind': 'yolo_pose', 'schema': 'dogface6', 'kpt_shape': [6, 3], 'input_size': args.imgsz,
             'source_weights': str(args.weights), 'sha256': digest,
             'license': 'Trained with Ultralytics (AGPL-3.0) on StanfordExtra/Stanford Dogs (research use)'}
+    if args.dynamic:   # free input size: full frames at input_size, refinement crops at refine.crop_size
+        meta['dynamic'] = True
     target.with_suffix('.json').write_text(json.dumps(meta, indent=2))
     print(json.dumps({'onnx': str(target), **meta}, indent=2))
 
@@ -272,6 +274,8 @@ def main():
     e.add_argument('--weights', required=True)
     e.add_argument('--imgsz', type=int, default=320, help='network input; 320 = fastest at equal accuracy (measured)')
     e.add_argument('--opset', type=int, default=17)
+    e.add_argument('--dynamic', action='store_true',
+                   help='free input height/width (same weights; lets refine.crop_size run smaller crops)')
     e.add_argument('--output')
     e.set_defaults(func=export)
     args = parser.parse_args()

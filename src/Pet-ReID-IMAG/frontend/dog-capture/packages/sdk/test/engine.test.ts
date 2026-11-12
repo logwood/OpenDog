@@ -91,6 +91,40 @@ it.each([null, .25])('reuses the examined base crop when tracking returns %s', a
   expect(refined[0].extra?.upright_angle).toBe(90);
 });
 
+it('waits before repeating an empty orientation search at the same place', async () => {
+  const { frame, det } = frames.sharp;
+  const config = defaultConfig().refine;
+  const refiner = new FaceRefiner({ detect: async () => [] }, config);
+  const examine = vi.spyOn(refiner, 'examine').mockImplementation(async () => null);   // nothing anywhere
+  const counts: number[] = [];
+  for (const t of [0, 1 / 30, 2 / 30, 0.3]) {
+    examine.mockClear();
+    await refiner.refine(frame, [det], t);
+    counts.push(examine.mock.calls.length);
+  }
+  expect(counts).toEqual([4, 1, 1, 4]);
+  config.empty_search_period_s = 0;   // off
+  examine.mockClear();
+  await refiner.refine(frame, [det], 0.31);
+  expect(examine.mock.calls.length).toBe(4);
+});
+
+it('runs refinement crops at refine.crop_size only on a model that can', async () => {
+  const config = { ...defaultConfig().refine, crop_size: 224 };
+  expect(new FaceRefiner({ detect: async () => [], size: 320 }, config).size).toBe(320);
+  const sizes: (number | undefined)[] = [];
+  const dynamic = { size: 320, runsAt: () => true, detect: async (_f: unknown, size?: number) => { sizes.push(size); return []; } };
+  const refiner = new FaceRefiner(dynamic, config);
+  expect(refiner.size).toBe(224);
+  await refiner.refine(frames.sharp.frame, [frames.sharp.det], 0, true);
+  expect(sizes.length).toBeGreaterThan(0);
+  expect(sizes.every((s) => s === 224)).toBe(true);
+  // a dynamic-shape ONNX model reports it through the runner
+  const detector = new YoloPoseDetector({ inputSize: 320, dynamic: true, run: async () => [] }, { kpt: [6, 3] });
+  expect(detector.runsAt(224)).toBe(true);
+  expect(new YoloPoseDetector({ inputSize: 320, run: async () => [] }, { kpt: [6, 3] }).runsAt(224)).toBe(false);
+});
+
 function fakeRunner(size: number, output: Float32Array, dims: number[]): Runner {
   return { inputSize: size, run: async () => [{ data: output, dims }] };
 }
