@@ -52,7 +52,7 @@ export interface CaptureConfig {
     providers: string; threads: number; cache_dir: string; timestamps: 'drop' | 'raise'; rotate: string;
     mirror: boolean; still_images: boolean;
     /** native ONNX Runtime options (Python engine); carried in the session config, unused in the browser */
-    cuda_graph: boolean; thread_spinning: boolean;
+    cuda_graph: boolean; thread_spinning: boolean; spin_duration_us: number; spin_backoff_max: number;
   };
 }
 
@@ -87,7 +87,7 @@ export function defaultConfig(): CaptureConfig {
     selection: { mode: 'hybrid', good_enough: 0.65, improve_window_s: 2.0, top_k: 1, min_gap_s: 0.3, min_level: 'medium' },
     output: { aligned_size: 224, template: 'petface_dog', face_margin: 0.2, keep_frames: true, image_format: 'png' },
     runtime: { providers: 'auto', threads: 0, cache_dir: '', timestamps: 'drop', rotate: 'auto', mirror: false,
-      still_images: false, cuda_graph: false, thread_spinning: true },
+      still_images: false, cuda_graph: false, thread_spinning: true, spin_duration_us: -1, spin_backoff_max: 1 },
   };
 }
 

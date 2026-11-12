@@ -73,6 +73,30 @@ describe('CaptureEngine', () => {
   });
 });
 
+it.each([
+  { front: true, score: .49, eyes: [.9, .9], offset: 0, skip: 'score' },
+  { front: true, score: .9, eyes: [.1, .9], offset: 0, skip: 'eyes' },
+  { front: false, score: .9, eyes: [.1, .9], offset: 0, skip: undefined },
+  { front: true, score: .9, eyes: [.9, .9], offset: 7, skip: 'agreement' },
+  { front: true, score: .5, eyes: [.9, .9], offset: 6, skip: undefined },
+])('short-circuits a rejected mirror check: %j', async ({ front, score, eyes, offset, skip }) => {
+  const { frame, det } = frames.sharp;
+  const own: Detection = { ...det, keypoints: [[40, 40], [60, 40], ...det.keypoints.slice(2)] };
+  const checked: Detection = { ...own, score, kpScores: [...eyes, ...own.keypoints.slice(2).map(() => .9)],
+    keypoints: own.keypoints.map(([x, y]) => [x + offset, y]) };
+  const detect = vi.fn(async () => [checked]);
+  const refiner = new FaceRefiner({ detect }, defaultConfig().refine);
+  vi.spyOn(refiner, 'crop').mockReturnValue({ image: frame, matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] });
+  const full = await refiner.verify(frame, own);
+  expect(detect).toHaveBeenCalledTimes(2);
+  detect.mockClear();
+  const fast = await refiner.verify(frame, own, front);
+  expect(fast.mirror_skipped).toBe(skip);
+  expect(detect).toHaveBeenCalledTimes(skip ? 1 : 2);
+  for (const key of ['score', 'eyes', 'agreement'] as const) expect(fast[key]).toEqual(full[key]);
+  if (!skip) expect(fast).toEqual(full);
+});
+
 it.each([null, .25])('reuses the examined base crop when tracking returns %s', async (weakScore) => {
   const { frame, det } = frames.sharp;
   const refiner = new FaceRefiner({ detect: async () => [] }, defaultConfig().refine);

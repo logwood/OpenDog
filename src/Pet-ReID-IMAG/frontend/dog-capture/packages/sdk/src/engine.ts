@@ -476,7 +476,7 @@ export class CaptureEngine {
       this.timings.shot_check = (this.timings.shot_check ?? 0) + now() - started;
       return 'eyes_not_visible';
     }
-    const check = await this.refiner.verify(frame, det);
+    const check = await this.refiner.verify(frame, det, front);
     det.extra.verify = check;
     this.timings.shot_check = (this.timings.shot_check ?? 0) + now() - started;
     if (check.score < f.min_shot_score || pick(check.eyes) < (front ? f.min_front_eye_conf : f.min_side_eye_conf)

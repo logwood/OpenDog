@@ -154,7 +154,10 @@ export function transformDetection(d: Detection, m: Mat3): Detection {
     bodyBox: d.bodyBox ? boundsOf(apply(m, corners(d.bodyBox))) : d.bodyBox, extra: { ...(d.extra ?? {}) } };
 }
 
-export interface Verification { score: number; eyes: [number, number]; mirror: number; agreement: number }
+export interface Verification {
+  score: number; eyes: [number, number]; mirror: number; agreement: number;
+  mirror_skipped?: 'score' | 'eyes' | 'agreement';
+}
 
 interface Roi {
   box: Box; region: Box; angle: number; searchedAt: number; searchedFrame: number; backoff: number; score: number;
@@ -258,7 +261,7 @@ export class FaceRefiner {
    * Open-loop second look before a shot: the crop turned by the nearest *quarter* turn,
    * not re-rotated to this prediction's own eye line (that can lock a hallucination in).
    */
-  async verify(frame: Frame, d: Detection): Promise<Verification> {
+  async verify(frame: Frame, d: Detection, front?: boolean): Promise<Verification> {
     const quarter = 90 * Math.round(Number(d.extra?.upright_angle ?? 0) / 90);
     const { image, matrix } = this.crop(frame, (d.extra?.region as Box | undefined) ?? d.box, quarter, true);
     const check = await this.look(image, true);
@@ -267,15 +270,25 @@ export class FaceRefiner {
     const span = Math.max(Math.hypot(own[ie][0] - own[je][0], own[ie][1] - own[je][1]), 1e-6);
     if (!check) return { score: 0, eyes: [0, 0], mirror: Infinity, agreement: Infinity };
     const mean = (a: Point[], b: Point[]) => a.reduce((s, p, i) => s + Math.hypot(p[0] - b[i][0], p[1] - b[i][1]), 0) / a.length;
+    const conf = check.kpScores ?? check.keypoints.map(() => 1);
+    const result: Verification = { score: check.score, eyes: [conf[ie], conf[je]],
+      mirror: Infinity, agreement: mean(check.keypoints, own) / span };
+    // A failed non-mirror gate already rejects the candidate. Keep the default
+    // complete diagnostic path for callers that apply their own thresholds.
+    if (front !== undefined) {
+      const c = this.config, eye = front ? Math.min(...result.eyes) : Math.max(...result.eyes);
+      const reason = result.score < c.min_shot_score ? 'score'
+        : eye < (front ? c.min_front_eye_conf : c.min_side_eye_conf) ? 'eyes'
+          : !(result.agreement <= (front ? c.max_agreement : c.max_side_agreement)) ? 'agreement' : undefined;
+      if (reason !== undefined) return { ...result, mirror_skipped: reason };
+    }
     const other = await this.look(mirror(image), true);
-    let mirrorGap = Infinity;
     if (other) {
       const flip = flipIndex(other.schema);
       const back = flip.map((j) => [image.width - 1 - other.keypoints[j][0], other.keypoints[j][1]] as Point);
-      mirrorGap = mean(check.keypoints, back) / span;
+      result.mirror = mean(check.keypoints, back) / span;
     }
-    const conf = check.kpScores ?? check.keypoints.map(() => 1);
-    return { score: check.score, eyes: [conf[ie], conf[je]], mirror: mirrorGap, agreement: mean(check.keypoints, own) / span };
+    return result;
   }
 
   /**

@@ -56,12 +56,14 @@ class OnnxDetector:
     kind = 'onnx'
 
     def __init__(self, model, *, input_size=0, score_threshold=0.35, nms_iou=0.45, max_faces=8,
-                 providers='auto', threads=0, cache_dir='', cuda_graph=False, thread_spinning=True):
+                 providers='auto', threads=0, cache_dir='', cuda_graph=False, thread_spinning=True,
+                 spin_duration_us=-1, spin_backoff_max=1):
         self.model_path = Path(model)
         from .zoo import verify_model
         self.sha256, self.sidecar = verify_model(model)
         self._session_settings = dict(providers=providers, threads=threads, cache_dir=cache_dir,
-                                      thread_spinning=thread_spinning)
+                                      thread_spinning=thread_spinning, spin_duration_us=spin_duration_us,
+                                      spin_backoff_max=spin_backoff_max)
         self._graph = None
         self._load_session(cuda_graph=cuda_graph)
         self._graph_lock = Lock() if self._graph is not None else None

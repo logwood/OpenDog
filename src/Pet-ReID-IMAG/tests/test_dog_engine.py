@@ -712,6 +712,43 @@ def test_server_recheck_uses_the_same_precise_pass():
     assert check['detection']['source'] == 'blobs+refined'
 
 
+@pytest.mark.parametrize('front,score,eye_scores,offset,skip', [
+    (True, .49, (.9, .9), 0, 'score'),
+    (True, .9, (.69, .9), 0, 'eyes'),
+    (False, .9, (.1, .49), 0, 'eyes'),
+    (True, .9, (.9, .9), 7, 'agreement'),
+    (False, .9, (.9, .9), 11, 'agreement'),
+    (True, .5, (.9, .9), 0, None),
+    (True, .9, (.9, .9), 6, None),
+    (False, .9, (.9, .9), 10, None),
+    (False, .9, (.1, .9), 0, None),
+    (True, .9, (.1, .9), 0, 'eyes'),
+])
+def test_verify_skips_mirror_only_after_an_existing_gate_fails(monkeypatch, front, score, eye_scores, offset, skip):
+    image, detections = render()
+    own = detections[0]
+    # Known eye span: 20 px, so the agreement boundaries are exactly 6 / 10 px.
+    own.keypoints[:2] = [[40, 40], [60, 40]]
+    check = Detection(own.box, score, own.keypoints + [offset, 0], own.schema,
+                      kp_scores=[*eye_scores, *([.9] * (len(own.schema) - 2))])
+    refiner = FaceRefiner(BlobDetector())
+    monkeypatch.setattr(refiner, 'crop', lambda *a, **kw: (image, np.eye(3)))
+    monkeypatch.setattr(refiner, '_look', lambda *a, **kw: check)
+    calls = []
+    monkeypatch.setattr(refiner, '_mirror_points', lambda _image: calls.append(1) or check.keypoints.copy())
+    full = refiner.verify(image, own)  # training/export callers keep complete diagnostics
+    assert len(calls) == 1
+    calls.clear()
+    fast = refiner.verify(image, own, front=front)
+    assert fast.get('mirror_skipped') == skip and len(calls) == int(skip is None)
+    for key in ('score', 'eyes', 'agreement'):
+        assert full[key] == fast[key]
+    if skip is None:
+        assert fast == full
+    else:
+        assert math.isinf(fast['mirror'])
+
+
 def test_refiner_turns_a_lying_dog_upright_and_stores_the_shot_upright():
     for roll in (90.0, -90.0, 180.0):
         image, _ = render(roll=roll)

@@ -214,3 +214,60 @@ python src/Pet-ReID-IMAG/tools/benchmark_dog_landmark_pair.py --data data/dog_ca
 两段共 2,526 帧、每种实现各 3,477 次模型调用：原始网络输出逐元素相同，排除计时后的逐帧结果和最终选图相同。以上为同帧离线 A/B，不是实时采集 FPS。8 项新增测试覆盖全部 uint8 值、RGB 通道顺序、负步长/非连续输入、SCRFD 非零均值和连续输出；相关 Python 测试共 111 项通过。
 
 诊断与回归原始记录在本地 `artifacts/runs/dog_capture/video_distillation_20261112/` 的 `component_profile_deep_candidate_cpu.json`、`paced_all_models_probe.json`、`rgb_tensor_probe.json`、`rgb_capture_parity.json`；精简结果跟踪于 `assets/dog_capture/rgb_packing_benchmark.json`。本改动没有切换实验候选模型；下一步仍需控制设备状态，并减少跟踪失稳导致的全帧检测调用，分开验证线程策略和候选复检调度。
+
+## 9. 复检短路与 CPU 实时线程配置（2026-11-13）
+
+### 精度约束下减少调用
+
+复检先在固定四分之一转角的裁剪上检测，再检查镜像。以前即使第一遍的置信度、眼睛可见性或与原关键点的一致性已经不合格，也会运行镜像网络。现在 `FaceRefiner.verify(..., front=...)` 在这些原有拒绝条件命中时立即结束，记录 `mirror_skipped`；镜像误差记为不可用，保持拒绝。可接受候选仍运行完整镜像检查，阈值、采样、重捕获周期和时间门控均保持原值。Python 与浏览器 SDK 同步实现；训练和导出工具不传 `front`，仍取得完整诊断值。
+
+逐帧调用统计：用户视频的脸部网络 **649 → 628 次**，Wolfhound **291 → 286 次**，合计减少 26 次。被检查片段中的镜像调用 **57 → 31 次**；这不是全部检测调用减少 46%。同一帧相同输入的重复推理没有出现，因此未增加输入缓存。用户视频仍有大量无可靠跟踪区域时的全帧检测；保留这些调用来维持原来的重捕获能力。
+
+### 线程策略与兼容性
+
+增加运行时选项 `spin_duration_us` 与 `spin_backoff_max`，同时传给脸部检测器、身体检测器及跟踪网络，普通会话和 CUDA Graph 会话都能使用并在运行信息中报告。旧配置默认 `-1 / 1`，保持原有行为；显式关闭 `thread_spinning` 时仍完全关闭忙等。新配置在 ORT 1.26 上验证，旧版本若请求新策略会明确报错，避免静默忽略限时选项。
+
+本机保留 **4 个 ORT 线程、1,000 μs 忙等窗口、退避上限 8**，OpenCV 使用 1 个线程。依据 [ONNX Runtime 官方线程配置](https://onnxruntime.ai/docs/performance/tune-performance/threading.html#thread-spinning-behavior)，限时窗口允许相邻算子复用活跃线程，同时结束空闲忙等；未更改系统电源计划、进程优先级或其他程序。两线程筛查的用户视频 P95 为 75.54 ms、丢 164 帧，未采用。没有做功耗测量，不把限时忙等等同于已证明能耗下降。
+
+`run` 命令默认使用一个 OpenCV 线程，并在结果统计里记录线程数；可用 `--cv-threads` 覆盖，0 保留环境默认值。这个设置仅由独立命令行入口应用，库的 `build_engine` 不改宿主程序的全局 OpenCV 设置。嵌入其他应用时，宿主应自行选择并记录 OpenCV 线程数。
+
+`assets/dog_capture/cpu_realtime.json` 是可合并到现有模型配置的运行时预设，不覆盖模型路径、精度阈值或选图等级。命令行也可直接覆盖这些选项：
+
+```bash
+python -m dog_capture run VIDEO --config existing_capture.json --providers cpu --threads 4 --thread-spinning --spin-duration-us 1000 --spin-backoff-max 8 --realtime
+```
+
+本机包含归档原版跟踪权重、检测器绝对路径和这组运行时参数的完整配置保存在 `artifacts/runs/dog_capture/runtime_optimization_20261113/cpu_realtime_config.json`。该配置使用原版 checkpoint，不启用未通过精度验收的蒸馏候选。
+
+### 完整逐帧回归
+
+新增 `tools/compare_dog_capture_runtime.py`，加载对照 checkout 的 `engine.py` 和 `refine.py`；模型适配器保持一致，原版/优化版使用各自线程配置及独立模型会话、跟踪状态，逐帧交替先后顺序。每次模型运行按输入张量哈希匹配原始输出哈希，要求优化版执行的模型调用均有完全一致的原版输出。比较未舍入的框、关键点、yaw、roll、质量分，以及排除计时后的全部逐帧结果；只对明确已拒绝候选忽略未计算的镜像诊断值。
+
+用户视频 1,314 帧与 Wolfhound 1,212 帧全部通过：**零数值/判定差异，最终选图及原图、对齐图的像素哈希一致**。用户视频均未选图，Wolfhound 均选中正面、左侧；没有以放宽侧脸或闭眼规则换取帧率。完整结果在 `runtime_optimization_20261113/equivalence_final/result.json`。原版对照提交为 `60bfc8c`。
+
+复现时先建立该提交的独立 checkout，再运行（路径按设备替换；输出目录必须新建）：
+
+```bash
+python src/Pet-ReID-IMAG/tools/compare_dog_capture_runtime.py --reference-root OLD_CHECKOUT --config BASELINE_CONFIG --optimized-config assets/dog_capture/cpu_realtime.json --source USER_VIDEO --source WOLFHOUND_VIDEO --output NEW_OUTPUT
+```
+
+相关 Python 测试 127 项通过；SDK 39 项通过、1 项因缺少独立检测照片参考而跳过，真实模型四帧 refinement 对照实际运行，TypeScript 类型检查通过。边界测试覆盖正面/侧面眼睛规则、阈值相等、失败原因、旧 ORT 兼容性和选项传递。
+
+另对 I/O 与采集服务运行了 20 项通过、1 项因未安装可选 Brotli 包而跳过的测试；原生 CLI 以完整本机配置实际回放前三秒并生成报告，确认 OpenCV 单线程配置生效。未选出照片时 CLI 按原约定返回非零状态，不代表运行异常。
+
+CLI 保持原来的每模型 2 次预热；上述启动检查处理 82 / 91 帧，27.14 FPS、P95 42.40 ms。下述完整视频测试预热 15 次，启动前三秒的表现不能用完整回放的平均速度替代。
+
+### 两轮实际实时回放
+
+CPU、原始视频 PTS、容量为 1 的处理队列，逐轮完整解码；两种版本各回放两段视频两次。顺序为原版 A、优化 A、优化 B、原版 B，B 轮反转视频顺序；所有推理测试串行执行。每个模型预热 15 次，排除预览/UI、网络、ReID 及最终文件保存，计入检测、方向、跟踪、质量和选图；响应延迟另计入生产者迟到和排队。A/B 轮之间存在参数筛查和精度验证，未锁定系统负载或 CPU 频率，因此给出全部轮次而非只选最快一轮。
+
+| 视频 | 原版 FPS 范围 | 优化 FPS 范围 | 原版 P95 范围 | 优化 P95 范围 | 两轮丢帧：原版 → 优化 |
+|---|---:|---:|---:|---:|---:|
+| 用户视频，30 fps | 24.17–29.34 | 29.82–30.00 | 29.67–82.88 ms | 28.61–30.38 ms | 283 → 8 / 2,628 帧 |
+| Wolfhound，24 fps | 23.54–24.01 | 23.95–24.01 | 28.68–35.56 ms | 28.53–30.00 ms | 24 → 3 / 2,424 帧 |
+
+两段合计丢帧 **307 / 5,052（6.08%）→ 11 / 5,052（0.22%）**。合并两轮处理帧的 P99：用户视频 **106.99 → 40.09 ms**，Wolfhound **61.37 → 46.15 ms**。优化后各轮从计划输入时刻到结果的 P95 为 29.95–31.60 ms。不是所有单轮指标都变快（例如 Wolfhound B 轮 P99 为 50.23 ms，原版 B 为 44.66 ms）；收益主要在坏轮次和总丢帧的收敛，不能宣称消除了操作系统长尾。
+
+实时丢帧会改变时间门控和选图：原版 A 的 Wolfhound 额外出现右侧候选，其余原版/优化轮次为正面、左侧；用户视频各轮均未选图。精度回归使用完整相同输入帧单独验证，不把实时采样差异当作模型精度变化，也不把多一张候选直接当作更准。
+
+全部单轮结果、模型哈希、运行时参数、聚合方法与逐帧回归结论在 `assets/dog_capture/runtime_optimization_benchmark.json`。原始 `summary.json`、逐帧计时与所选 PNG 保存在本地 `artifacts/runs/dog_capture/runtime_optimization_20261113/{baseline_a,optimized_a,optimized_b,baseline_b}`。本次主要收益来自运行时线程策略；精度约束下省去的 26 次大网络调用是较小但可验证的额外收益。

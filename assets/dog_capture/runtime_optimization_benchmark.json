@@ -1,0 +1,849 @@
+{
+  "schema": "dog_capture_runtime_optimization_v1",
+  "measured_date_local": "2026-11-13",
+  "reference_commit": "60bfc8cab2f150742e081cbaa643e649558d08d6",
+  "hardware": "Intel Core i9-13980HX, native Windows",
+  "versions": {
+    "numpy": "2.4.4",
+    "opencv": "5.0.0",
+    "onnxruntime": "1.26.0"
+  },
+  "method": {
+    "playback": "original PTS; full videos; capacity-one LatestFrameRunner",
+    "trials_per_implementation_per_video": 2,
+    "trial_order": [
+      "baseline_a",
+      "optimized_a",
+      "optimized_b",
+      "baseline_b"
+    ],
+    "source_order": "user then Wolfhound in a; Wolfhound then user in b",
+    "warmup_calls_per_model": 15,
+    "opencv_threads": 1,
+    "providers": "CPUExecutionProvider only",
+    "baseline": "four ORT threads, no spinning, reference engine/refiner",
+    "optimized": "four ORT threads, 1000 us spin window, backoff 8, exact rejecting-check short circuit",
+    "excluded": "UI/rendering, network, ReID, camera/driver latency; source decode/queue included in scheduled-to-result",
+    "accuracy": "same-frame offline replay separately checks every model output and capture decision, final selected image hashes",
+    "limitations": "Two repeated trials; system load/frequency not locked. No power measurements, mobile or UI throughput claims. Raw full-frame detector reacquisition cadence unchanged."
+  },
+  "aggregate": [
+    {
+      "implementation": "baseline",
+      "video": "2611101816341481.mp4",
+      "frames_read": 2628,
+      "frames_processed": 2345,
+      "frames_dropped": 283,
+      "elapsed_s": 87.63971240000683,
+      "fps": [
+        24.174242594916244,
+        29.343668253982532
+      ],
+      "p95": [
+        82.88360000151442,
+        29.668679996393617
+      ],
+      "p99": [
+        121.58247999148458,
+        52.74486399372114
+      ],
+      "processed_fps_combined": 26.75727630525425,
+      "drop_rate": 0.10768645357686453,
+      "pooled_processing_ms": {
+        "mean": 24.283878933807124,
+        "p50": 16.250699991360307,
+        "p95": 70.03378001973027,
+        "p99": 106.99438800220373
+      }
+    },
+    {
+      "implementation": "baseline",
+      "video": "wolfhound_panting.ogv",
+      "frames_read": 2424,
+      "frames_processed": 2400,
+      "frames_dropped": 24,
+      "elapsed_s": 100.95724489999702,
+      "fps": [
+        23.538270573952847,
+        24.006537764607717
+      ],
+      "p95": [
+        35.555589997966266,
+        28.68071498232894
+      ],
+      "p99": [
+        85.66523501009213,
+        44.65860798984068
+      ],
+      "processed_fps_combined": 23.772439534946844,
+      "drop_rate": 0.009900990099009901,
+      "pooled_processing_ms": {
+        "mean": 12.704135666632888,
+        "p50": 9.586749991285615,
+        "p95": 30.037070020625794,
+        "p99": 61.36836199671916
+      }
+    },
+    {
+      "implementation": "optimized",
+      "video": "2611101816341481.mp4",
+      "frames_read": 2628,
+      "frames_processed": 2620,
+      "frames_dropped": 8,
+      "elapsed_s": 87.59357120000641,
+      "fps": [
+        29.818549990719315,
+        30.003197943594756
+      ],
+      "p95": [
+        28.61445002054097,
+        30.375364990322847
+      ],
+      "p99": [
+        40.55573000077859,
+        39.85798801266352
+      ],
+      "processed_fps_combined": 29.91087090190254,
+      "drop_rate": 0.0030441400304414,
+      "pooled_processing_ms": {
+        "mean": 14.162141717801525,
+        "p50": 12.474550007027574,
+        "p95": 29.40286998491499,
+        "p99": 40.091578988940455
+      }
+    },
+    {
+      "implementation": "optimized",
+      "video": "wolfhound_panting.ogv",
+      "frames_read": 2424,
+      "frames_processed": 2421,
+      "frames_dropped": 3,
+      "elapsed_s": 100.97092300001532,
+      "fps": [
+        24.00629972840993,
+        23.948098492459692
+      ],
+      "p95": [
+        28.526849995250814,
+        29.998440004419525
+      ],
+      "p99": [
+        43.95154498721244,
+        50.22761600790548
+      ],
+      "processed_fps_combined": 23.977199851878474,
+      "drop_rate": 0.0012376237623762376,
+      "pooled_processing_ms": {
+        "mean": 12.159592110208473,
+        "p50": 10.5743000167422,
+        "p95": 29.10300000803545,
+        "p99": 46.149439993314495
+      }
+    }
+  ],
+  "trials": [
+    {
+      "trial": "baseline_a",
+      "video": "2611101816341481.mp4",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1060,
+      "frames_dropped": 254,
+      "processed_fps": 24.174242594916244,
+      "elapsed_s": 43.84832310001366,
+      "processing_ms": {
+        "count": 1060,
+        "mean": 35.72332650922208,
+        "p50": 30.349950000527315,
+        "p95": 82.88360000151442,
+        "p99": 121.58247999148458,
+        "max": 196.47500000428408
+      },
+      "scheduled_to_result_ms": {
+        "count": 1060,
+        "mean": 45.68472994529396,
+        "p50": 40.528366686580775,
+        "p95": 93.09636334529498,
+        "p99": 128.62079533563937,
+        "max": 219.94859999394967
+      },
+      "model_calls": {
+        "face": 552,
+        "body": 130,
+        "landmarks": 975
+      },
+      "selected_views": [],
+      "config_runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": false
+      }
+    },
+    {
+      "trial": "baseline_a",
+      "video": "wolfhound_panting.ogv",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1188,
+      "frames_dropped": 24,
+      "processed_fps": 23.538270573952847,
+      "elapsed_s": 50.470997700002044,
+      "processing_ms": {
+        "count": 1188,
+        "mean": 13.449228198853712,
+        "p50": 9.204100002534688,
+        "p95": 35.555589997966266,
+        "p99": 85.66523501009213,
+        "max": 145.91940000536852
+      },
+      "scheduled_to_result_ms": {
+        "count": 1188,
+        "mean": 15.151218386314717,
+        "p50": 10.372700009611435,
+        "p95": 41.780373335253856,
+        "p99": 97.05507933239845,
+        "max": 162.21506667595054
+      },
+      "model_calls": {
+        "face": 271,
+        "body": 1,
+        "landmarks": 1204
+      },
+      "selected_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "config_runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": false
+      }
+    },
+    {
+      "trial": "optimized_a",
+      "video": "2611101816341481.mp4",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1306,
+      "frames_dropped": 8,
+      "processed_fps": 29.818549990719315,
+      "elapsed_s": 43.79823970000143,
+      "processing_ms": {
+        "count": 1306,
+        "mean": 14.424290046136674,
+        "p50": 12.831000000005588,
+        "p95": 28.61445002054097,
+        "p99": 40.55573000077859,
+        "max": 207.73559997905977
+      },
+      "scheduled_to_result_ms": {
+        "count": 1306,
+        "mean": 15.48800672292576,
+        "p50": 13.799966686443454,
+        "p95": 30.071791674224357,
+        "p99": 43.07116334171306,
+        "max": 208.67850001086464
+      },
+      "model_calls": {
+        "face": 621,
+        "body": 124,
+        "landmarks": 1168
+      },
+      "selected_views": [],
+      "config_runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": true,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8
+      }
+    },
+    {
+      "trial": "optimized_a",
+      "video": "wolfhound_panting.ogv",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1212,
+      "frames_dropped": 0,
+      "processed_fps": 24.00629972840993,
+      "elapsed_s": 50.486747800023295,
+      "processing_ms": {
+        "count": 1212,
+        "mean": 12.812336633185911,
+        "p50": 11.357449999195524,
+        "p95": 28.526849995250814,
+        "p99": 43.95154498721244,
+        "max": 59.59190000430681
+      },
+      "scheduled_to_result_ms": {
+        "count": 1212,
+        "mean": 13.918485162769915,
+        "p50": 12.40061668310477,
+        "p95": 29.95109333909145,
+        "p99": 45.42532635057218,
+        "max": 60.624833354571805
+      },
+      "model_calls": {
+        "face": 286,
+        "body": 1,
+        "landmarks": 1233
+      },
+      "selected_views": [
+        "front",
+        "left"
+      ],
+      "config_runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": true,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8
+      }
+    },
+    {
+      "trial": "optimized_b",
+      "video": "wolfhound_panting.ogv",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1209,
+      "frames_dropped": 3,
+      "processed_fps": 23.948098492459692,
+      "elapsed_s": 50.48417519999202,
+      "processing_ms": {
+        "count": 1209,
+        "mean": 11.505227873774517,
+        "p50": 9.540200000628829,
+        "p95": 29.998440004419525,
+        "p99": 50.22761600790548,
+        "max": 141.79850000073202
+      },
+      "scheduled_to_result_ms": {
+        "count": 1209,
+        "mean": 12.616473412133459,
+        "p50": 10.516933330414702,
+        "p95": 31.43620665456977,
+        "p99": 54.49407331606706,
+        "max": 146.6942666544746
+      },
+      "model_calls": {
+        "face": 297,
+        "body": 2,
+        "landmarks": 1233
+      },
+      "selected_views": [
+        "front",
+        "left"
+      ],
+      "config_runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": true,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8
+      }
+    },
+    {
+      "trial": "optimized_b",
+      "video": "2611101816341481.mp4",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1314,
+      "frames_dropped": 0,
+      "processed_fps": 30.003197943594756,
+      "elapsed_s": 43.79533150000498,
+      "processing_ms": {
+        "count": 1314,
+        "mean": 13.901589421906772,
+        "p50": 12.089349998859689,
+        "p95": 30.375364990322847,
+        "p99": 39.85798801266352,
+        "max": 57.454399997368455
+      },
+      "scheduled_to_result_ms": {
+        "count": 1314,
+        "mean": 14.998848548700156,
+        "p50": 13.23861665538395,
+        "p95": 31.598746658224286,
+        "p99": 40.794097321475995,
+        "max": 58.244199998441104
+      },
+      "model_calls": {
+        "face": 628,
+        "body": 125,
+        "landmarks": 1178
+      },
+      "selected_views": [],
+      "config_runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": true,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8
+      }
+    },
+    {
+      "trial": "baseline_b",
+      "video": "wolfhound_panting.ogv",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1212,
+      "frames_dropped": 0,
+      "processed_fps": 24.006537764607717,
+      "elapsed_s": 50.48624719999498,
+      "processing_ms": {
+        "count": 1212,
+        "mean": 11.973797441980796,
+        "p50": 10.024649993283674,
+        "p95": 28.68071498232894,
+        "p99": 44.65860798984068,
+        "max": 59.38299998524599
+      },
+      "scheduled_to_result_ms": {
+        "count": 1212,
+        "mean": 12.963581504119105,
+        "p50": 10.97268332281115,
+        "p95": 30.40534332297744,
+        "p99": 46.70618730849539,
+        "max": 60.20223330900443
+      },
+      "model_calls": {
+        "face": 291,
+        "body": 1,
+        "landmarks": 1233
+      },
+      "selected_views": [
+        "front",
+        "left"
+      ],
+      "config_runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": false
+      }
+    },
+    {
+      "trial": "baseline_b",
+      "video": "2611101816341481.mp4",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1285,
+      "frames_dropped": 29,
+      "processed_fps": 29.343668253982532,
+      "elapsed_s": 43.79138929999317,
+      "processing_ms": {
+        "count": 1285,
+        "mean": 14.84744747081891,
+        "p50": 11.982299998635426,
+        "p95": 29.668679996393617,
+        "p99": 52.74486399372114,
+        "max": 324.34779999312013
+      },
+      "scheduled_to_result_ms": {
+        "count": 1285,
+        "mean": 16.31917421910927,
+        "p50": 13.052233339597485,
+        "p95": 33.72720666035602,
+        "p99": 63.50572001631327,
+        "max": 325.5438666829526
+      },
+      "model_calls": {
+        "face": 628,
+        "body": 126,
+        "landmarks": 1198
+      },
+      "selected_views": [],
+      "config_runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": false
+      }
+    }
+  ],
+  "equivalence": [
+    {
+      "video": "data/dog_capture/user/2611101816341481.mp4",
+      "sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06",
+      "frames": 1314,
+      "model_calls": {
+        "reference": {
+          "face": 649,
+          "body": 125,
+          "landmarks": 1178
+        },
+        "optimized": {
+          "face": 628,
+          "body": 125,
+          "landmarks": 1178
+        }
+      },
+      "mirror_diagnostics_skipped": 20,
+      "mismatches": [],
+      "selection_identical": true,
+      "selected_frame_indices": {}
+    },
+    {
+      "video": "data/dog_capture/public/wolfhound_panting.ogv",
+      "sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893",
+      "frames": 1212,
+      "model_calls": {
+        "reference": {
+          "face": 291,
+          "body": 1,
+          "landmarks": 1233
+        },
+        "optimized": {
+          "face": 286,
+          "body": 1,
+          "landmarks": 1233
+        }
+      },
+      "mirror_diagnostics_skipped": 2,
+      "mismatches": [],
+      "selection_identical": true,
+      "selected_frame_indices": {
+        "front": [
+          20
+        ],
+        "left": [
+          278
+        ]
+      }
+    }
+  ],
+  "reference_source_sha256": {
+    "refine": "9cbf59c1ea418048107453a165aaf703ff4f6dad64c6a7fc9683db382a93dfd5",
+    "engine": "575bb6b10abd22cff8fc309206fd4fee827f348cf1dc2d4ae2c4a43b62681c61"
+  },
+  "models": {
+    "models": {
+      "config": {
+        "detector": {
+          "kind": "auto",
+          "model": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\models\\pretrained\\dog_capture_v1\\dog_face_pose.onnx",
+          "input_size": 0,
+          "score_threshold": 0.35,
+          "nms_iou": 0.45,
+          "max_faces": 8,
+          "schema": "",
+          "roi_zoom": true,
+          "roi_min_zoom": 1.5,
+          "roi_period_s": 0.1
+        },
+        "refine": {
+          "enabled": true,
+          "landmarks": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\models\\pretrained\\dog_capture_landmarks_v1\\dog_face_landmarks.onnx",
+          "share": 0.35,
+          "crop_size": 0,
+          "antialias": "tracker",
+          "candidate_retry_s": 0.25,
+          "search_period_s": 0.5,
+          "confident_score": 1.0,
+          "max_search_period_s": 2.0,
+          "switch_margin": 0.05,
+          "fine_min_deg": 8.0,
+          "research_below": 0.4,
+          "carry_frames": 3,
+          "match_iou": 0.3,
+          "full_detect_period_s": 0.3,
+          "min_shot_score": 0.5,
+          "max_mirror_disagreement": 0.2,
+          "min_front_eye_conf": 0.7,
+          "max_agreement": 0.3,
+          "min_side_eye_conf": 0.5,
+          "max_side_mirror_disagreement": 0.3,
+          "max_side_agreement": 0.5,
+          "min_eye_contrast": 0.2,
+          "gate_window_s": 0.5,
+          "gate_min_frames": 8,
+          "gate_min_ratio": 0.35,
+          "gate_min_passes": 3,
+          "full_detect_min_frames": 3,
+          "search_min_frames": 6,
+          "backoff_margin": 0.1,
+          "max_backoff": 4,
+          "empty_search_period_s": 0.25,
+          "empty_search_min_frames": 2
+        },
+        "body_gate": {
+          "enabled": "auto",
+          "model": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\models\\pretrained\\dog_capture_v1\\yolox_nano.onnx",
+          "input_size": 416,
+          "score_threshold": 0.3,
+          "class_id": 16,
+          "period_s": 0.25,
+          "hold_s": 0.75,
+          "margin": 0.15,
+          "head_score_threshold": 0.5
+        },
+        "tracker": {
+          "high_score": 0.5,
+          "low_score": 0.2,
+          "new_track_score": 0.55,
+          "match_iou": 0.2,
+          "low_match_iou": 0.5,
+          "unconfirmed_match_iou": 0.3,
+          "max_lost_s": 1.0,
+          "max_tracks": 16,
+          "nominal_fps": 30.0
+        },
+        "pose": {
+          "views": [
+            {
+              "name": "front",
+              "center": 0.0,
+              "lower": -0.13,
+              "upper": 0.13,
+              "max_roll_deg": 30.0,
+              "shots": 0,
+              "required": true
+            },
+            {
+              "name": "left",
+              "center": -0.45,
+              "lower": -0.75,
+              "upper": -0.25,
+              "max_roll_deg": 30.0,
+              "shots": 0,
+              "required": true
+            },
+            {
+              "name": "right",
+              "center": 0.45,
+              "lower": 0.25,
+              "upper": 0.75,
+              "max_roll_deg": 30.0,
+              "shots": 0,
+              "required": true
+            }
+          ],
+          "exit_margin": 0.05,
+          "min_dwell_s": 0.12,
+          "min_dwell_obs": 3,
+          "max_gap_s": 0.3,
+          "smooth_min_cutoff": 1.5,
+          "smooth_beta": 0.5,
+          "snout_factor": 0.8,
+          "min_iod_box_ratio": 0.12,
+          "max_iod_box_ratio": 1.1,
+          "pitch_range": [
+            0.05,
+            2.2
+          ],
+          "max_abs_yaw": 1.2
+        },
+        "quality": {
+          "min_iod_px": 18.0,
+          "good_iod_px": 64.0,
+          "min_sharpness": 0.15,
+          "min_brightness": 30.0,
+          "max_brightness": 230.0,
+          "max_clipped": 0.3,
+          "min_contrast": 16.0,
+          "border_margin": 0.005,
+          "min_kp_score": 0.35,
+          "max_alignment_residual": 0.45,
+          "motion_ref_iod_per_s": 3.0,
+          "weights": {
+            "sharpness": 3.0,
+            "eye_detail": 2.0,
+            "exposure": 1.0,
+            "resolution": 1.5,
+            "confidence": 1.0,
+            "motion": 1.0,
+            "pose_fit": 0.75,
+            "alignment": 0.5
+          },
+          "high_level": 0.7,
+          "medium_level": 0.5
+        },
+        "selection": {
+          "mode": "hybrid",
+          "good_enough": 0.65,
+          "improve_window_s": 2.0,
+          "top_k": 1,
+          "min_gap_s": 0.3,
+          "min_level": "medium"
+        },
+        "output": {
+          "aligned_size": 224,
+          "template": "petface_dog",
+          "face_margin": 0.2,
+          "keep_frames": true,
+          "image_format": "png"
+        },
+        "runtime": {
+          "providers": "cpu",
+          "threads": 4,
+          "cache_dir": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\.tmp\\capture-runtime-reference-20261113\\.tmp\\dog-capture-v1-ort-cache",
+          "timestamps": "drop",
+          "rotate": "auto",
+          "mirror": false,
+          "still_images": false,
+          "cuda_graph": false,
+          "thread_spinning": false
+        }
+      },
+      "detector": {
+        "kind": "yolo_pose",
+        "model": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\models\\pretrained\\dog_capture_v1\\dog_face_pose.onnx",
+        "sha256": "48c2b9f580a6b29f6ec92f81d58bffcb06c609b4da4d77e4c85f259dc1b8d74c",
+        "input_size": 320,
+        "score_threshold": 0.35,
+        "runtime": {
+          "model": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\models\\pretrained\\dog_capture_v1\\dog_face_pose.onnx",
+          "requested": [
+            "CPUExecutionProvider"
+          ],
+          "used": [
+            "CPUExecutionProvider"
+          ],
+          "provider_options": {
+            "CPUExecutionProvider": {}
+          },
+          "fallback_errors": [],
+          "thread_spinning": false,
+          "cuda_graph": {
+            "requested": false,
+            "active": false,
+            "fallback_reason": null
+          }
+        },
+        "license": "Trained with Ultralytics (AGPL-3.0) on StanfordExtra/Stanford Dogs (research use)"
+      },
+      "body_gate": {
+        "kind": "yolox",
+        "model": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\models\\pretrained\\dog_capture_v1\\yolox_nano.onnx",
+        "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+        "input_size": 416,
+        "score_threshold": 0.3,
+        "runtime": {
+          "model": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\models\\pretrained\\dog_capture_v1\\yolox_nano.onnx",
+          "requested": [
+            "CPUExecutionProvider"
+          ],
+          "used": [
+            "CPUExecutionProvider"
+          ],
+          "provider_options": {
+            "CPUExecutionProvider": {}
+          },
+          "fallback_errors": [],
+          "thread_spinning": false,
+          "cuda_graph": {
+            "requested": false,
+            "active": false,
+            "fallback_reason": null
+          }
+        },
+        "license": null
+      },
+      "orientation": {
+        "mode": "auto",
+        "rotation_deg": 0,
+        "locked": false
+      },
+      "frames": 0,
+      "dropped": {
+        "non_increasing_timestamp": 0
+      }
+    },
+    "landmarks": {
+      "kind": "crop_landmarks",
+      "model": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\models\\pretrained\\dog_capture_landmarks_v1\\dog_face_landmarks.onnx",
+      "sha256": "1fb6ad2185d0e4d65addf62c1d5fd79f32f84e61e62ae0dd9694609ca7cc1171",
+      "input_size": 128,
+      "score_threshold": 0.05,
+      "runtime": {
+        "model": "D:\\Pet-ReID-IMAG_repro_attempt_2026-08-09\\models\\pretrained\\dog_capture_landmarks_v1\\dog_face_landmarks.onnx",
+        "requested": [
+          "CPUExecutionProvider"
+        ],
+        "used": [
+          "CPUExecutionProvider"
+        ],
+        "provider_options": {
+          "CPUExecutionProvider": {}
+        },
+        "fallback_errors": [],
+        "thread_spinning": false,
+        "cuda_graph": {
+          "requested": false,
+          "active": false,
+          "fallback_reason": null
+        }
+      },
+      "license": "YOLO11n backbone (Ultralytics, AGPL-3.0) trained on StanfordExtra/Stanford Dogs (research use)"
+    }
+  },
+  "rejected_thread_screen": {
+    "threads": 2,
+    "user_fps": 26.213,
+    "user_p95_ms": 75.54,
+    "user_frames_dropped": 164,
+    "reason": "worse tail latency than the retained four-thread profile"
+  },
+  "tests": {
+    "engine_python_passed": 127,
+    "sdk_passed": 39,
+    "sdk_skipped": 1,
+    "typescript_typecheck": "passed",
+    "io_and_service_passed": 20,
+    "io_and_service_skipped": 1,
+    "io_and_service_skip_reason": "optional Brotli package unavailable",
+    "note": "I/O tests overlap with the main Python group; do not sum the groups as unique tests"
+  },
+  "cli_startup_smoke": {
+    "source": "2611101816341481.mp4",
+    "duration_s": 3.022,
+    "frames_read": 91,
+    "frames_processed": 82,
+    "frames_dropped": 9,
+    "processing_fps": 27.137837777490294,
+    "processing_p95_ms": 42.398,
+    "opencv_threads": 1,
+    "report_created": true,
+    "note": "CLI default warmup is two calls per model; this three-second startup check is separate from the full-video benchmark with 15 warmup calls. No shots selected, so CLI returned its expected nonzero incomplete-capture status."
+  },
+  "evidence_directory": "artifacts/runs/dog_capture/runtime_optimization_20261113"
+}

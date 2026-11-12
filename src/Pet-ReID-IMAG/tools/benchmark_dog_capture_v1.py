@@ -307,6 +307,8 @@ def main():
     parser.add_argument('--threads', type=int, default=4)
     parser.add_argument('--cuda-graph', action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument('--thread-spinning', action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument('--spin-duration-us', type=int)
+    parser.add_argument('--spin-backoff-max', type=int)
     parser.add_argument('--cv-threads', type=int, default=0, help='0 preserves the installed OpenCV default')
     parser.add_argument('--stage', choices=('micro', 'video', 'all'), default='all')
     parser.add_argument('--playback', choices=('offline', 'realtime', 'both'), default='both')
@@ -340,7 +342,7 @@ def main():
         cv2.setNumThreads(args.cv_threads)
     runtime = {'providers': args.providers, 'threads': args.threads,
                'cache_dir': str(ROOT / '.tmp/dog-capture-v1-ort-cache')}
-    for key in ('cuda_graph', 'thread_spinning'):
+    for key in ('cuda_graph', 'thread_spinning', 'spin_duration_us', 'spin_backoff_max'):
         value = getattr(args, key)
         if value is not None:
             runtime[key] = value

@@ -170,7 +170,8 @@ def build_detector(config, kind=None, path=None):
     d, r = config.detector, config.runtime
     common = dict(input_size=d.input_size, score_threshold=d.score_threshold, nms_iou=d.nms_iou,
                   max_faces=d.max_faces, providers=r.providers, threads=r.threads, cache_dir=r.cache_dir,
-                  cuda_graph=r.cuda_graph, thread_spinning=r.thread_spinning)
+                  cuda_graph=r.cuda_graph, thread_spinning=r.thread_spinning,
+                  spin_duration_us=r.spin_duration_us, spin_backoff_max=r.spin_backoff_max)
     if kind == 'external':
         return None
     if kind == 'yolo_pose':
@@ -207,7 +208,8 @@ def build_body_gate(config, detector_kind):
     return detectors.YoloxBodyGate(path, class_id=g.class_id, input_size=g.input_size,
                                    score_threshold=g.score_threshold, providers=r.providers,
                                    threads=r.threads, cache_dir=r.cache_dir,
-                                   cuda_graph=r.cuda_graph, thread_spinning=r.thread_spinning)
+                                   cuda_graph=r.cuda_graph, thread_spinning=r.thread_spinning,
+                                   spin_duration_us=r.spin_duration_us, spin_backoff_max=r.spin_backoff_max)
 
 
 LANDMARKS_FILE = 'dog_face_landmarks.onnx'
@@ -236,7 +238,8 @@ def build_landmarker(config, detector_kind=None):
         return None
     r = config.runtime
     return detectors.CropLandmarker(path, score_threshold=0.05, providers=r.providers, threads=r.threads,
-                                    cache_dir=r.cache_dir, thread_spinning=r.thread_spinning)
+                                    cache_dir=r.cache_dir, thread_spinning=r.thread_spinning,
+                                    spin_duration_us=r.spin_duration_us, spin_backoff_max=r.spin_backoff_max)
 
 
 def build_engine(config):

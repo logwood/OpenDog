@@ -260,7 +260,7 @@ class FaceRefiner:
         points[:, 0] = image.shape[1] - 1 - points[:, 0]
         return points[flip_index(other.schema)]
 
-    def verify(self, frame, det):
+    def verify(self, frame, det, *, front=None):
         """Open-loop second look before a shot is taken.
 
         The face is re-detected on the crop turned by the nearest *quarter* turn, i.e.
@@ -269,6 +269,11 @@ class FaceRefiner:
         hallucination in: a closed-eye profile then looks like a frontal face).
         Returns crop score, eye confidences, mirror disagreement and agreement with
         ``det`` (both in units of the predicted eye distance; inf if lost).
+
+        ``front`` enables the capture gate's exact rejection thresholds. Once a
+        non-mirror check fails, no mirror result can rescue this candidate: skip
+        that model run and report ``mirror_skipped``. The default computes all
+        diagnostics for training/export callers that apply their own thresholds.
         """
         quarter = 90.0 * round(det.extra.get('upright_angle', 0.0) / 90.0)
         image, matrix = self.crop(frame, det.extra.get('region', det.box), quarter, precise=True)
@@ -279,11 +284,23 @@ class FaceRefiner:
         if check is None:
             return {'score': 0.0, 'eyes': (0.0, 0.0), 'mirror': math.inf, 'agreement': math.inf}
         points = np.asarray(check.keypoints, np.float64)
-        mirrored = self._mirror_points(image)
         conf = check.kp_scores if check.kp_scores is not None else np.ones(len(points))
-        return {'score': float(check.score), 'eyes': (float(conf[eyes[0]]), float(conf[eyes[1]])),
-                'mirror': math.inf if mirrored is None else float(np.mean(np.linalg.norm(points - mirrored, axis=1)) / span),
-                'agreement': float(np.mean(np.linalg.norm(points - own, axis=1)) / span)}
+        result = {'score': float(check.score), 'eyes': (float(conf[eyes[0]]), float(conf[eyes[1]])),
+                  'mirror': math.inf, 'agreement': float(np.mean(np.linalg.norm(points - own, axis=1)) / span)}
+        if front is not None:
+            c = self.config
+            eye_conf = (min if front else max)(result['eyes'])
+            reason = ('score' if result['score'] < c.min_shot_score else
+                      'eyes' if eye_conf < (c.min_front_eye_conf if front else c.min_side_eye_conf) else
+                      'agreement' if not result['agreement'] <= (c.max_agreement if front else c.max_side_agreement)
+                      else None)
+            if reason is not None:
+                result['mirror_skipped'] = reason
+                return result
+        mirrored = self._mirror_points(image)
+        if mirrored is not None:
+            result['mirror'] = float(np.mean(np.linalg.norm(points - mirrored, axis=1)) / span)
+        return result
 
     def precise(self, frame, det):
         """Shot candidate with a landmarker: the face detector once on the tracker's upright crop

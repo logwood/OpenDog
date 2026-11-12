@@ -1,0 +1,9 @@
+{
+  "runtime": {
+    "providers": "cpu",
+    "threads": 4,
+    "thread_spinning": true,
+    "spin_duration_us": 1000,
+    "spin_backoff_max": 8
+  }
+}

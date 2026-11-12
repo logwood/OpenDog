@@ -12,6 +12,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
+import re
 
 ALIASES = {
     'cpu': 'CPUExecutionProvider', 'cuda': 'CUDAExecutionProvider',
@@ -80,7 +81,9 @@ def resolve_providers(spec='auto', cache_dir=''):
     return entries
 
 
-def _session_options(ort, threads, thread_spinning):
+def _session_options(ort, threads, thread_spinning, spin_duration_us=-1, spin_backoff_max=1):
+    if spin_duration_us < -1 or spin_backoff_max < 1 or spin_backoff_max & (spin_backoff_max - 1):
+        raise ValueError('spin_duration_us must be >= -1 and spin_backoff_max a positive power of two')
     options = ort.SessionOptions()
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     if threads:
@@ -88,23 +91,39 @@ def _session_options(ort, threads, thread_spinning):
     if not thread_spinning:
         options.add_session_config_entry('session.intra_op.allow_spinning', '0')
         options.add_session_config_entry('session.inter_op.allow_spinning', '0')
+    elif spin_duration_us >= 0 or spin_backoff_max != 1:
+        # Older ORT accepts unknown config keys silently. Do not report a
+        # bounded policy on a build on which it has not been validated.
+        version = tuple(int(v) for v in re.findall(r'\d+', ort.__version__)[:2])
+        if version < (1, 26):
+            raise RuntimeError('Bounded thread spinning requires onnxruntime >= 1.26; '
+                               'upgrade ORT or use spin_duration_us=-1, spin_backoff_max=1')
+        for pool in ('intra_op', 'inter_op'):
+            if spin_duration_us >= 0:
+                options.add_session_config_entry(f'session.{pool}.spin_duration_us', str(spin_duration_us))
+            options.add_session_config_entry(f'session.{pool}.spin_backoff_max', str(spin_backoff_max))
     options.log_severity_level = 3
     return options
 
 
-def _session_info(path, entries, session, errors, thread_spinning):
+def _session_info(path, entries, session, errors, thread_spinning, threads=0,
+                  spin_duration_us=-1, spin_backoff_max=1):
     return {'model': str(path), 'requested': [name for name, _ in entries],
             'used': session.get_providers(), 'provider_options': session.get_provider_options(),
-            'fallback_errors': errors, 'thread_spinning': thread_spinning}
+            'fallback_errors': errors, 'thread_spinning': thread_spinning,
+            'intra_op_threads': threads,
+            'spin_duration_us': spin_duration_us if thread_spinning else 0,
+            'spin_backoff_max': spin_backoff_max if thread_spinning else 1}
 
 
-def create_session(path, providers='auto', threads=0, cache_dir='', *, thread_spinning=True):
+def create_session(path, providers='auto', threads=0, cache_dir='', *, thread_spinning=True,
+                   spin_duration_us=-1, spin_backoff_max=1):
     """Returns (session, info) where info records requested and used providers."""
     ort = _ort()
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f'Model not found: {path}')
-    options = _session_options(ort, threads, thread_spinning)
+    options = _session_options(ort, threads, thread_spinning, spin_duration_us, spin_backoff_max)
     entries = resolve_providers(providers, cache_dir)
     errors = []
     session = None
@@ -119,7 +138,8 @@ def create_session(path, providers='auto', threads=0, cache_dir='', *, thread_sp
             errors.append(f'{attempt[0][0]}: {exc}'.splitlines()[0][:300])
     if session is None:
         raise RuntimeError(f'Could not create an ONNX Runtime session for {path}: {errors}')
-    return session, _session_info(path, entries, session, errors, thread_spinning)
+    return session, _session_info(path, entries, session, errors, thread_spinning, threads,
+                                  spin_duration_us, spin_backoff_max)
 
 
 class _CudaGraph:
@@ -166,18 +186,19 @@ class _CudaGraph:
         self._worker.shutdown()
 
 
-def create_cuda_graph_session(path, providers='auto', threads=0, cache_dir='', *, thread_spinning=True):
+def create_cuda_graph_session(path, providers='auto', threads=0, cache_dir='', *, thread_spinning=True,
+                              spin_duration_us=-1, spin_backoff_max=1):
     """Open and warm a CUDA Graph session, raising if ordinary inference is needed."""
     ort = _ort()
     entries = resolve_providers(providers, cache_dir)
     name, cuda_options = entries[0]
     if name != 'CUDAExecutionProvider':
         raise RuntimeError('CUDA Graph requires CUDA as the first provider')
-    options = _session_options(ort, threads, thread_spinning)
+    options = _session_options(ort, threads, thread_spinning, spin_duration_us, spin_backoff_max)
     session = ort.InferenceSession(str(path), sess_options=options,
                                    providers=[(name, {**cuda_options, 'enable_cuda_graph': True}),
                                               'CPUExecutionProvider'])
-    info = _session_info(path, entries, session, [], thread_spinning)
+    info = _session_info(path, entries, session, [], thread_spinning, threads, spin_duration_us, spin_backoff_max)
     actual = info['provider_options'].get(name, {})
     if info['used'][0] != name or actual.get('enable_cuda_graph') != '1' or actual.get('use_tf32') != '0':
         raise RuntimeError('ONNX Runtime did not activate FP32 CUDA Graph')

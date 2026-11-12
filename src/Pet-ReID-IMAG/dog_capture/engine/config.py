@@ -229,6 +229,8 @@ class RuntimeConfig:
     still_images: bool = False    # unrelated photos: no temporal confirmation
     cuda_graph: bool = False      # fixed-shape FP32 ONNX on the CUDA provider
     thread_spinning: bool = True  # ONNX Runtime worker threads may spin while idle
+    spin_duration_us: int = -1    # -1 = legacy ORT policy; >= 0 bounds each spin window (ORT >= 1.26)
+    spin_backoff_max: int = 1     # power of two; pause backoff within the window, when spinning enabled
 
 
 @dataclass
@@ -338,6 +340,9 @@ class CaptureConfig:
         check(s.min_level in ('low', 'medium', 'high'), 'selection.min_level must be low/medium/high')
         check(64 <= o.aligned_size <= 1024 and o.image_format in ('png', 'jpg'), 'output image settings')
         check(r.timestamps in ('drop', 'raise'), 'runtime.timestamps must be drop/raise')
+        check(r.threads >= 0 and r.spin_duration_us >= -1, 'runtime threads/spin duration')
+        check(r.spin_backoff_max >= 1 and not (r.spin_backoff_max & (r.spin_backoff_max - 1)),
+              'runtime.spin_backoff_max must be a positive power of two')
         check(str(r.rotate) in ('auto', '0', '90', '180', '270'), 'runtime.rotate must be auto/0/90/180/270')
 
 

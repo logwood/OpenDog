@@ -40,6 +40,8 @@ def _overrides(args):
     put('runtime', 'threads', args.threads)
     put('runtime', 'cuda_graph', args.cuda_graph)
     put('runtime', 'thread_spinning', args.thread_spinning)
+    put('runtime', 'spin_duration_us', getattr(args, 'spin_duration_us', None))
+    put('runtime', 'spin_backoff_max', getattr(args, 'spin_backoff_max', None))
     put('runtime', 'rotate', args.rotate)
     if args.mirror:
         put('runtime', 'mirror', True)
@@ -61,10 +63,15 @@ def load_config(args):
 
 
 def cmd_run(args):
+    import cv2
     from .engine import CaptureEngine
     from .io import (DetectionLog, LatestFrameRunner, RunWriter, choose_output_dir, draw_overlay, open_source,
                      percentiles, upright, write_review)
     from .zoo import build_body_gate, build_engine
+    if args.cv_threads < 0:
+        raise ValueError('--cv-threads must be nonnegative')
+    if args.cv_threads:
+        cv2.setNumThreads(args.cv_threads)
     config = load_config(args)
     log = DetectionLog(args.detections) if args.detections else None
     source = open_source(args.source, args.fps)
@@ -175,7 +182,8 @@ def cmd_run(args):
         'stats': {'frames_read': read, 'frames_processed': processed,
                   'frames_dropped': (runner.dropped if runner else 0) + sum(engine.dropped.values()),
                   'elapsed_s': round(elapsed, 3), 'processing_fps': processed / max(elapsed, 1e-6),
-                  'realtime': realtime, **{f'{k}_ms': percentiles(v) for k, v in timings.items()}},
+                  'realtime': realtime, 'cv_threads': cv2.getNumThreads(),
+                  **{f'{k}_ms': percentiles(v) for k, v in timings.items()}},
         'guidance_counts': dict(guidance_counts.most_common()),
         'events': list(engine.events)[-200:], 'frame_log': not args.no_frame_log,
         'notes': ['Aligned crops use the PetFace 5-point template (224x224); frame/face images keep input pixels '
@@ -321,6 +329,10 @@ def main(argv=None):
     run.add_argument('--no-body-gate', action='store_true')
     run.add_argument('--providers', help='auto | cpu | cuda | tensorrt | coreml | directml | openvino, comma list')
     run.add_argument('--threads', type=int)
+    run.add_argument('--cv-threads', type=int, default=1,
+                     help='OpenCV threads (default 1; 0 preserves the installed default)')
+    run.add_argument('--spin-duration-us', type=int, help='ORT >= 1.26: bounded thread spin window; -1 = legacy')
+    run.add_argument('--spin-backoff-max', type=int, help='ORT >= 1.26: power-of-two pause backoff, e.g. 8')
     run.add_argument('--views', help='comma list of front,left,right (default all three)')
     run.add_argument('--mode', choices=['best', 'fast', 'hybrid'])
     run.add_argument('--top-k', type=int)

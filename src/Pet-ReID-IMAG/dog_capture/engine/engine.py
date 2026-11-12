@@ -617,7 +617,7 @@ class CaptureEngine:
         if pick(contrast) < f.min_eye_contrast:
             self._timing('shot_check', started)
             return 'eyes_not_visible'
-        check = self.refiner.verify(frame, det)
+        check = self.refiner.verify(frame, det, front=front)
         det.extra['verify'] = check
         self._timing('shot_check', started)
         if (check['score'] < f.min_shot_score

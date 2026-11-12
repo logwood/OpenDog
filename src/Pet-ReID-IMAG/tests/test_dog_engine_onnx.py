@@ -170,6 +170,39 @@ def test_providers_and_session_report(tmp_path):
     assert info['used'] == ['CPUExecutionProvider'] and not info['fallback_errors']
 
 
+def test_bounded_spinning_reaches_ort_and_is_reported(tmp_path):
+    pytest.importorskip('onnxruntime', minversion='1.26.0')
+    model = constant_model(tmp_path / 'bounded.onnx', 'images', 64, [('y', np.ones((1, 2)))])
+    session, info = create_session(model, 'cpu', threads=4, thread_spinning=True,
+                                   spin_duration_us=1000, spin_backoff_max=8)
+    options = session.get_session_options()
+    for pool in ('intra_op', 'inter_op'):
+        assert options.get_session_config_entry(f'session.{pool}.spin_duration_us') == '1000'
+        assert options.get_session_config_entry(f'session.{pool}.spin_backoff_max') == '8'
+    assert info['intra_op_threads'] == 4 and info['spin_duration_us'] == 1000 and info['spin_backoff_max'] == 8
+    np.testing.assert_array_equal(session.run(None, {'images': np.zeros((1, 3, 64, 64), np.float32)})[0], [[1, 1]])
+
+
+def test_bounded_spinning_does_not_silently_fall_back_on_old_ort():
+    from types import SimpleNamespace
+    import onnxruntime as ort
+    from dog_capture.engine.runtime import _session_options
+    old = SimpleNamespace(__version__='1.25.0', SessionOptions=ort.SessionOptions,
+                          GraphOptimizationLevel=ort.GraphOptimizationLevel)
+    with pytest.raises(RuntimeError, match='requires onnxruntime >= 1.26'):
+        _session_options(old, 4, True, 1000, 8)
+    options = _session_options(old, 4, False, 1000, 8)
+    assert options.get_session_config_entry('session.intra_op.allow_spinning') == '0'
+    _session_options(old, 4, True)  # default policy remains compatible
+
+
+@pytest.mark.parametrize('runtime', [{'spin_duration_us': -2}, {'spin_backoff_max': 0},
+                                    {'spin_backoff_max': 3}, {'threads': -1}])
+def test_invalid_thread_policy_is_rejected(runtime):
+    with pytest.raises(ValueError, match='runtime'):
+        CaptureConfig.from_dict({'runtime': runtime})
+
+
 @pytest.mark.parametrize('failure', ['initialization', 'replay'])
 def test_cuda_graph_fallback_retries_ordinary_inference(tmp_path, monkeypatch, failure):
     model = constant_model(tmp_path / 'fallback.onnx', 'images', 32, [('y', np.ones((1, 2)))])
