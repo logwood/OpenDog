@@ -132,7 +132,10 @@ export function transformDetection(d: Detection, m: Mat3): Detection {
 
 export interface Verification { score: number; eyes: [number, number]; mirror: number; agreement: number }
 
-interface Roi { box: Box; region: Box; angle: number; searchedAt: number; searchedFrame: number; score: number; misses: number }
+interface Roi {
+  box: Box; region: Box; angle: number; searchedAt: number; searchedFrame: number; backoff: number; score: number;
+  misses: number;
+}
 
 export class FaceRefiner {
   rois: Roi[] = [];
@@ -212,7 +215,11 @@ export class FaceRefiner {
     if (!results.size) return null;
     const best = [...results.values()].reduce((a, b) => (b.score > a.score ? b : a));
     const current = results.get(0);
-    return current && current.score + this.config.switch_margin >= best.score ? current : best;
+    const chosen = current && current.score + this.config.switch_margin >= best.score ? current : best;
+    const others = [...results.values()].filter((d) => d !== chosen).map((d) => d.score);
+    chosen.extra!.search_margin = chosen.score - Math.max(0, ...others);
+    chosen.extra!.search_kept = chosen === current;
+    return chosen;
   }
 
   private async settle(frame: Frame, box: Box, d: Detection | null): Promise<Detection | null> {
@@ -243,11 +250,13 @@ export class FaceRefiner {
       if (bestOverlap < c.match_iou) match = null;
       const base = match ? match.angle : 0;
       const age = match ? t - match.searchedAt : 0, frames = match ? this.frame - match.searchedFrame : 0;
-      // re-check the quarter turn when new or doubtful, else periodically (seconds and frames)
+      const backoff = match ? match.backoff : 1;
+      // re-check the quarter turn when new or doubtful, else periodically (seconds and frames, stretched
+      // while the turn keeps being confirmed clearly)
       let d = await this.examine(frame, box, base);
       const due = still || !match || match.score < c.research_below || !d || d.score < c.research_below
-        || (frames >= c.search_min_frames
-          && ((age >= c.search_period_s && match.score < c.confident_score) || age >= c.max_search_period_s));
+        || (frames >= c.search_min_frames * backoff
+          && ((age >= c.search_period_s * backoff && match.score < c.confident_score) || age >= c.max_search_period_s));
       const searchedAt = due ? t : match!.searchedAt;
       if (due) {
         d = await this.search(frame, box, base, d);
@@ -266,11 +275,17 @@ export class FaceRefiner {
       // missed by a detector that ran (or a weak crop): count it; skipped detector: the crop vouches
       const misses = source ? 0 : (fullRan || !confirmed ? before + 1 : before);
       rois.push({ box: d.box, region: d.extra!.region as Box, angle: Number(d.extra!.upright_angle), searchedAt,
-        searchedFrame: due ? this.frame : (match?.searchedFrame ?? 0), score: d.score, misses });
+        searchedFrame: due ? this.frame : (match?.searchedFrame ?? 0),
+        backoff: due ? nextBackoff(c, backoff, d) : backoff, score: d.score, misses });
     }
     if (!still) this.rois = rois;
     return dedupe(out);
   }
+}
+
+/** Next search-interval multiplier after a search: grows while the turn is clearly confirmed. */
+function nextBackoff(c: RefineConfig, backoff: number, d: Detection) {
+  return d.extra?.search_kept && Number(d.extra?.search_margin ?? 0) >= c.backoff_margin ? Math.min(backoff * 2, c.max_backoff) : 1;
 }
 
 function dedupe(detections: Detection[], threshold = 0.5): Detection[] {

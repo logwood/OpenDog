@@ -224,9 +224,11 @@ class FaceRefiner:
         if not results:
             return None
         best = max(results.values(), key=lambda d: d.score)
-        if 0 in results and results[0].score + self.config.switch_margin >= best.score:
-            return results[0]
-        return best
+        chosen = results[0] if 0 in results and results[0].score + self.config.switch_margin >= best.score else best
+        others = [d.score for d in results.values() if d is not chosen]
+        chosen.extra['search_margin'] = chosen.score - max(others, default=0.0)
+        chosen.extra['search_kept'] = chosen is results.get(0)
+        return chosen
 
     def _settle(self, frame, box, det):
         """One re-crop at the measured residual tilt (validation: 30-45 deg residual 18 -> 49 % good)."""
@@ -267,10 +269,11 @@ class FaceRefiner:
             # face only as a safety net (each check costs four model runs).
             frames = 0 if match is None else self.frame - match.get('searched_frame', 0)
             det = self.examine(frame, box, base)
+            backoff = 1 if match is None else match.get('backoff', 1)
             due = (still or match is None or match['score'] < c.research_below
                    or det is None or det.score < c.research_below
-                   or (frames >= c.search_min_frames
-                       and ((age >= c.search_period_s and match['score'] < c.confident_score)
+                   or (frames >= c.search_min_frames * backoff
+                       and ((age >= c.search_period_s * backoff and match['score'] < c.confident_score)
                             or age >= c.max_search_period_s)))
             searched_at = timestamp if due else match['searched_at']
             if due:
@@ -301,10 +304,18 @@ class FaceRefiner:
                          'angle': det.extra['upright_angle'],
                          'searched_at': searched_at,
                          'searched_frame': self.frame if due else match.get('searched_frame', 0),
+                         'backoff': _backoff(c, backoff, det) if due else backoff,
                          'score': det.score, 'misses': misses})
         if not still:
             self.rois = rois
         return _dedupe(out)
+
+
+def _backoff(config, backoff, det):
+    """Next search-interval multiplier after a search: grows while the turn is clearly confirmed."""
+    if det.extra.get('search_kept') and det.extra.get('search_margin', 0.0) >= config.backoff_margin:
+        return min(backoff * 2, config.max_backoff)
+    return 1
 
 
 def _dedupe(detections, iou=0.5):

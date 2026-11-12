@@ -21,7 +21,8 @@ export interface CaptureConfig {
     min_shot_score: number; max_mirror_disagreement: number; min_front_eye_conf: number; min_side_eye_conf: number;
     max_agreement: number; max_side_mirror_disagreement: number; max_side_agreement: number;
     min_eye_contrast: number; gate_window_s: number; gate_min_frames: number; gate_min_ratio: number;
-    gate_min_passes: number; full_detect_min_frames: number; search_min_frames: number;
+    gate_min_passes: number; full_detect_min_frames: number; search_min_frames: number; backoff_margin: number;
+    max_backoff: number;
   };
   body_gate: {
     enabled: string; model: string; input_size: number; score_threshold: number; class_id: number;
@@ -50,6 +51,8 @@ export interface CaptureConfig {
   runtime: {
     providers: string; threads: number; cache_dir: string; timestamps: 'drop' | 'raise'; rotate: string;
     mirror: boolean; still_images: boolean;
+    /** native ONNX Runtime options (Python engine); carried in the session config, unused in the browser */
+    cuda_graph: boolean; thread_spinning: boolean;
   };
 }
 
@@ -65,7 +68,7 @@ export function defaultConfig(): CaptureConfig {
       full_detect_period_s: 0.3, min_shot_score: 0.5, max_mirror_disagreement: 0.2, min_front_eye_conf: 0.7,
       min_side_eye_conf: 0.5, max_agreement: 0.3, max_side_mirror_disagreement: 0.3, max_side_agreement: 0.5,
       min_eye_contrast: 0.2, gate_window_s: 0.5, gate_min_frames: 8, gate_min_ratio: 0.35, gate_min_passes: 3,
-      full_detect_min_frames: 3, search_min_frames: 6 },
+      full_detect_min_frames: 3, search_min_frames: 6, backoff_margin: 0.1, max_backoff: 4 },
     body_gate: { enabled: 'auto', model: '', input_size: 416, score_threshold: 0.3, class_id: 16, period_s: 0.25,
       hold_s: 0.75, margin: 0.15, head_score_threshold: 0.5 },
     tracker: { high_score: 0.5, low_score: 0.2, new_track_score: 0.55, match_iou: 0.2, low_match_iou: 0.5,
@@ -83,7 +86,7 @@ export function defaultConfig(): CaptureConfig {
     selection: { mode: 'hybrid', good_enough: 0.65, improve_window_s: 2.0, top_k: 1, min_gap_s: 0.3, min_level: 'medium' },
     output: { aligned_size: 224, template: 'petface_dog', face_margin: 0.2, keep_frames: true, image_format: 'png' },
     runtime: { providers: 'auto', threads: 0, cache_dir: '', timestamps: 'drop', rotate: 'auto', mirror: false,
-      still_images: false },
+      still_images: false, cuda_graph: false, thread_spinning: true },
   };
 }
 

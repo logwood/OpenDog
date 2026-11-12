@@ -150,7 +150,7 @@ export async function createOrtRunner(ort: {
   InferenceSession: { create(model: ArrayBuffer | Uint8Array | string, options?: object): Promise<any> };
   Tensor: new (type: string, data: Float32Array, dims: number[]) => any;
 }, model: ArrayBuffer | Uint8Array | string, providers: string[] = ['webgpu', 'wasm']): Promise<Runner & {
-  providers: string[]; metadata: Record<string, string>;
+  providers: string[]; metadata: Record<string, string>; release(): Promise<void>;
 }> {
   let session: any = null, used: string[] = [];
   let lastError: unknown = null;
@@ -168,6 +168,7 @@ export async function createOrtRunner(ort: {
   const inputSize = typeof shape[2] === 'number' ? (shape[2] as number) : 320;
   return {
     inputSize, providers: used, metadata: {},
+    async release() { await session.release?.(); },
     async run(input: Float32Array, dims: number[]) {
       const outputs = await session.run({ [inputName]: new ort.Tensor('float32', input, dims) });
       return session.outputNames.map((name: string) => ({ data: outputs[name].data as Float32Array, dims: outputs[name].dims as number[] }));

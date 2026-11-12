@@ -96,6 +96,11 @@ class RefineConfig:
     # end up running the full-frame detector or the four-way orientation search on every frame.
     full_detect_min_frames: int = 3
     search_min_frames: int = 6
+    # A search that keeps the current turn by at least this score margin doubles that face's
+    # search interval (up to max_backoff x); a switch, a doubtful margin or a new face resets it.
+    # Ambiguous faces (rolled ~45 deg: turns score alike) therefore keep being re-checked.
+    backoff_margin: float = 0.10
+    max_backoff: int = 4
 
 
 @dataclass
@@ -259,7 +264,8 @@ class CaptureConfig:
               and 0 < f.match_iou < 1 and f.full_detect_period_s >= 0 and 0 <= f.confident_score <= 1
               and f.max_search_period_s >= f.search_period_s and f.gate_window_s > 0
               and 0 <= f.gate_min_ratio <= 1 and f.gate_min_passes >= 1 and f.gate_min_frames >= 1
-              and f.full_detect_min_frames >= 1 and f.search_min_frames >= 1, 'refine settings')
+              and f.full_detect_min_frames >= 1 and f.search_min_frames >= 1 and f.backoff_margin >= 0
+              and f.max_backoff >= 1, 'refine settings')
         check(0 <= f.min_shot_score < 1 and 0 <= f.research_below < 1 and f.max_mirror_disagreement > 0
               and 0 <= f.min_front_eye_conf < 1 and 0 <= f.min_side_eye_conf < 1 and f.max_agreement > 0
               and f.max_side_mirror_disagreement > 0 and f.max_side_agreement > 0

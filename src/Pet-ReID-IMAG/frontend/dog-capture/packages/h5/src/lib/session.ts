@@ -61,8 +61,10 @@ export function createCaptureSession(options: { apiBase: string; sessionId: stri
       state.message = '正在初始化推理引擎…';
       worker = new Worker(new URL('../../../sdk/src/worker.ts', import.meta.url), { type: 'module' });
       rpc = new WorkerRPC(worker);
+      // ?backend=wasm|webgpu|auto (default auto: WebGPU only on a hardware GPU that measures faster)
+      const backend = new URLSearchParams(location.search).get('backend') ?? 'auto';
       const ready = await call<{ providers: unknown }>({ type: 'init', config: cfg, models: { face, gate },
-        wasmPaths: `${import.meta.env.BASE_URL}ort/`, providers: ['wasm'] },
+        wasmPaths: `${import.meta.env.BASE_URL}ort/`, backend },
       [face, ...(gate ? [gate] : [])], 'ready', 120_000);
       state.providers = ready.providers;
       state.progress = 1;

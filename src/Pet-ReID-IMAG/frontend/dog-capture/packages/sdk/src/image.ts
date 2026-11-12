@@ -74,10 +74,25 @@ export function mirror(frame: Frame): Frame {
   return out;
 }
 
+/** Separable taps in flat typed arrays: output o reads index[first[o] .. first[o] + count[o]). */
+interface Taps { first: Int32Array; count: Int32Array; index: Int32Array; weight: Float64Array }
+
+function packTaps(lists: [number[], number[]][]): Taps {
+  const total = lists.reduce((n, [i]) => n + i.length, 0);
+  const taps: Taps = { first: new Int32Array(lists.length), count: new Int32Array(lists.length),
+    index: new Int32Array(total), weight: new Float64Array(total) };
+  let k = 0;
+  lists.forEach(([index, weight], o) => {
+    taps.first[o] = k; taps.count[o] = index.length;
+    for (let t = 0; t < index.length; t++, k++) { taps.index[k] = index[t]; taps.weight[k] = weight[t]; }
+  });
+  return taps;
+}
+
 /** Separable area (box-coverage) weights, as cv2.INTER_AREA for downscaling. */
-function areaWeights(src: number, dst: number) {
+function areaWeights(src: number, dst: number): Taps {
   const scale = src / dst;
-  const taps: { index: number[]; weight: number[] }[] = [];
+  const lists: [number[], number[]][] = [];
   for (let o = 0; o < dst; o++) {
     const start = o * scale, end = start + scale;
     const index: number[] = [], weight: number[] = [];
@@ -85,53 +100,71 @@ function areaWeights(src: number, dst: number) {
       const w = Math.min(end, i + 1) - Math.max(start, i);
       if (w > 1e-9) { index.push(i); weight.push(w / scale); }
     }
-    taps.push({ index, weight });
+    lists.push([index, weight]);
   }
-  return taps;
+  return packTaps(lists);
 }
 
 /** Bilinear weights with half-pixel centres, as cv2.INTER_LINEAR. */
-function linearWeights(src: number, dst: number) {
+function linearWeights(src: number, dst: number): Taps {
   const scale = src / dst;
-  const taps: { index: number[]; weight: number[] }[] = [];
+  const lists: [number[], number[]][] = [];
   for (let o = 0; o < dst; o++) {
     let s = (o + 0.5) * scale - 0.5;
     if (s < 0) s = 0;
     let i = Math.floor(s);
     let f = s - i;
     if (i >= src - 1) { i = src - 1; f = 0; }
-    taps.push(f > 0 ? { index: [i, i + 1], weight: [1 - f, f] } : { index: [i], weight: [1] });
+    lists.push(f > 0 ? [[i, i + 1], [1 - f, f]] : [[i], [1]]);
   }
-  return taps;
+  return packTaps(lists);
 }
+
+// Camera frames keep their size, so the separable taps and the scratch buffer are reused.
+const tapCache = new Map<string, Taps>();
+function taps(src: number, dst: number): Taps {
+  const key = `${src}:${dst}`;
+  let t = tapCache.get(key);
+  if (!t) {
+    t = dst < src ? areaWeights(src, dst) : linearWeights(src, dst);
+    if (tapCache.size > 32) tapCache.clear();
+    tapCache.set(key, t);
+  }
+  return t;
+}
+let scratch = new Float32Array(0);
 
 /** cv2.resize: INTER_AREA when shrinking, INTER_LINEAR otherwise (per axis). Returns RGBA. */
 export function resize(frame: Frame, outW: number, outH: number): Frame {
-  const wx = outW < frame.width ? areaWeights(frame.width, outW) : linearWeights(frame.width, outW);
-  const wy = outH < frame.height ? areaWeights(frame.height, outH) : linearWeights(frame.height, outH);
-  const tmp = new Float32Array(outW * frame.height * 4);
+  const wx = taps(frame.width, outW), wy = taps(frame.height, outH);
+  if (scratch.length < outW * frame.height * 4) scratch = new Float32Array(outW * frame.height * 4);
+  const tmp = scratch;
+  const data = frame.data;
   for (let y = 0; y < frame.height; y++) {
     const row = y * frame.width * 4;
     for (let x = 0; x < outW; x++) {
-      const { index, weight } = wx[x];
-      let r = 0, g = 0, b = 0, a = 0;
-      for (let t = 0; t < index.length; t++) {
-        const p = row + index[t] * 4, w = weight[t];
-        r += frame.data[p] * w; g += frame.data[p + 1] * w; b += frame.data[p + 2] * w; a += frame.data[p + 3] * w;
+      const first = wx.first[x], last = first + wx.count[x];
+      let r = 0, g = 0, b = 0;
+      for (let t = first; t < last; t++) {
+        const p = row + wx.index[t] * 4, w = wx.weight[t];
+        r += data[p] * w; g += data[p + 1] * w; b += data[p + 2] * w;
       }
       const q = (y * outW + x) * 4;
-      tmp[q] = r; tmp[q + 1] = g; tmp[q + 2] = b; tmp[q + 3] = a;
+      tmp[q] = r; tmp[q + 1] = g; tmp[q + 2] = b;   // alpha is not carried: frames are opaque
     }
   }
   const out = makeFrame(outW, outH);
+  const od = out.data;
   for (let y = 0; y < outH; y++) {
-    const { index, weight } = wy[y];
+    const first = wy.first[y], last = first + wy.count[y];
     for (let x = 0; x < outW; x++) {
-      for (let c = 0; c < 4; c++) {
+      const q = (y * outW + x) * 4;
+      for (let c = 0; c < 3; c++) {
         let v = 0;
-        for (let t = 0; t < index.length; t++) v += tmp[(index[t] * outW + x) * 4 + c] * weight[t];
-        out.data[(y * outW + x) * 4 + c] = Math.round(v);
+        for (let t = first; t < last; t++) v += tmp[(wy.index[t] * outW + x) * 4 + c] * wy.weight[t];
+        od[q + c] = Math.round(v);
       }
+      od[q + 3] = 255;
     }
   }
   return out;
@@ -145,20 +178,34 @@ export function warpAffine(frame: Frame, m: number[][], outW: number, outH: numb
   const ic = -(ia * c + ib * f), iff = -(id * c + ie * f);
   const out = makeFrame(outW, outH);
   const { width: w, height: h, data } = frame;
-  const sample = (x: number, y: number, ch: number) =>
-    (x < 0 || y < 0 || x >= w || y >= h) ? border : data[(y * w + x) * 4 + ch];
+  const od = out.data;
   for (let y = 0; y < outH; y++) {
+    const by = ib * y, ey = ie * y;   // same evaluation order as ia*x + ib*y + ic (bit-identical)
     for (let x = 0; x < outW; x++) {
-      const sx = ia * x + ib * y + ic, sy = id * x + ie * y + iff;
+      const sx = ia * x + by + ic, sy = id * x + ey + iff;
       const x0 = Math.floor(sx), y0 = Math.floor(sy);
       const fx = sx - x0, fy = sy - y0;
       const q = (y * outW + x) * 4;
-      for (let ch = 0; ch < 3; ch++) {
-        const v = (1 - fy) * ((1 - fx) * sample(x0, y0, ch) + fx * sample(x0 + 1, y0, ch))
-          + fy * ((1 - fx) * sample(x0, y0 + 1, ch) + fx * sample(x0 + 1, y0 + 1, ch));
-        out.data[q + ch] = Math.round(v);
+      if (x0 >= 0 && y0 >= 0 && x0 + 1 < w && y0 + 1 < h) {   // all four taps inside: no border tests
+        const p00 = (y0 * w + x0) * 4, p10 = p00 + w * 4;
+        const gx = 1 - fx, gy = 1 - fy;
+        // values are >= 0, so floor(v + 0.5) equals Math.round(v)
+        od[q] = ((gy * (gx * data[p00] + fx * data[p00 + 4]) + fy * (gx * data[p10] + fx * data[p10 + 4])) + 0.5) | 0;
+        od[q + 1] = ((gy * (gx * data[p00 + 1] + fx * data[p00 + 5]) + fy * (gx * data[p10 + 1] + fx * data[p10 + 5])) + 0.5) | 0;
+        od[q + 2] = ((gy * (gx * data[p00 + 2] + fx * data[p00 + 6]) + fy * (gx * data[p10 + 2] + fx * data[p10 + 6])) + 0.5) | 0;
+      } else if (x0 + 1 < 0 || y0 + 1 < 0 || x0 >= w || y0 >= h) {   // entirely outside
+        od[q] = od[q + 1] = od[q + 2] = Math.round(border);
+      } else {
+        const inside = (xx: number, yy: number) => xx >= 0 && yy >= 0 && xx < w && yy < h;
+        for (let ch = 0; ch < 3; ch++) {
+          const s00 = inside(x0, y0) ? data[(y0 * w + x0) * 4 + ch] : border;
+          const s01 = inside(x0 + 1, y0) ? data[(y0 * w + x0 + 1) * 4 + ch] : border;
+          const s10 = inside(x0, y0 + 1) ? data[((y0 + 1) * w + x0) * 4 + ch] : border;
+          const s11 = inside(x0 + 1, y0 + 1) ? data[((y0 + 1) * w + x0 + 1) * 4 + ch] : border;
+          od[q + ch] = Math.round((1 - fy) * ((1 - fx) * s00 + fx * s01) + fy * ((1 - fx) * s10 + fx * s11));
+        }
       }
-      out.data[q + 3] = 255;
+      od[q + 3] = 255;
     }
   }
   return out;
@@ -166,6 +213,8 @@ export function warpAffine(frame: Frame, m: number[][], outW: number, outH: numb
 
 /** Letterbox into a square canvas: returns the canvas, ratio and padding. */
 export function letterbox(frame: Frame, size: number, center = true, pad = 114) {
+  // already the network size (a refinement crop): resizing at scale 1 is the identity
+  if (frame.width === size && frame.height === size) return { canvas: frame, ratio: 1, pad: [0, 0] as [number, number] };
   const ratio = Math.min(size / frame.height, size / frame.width);
   const nw = Math.max(1, Math.round(frame.width * ratio)), nh = Math.max(1, Math.round(frame.height * ratio));
   const resized = resize(frame, nw, nh);
