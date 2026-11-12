@@ -1,0 +1,30 @@
+{
+  "format_version": 1,
+  "archive_root": "models/pretrained/dog_capture_landmarks_v1",
+  "received_on": "2026-11-12",
+  "upstream_commit": "3dd87c3",
+  "activation": "explicit refine.landmarks path; baseline retained; candidates never enabled automatically",
+  "files": [
+    {
+      "path": "models/pretrained/dog_capture_landmarks_v1/dog_face_landmarks.onnx",
+      "bytes": 5059270,
+      "sha256": "1fb6ad2185d0e4d65addf62c1d5fd79f32f84e61e62ae0dd9694609ca7cc1171"
+    },
+    {
+      "path": "models/pretrained/dog_capture_landmarks_v1/dog_face_landmarks.json",
+      "bytes": 663,
+      "sha256": "598a5d2da46ef2c60881f7ac4f19d5e0a711dddb6c9b24504ffc6be4c78e0dd2"
+    },
+    {
+      "path": "models/pretrained/dog_capture_landmarks_v1/recovered_trainable.pt",
+      "bytes": 5056095,
+      "sha256": "5191d96d5543774bb75df8ecec7fb56b2739d7be85136ef1efbc4c8d66ad52b3"
+    },
+    {
+      "path": "models/pretrained/dog_capture_landmarks_v1/recovered_trainable.import.json",
+      "bytes": 2237,
+      "sha256": "6e41fc49737c62090a4be10d2f028a5f88012ea666dc95ee389b7bcc0c731b15"
+    }
+  ],
+  "checkpoint_note": "Trainable weights recovered from fused ONNX; output parity verified. Original optimizer state unavailable."
+}

@@ -93,3 +93,95 @@ python src/Pet-ReID-IMAG/tools/benchmark_landmarks.py --data <dogface6> --detect
 ```
 
 浏览器与 Python 的一致性（真实模型）：`export_refine_parity.py --landmarks dog_face_landmarks.onnx …`，再用 `DOG_CAPTURE_REAL=<目录> npx vitest run test/real-models.test.ts`。
+
+## 7. 视频蒸馏首轮实测与 checkpoint 归档（2026-11-13）
+
+已基于 `3dd87c3` 接通视频下载、教师标注、权重恢复、GPU 微调、ONNX 导出、原生回放与 SDK 一致性验证。**首轮候选尚未通过替换基线的验收**：在 Wolfhound 上 yaw 偏差有所下降，但验证集整体关键点误差和实时回放丢帧都出现回归。完整机器可读结果见 `assets/dog_capture/video_distillation_pilot_result.json`。
+
+### 模型长期存放位置
+
+项目根目录下保留两套独立文件，不再依赖用户的 Downloads 目录：
+
+| 用途 | 路径 |
+|---|---|
+| 用户提供的原始 ONNX 与 JSON | `models/pretrained/dog_capture_landmarks_v1/dog_face_landmarks.onnx`、同名 `.json` |
+| 从原 ONNX 恢复的可训练权重 | `models/pretrained/dog_capture_landmarks_v1/recovered_trainable.pt` |
+| 原始模型来源与文件哈希 | `assets/dog_capture/landmark_checkpoint.json`；归档目录内另有 `archive_manifest.json` |
+| 首轮实验候选 | `models/pretrained/dog_capture_landmarks_video_pilot_20261113/dog_face_landmarks.onnx`、同名 `.json`、`best.pt` |
+| 候选验收结果 | 候选归档目录内 `acceptance.json` |
+
+原 ONNX SHA256 为 `1fb6ad2185d0e4d65addf62c1d5fd79f32f84e61e62ae0dd9694609ca7cc1171`。
+它包含推理权重，没有原优化器状态。`import_dog_landmark_weights.py` 按原导出结构恢复可训练参数，保留已经融合的 Conv/BN，拒绝未映射的权重；12 组输入与原 ONNX 最大绝对输出差为 `0.0000534`。这是可验证的微调起点，不是恢复原训练进度。
+
+这些二进制与视频按现有仓库约定保留在本地归档，Git 跟踪脚本、来源清单、哈希和实验结果。启用任一版本时使用明确的 `refine.landmarks` 路径或 `--landmarks`，实验工具不会自动替换运行中的模型。
+
+### 数据与训练约束
+
+来源、作者、许可、下载地址、内容哈希和固定拆分均在 `assets/dog_capture/video_distillation_sources.json`。视频来自 Wikimedia Commons，先看内容，再按整段视频及狗分组；镜像里的同一只狗和同一视频里的多只狗不能跨训练与验证。用户视频和已有 Wolfhound 视频只作回归检查。
+
+筛查了 15 段新下载短片，选取其中 8 段进入标注；其中 2 段没有产生合格标签。实际训练来自 4 段视频，共 **159 帧**，验证来自另外 2 段，共 **45 帧**；受保护回归视频留下 116 帧。连续近似重复帧会去重，采样按视频与姿态平衡，不能把相邻帧拆到训练、验证两边。
+
+教师固定使用 320 px 检测器，关闭跟踪网络，进行规范裁剪、四方向搜索、开环复查、镜像与轻微平移的一致性检查，并检查眼部图像证据。单点不稳定或被遮挡时屏蔽该点的坐标监督；远侧眼没有支持时也屏蔽 yaw 及双眼中点监督。被拒绝的帧不会自动变成“没有狗”的负样本。
+
+**这批视频的有效侧脸覆盖仍然不足**：159 个训练样本中只有 5 个侧脸样本，其中仅 1 个的双眼与鼻子同时得到支持；验证集没有可靠的侧脸 yaw 标签。镜像增强可以变换方向，不能增加独立狗或独立侧脸的证据。因此该轮不能验证普遍侧脸精度。
+
+另对 Africanis 转头片段的 8 帧检查了 0.35 / 0.45 / 0.55 / 0.65 四种教师裁剪占比；32 组中只有 1 组正面通过一致性筛选，没有补回可靠侧脸（`teacher_scale_probe.json`）。扩大教师裁剪中的脸部比例不足以修正这组样本的远侧眼标注。
+
+微调保持 128 px 输入、35% 脸部占比、24 维输出和原网络结构；训练裁剪直接调用部署用的 `warp_crop(..., antialias=True)`。冻结骨干、存在性、可见性与脸框分支，只更新 FPN 和热图的 107,336 个参数，用原模型约束无监督点及任意旋转方向。RTX 4060 上训练 12 轮，按整段验证视频等权的 NME 与 yaw MAE 之和选择第 4 轮，同时单独报告关键点回归和缺少侧脸验证的问题；综合分下降不等于允许部署。
+
+### 精度与采集结果
+
+下表是**相对教师伪标签的误差，不是人工真值精度**。NME 以教师眼距归一化，yaw 是无量纲比例，不是角度。
+
+| 范围 | 指标 | 原模型 | 候选 |
+|---|---|---:|---:|
+| 独立验证视频，45 帧 | 平均 NME | 0.1396 | 0.1530 |
+| 独立验证视频，44 个支持 yaw 的帧 | yaw MAE | 0.0752 | 0.0641 |
+| Wolfhound 回归视频，113 帧 | 平均 NME | 0.1868 | 0.1717 |
+| Wolfhound，62 个支持 yaw 的帧 | yaw MAE | 0.1204 | 0.0847 |
+
+原始用户视频 1,314 帧、Wolfhound 1,212 帧及空场景、模糊场景均完整回放。用户视频、空场景和模糊场景都未选图。Wolfhound 离线回放原版选中正面、左侧，候选额外找到了右侧候选；但该右侧图眼睛状态不可靠，独立复检在无损像素上拒绝、JPEG95 上通过，不能以其中一次通过作为验收结论。实时丢帧改变采样后原版也能产生右侧候选，离线覆盖差异不能直接当作采集成功率提升。
+
+### 速度与稳定性
+
+CPU 为 i9-13980HX，GPU 为 RTX 4060 Laptop。单次跟踪调用在相同的 32 张真实裁剪上交替测原版/候选，各 600 次，包含 RGB 转换、同步推理、GPU 传输及输出解析：
+
+| 后端 | 原版平均 / P95 | 候选平均 / P95 |
+|---|---:|---:|
+| CPU，4 线程，关闭空闲忙等 | 1.38 / 2.38 ms | 1.21 / 2.02 ms |
+| CUDA FP32 Graph | 1.22 / 2.67 ms | 1.22 / 2.67 ms |
+
+**单模型耗时不代表完整实时采集耗时。** 按视频原始节奏回放，保留检测、身体门控、方向、跟踪、选图及容量为 1 的工作队列，单轮 CPU 结果如下；不同回放的设备状态和采样也会影响测量，不把这些数值当作稳态速度优劣定论。
+
+| 视频 | 原版 P95 / 丢帧率 | 候选 P95 / 丢帧率 |
+|---|---:|---:|
+| 用户视频，30 fps | 71.56 ms / 11.72% | 90.56 ms / 22.53% |
+| Wolfhound，24 fps | 49.81 ms / 2.72% | 78.86 ms / 6.77% |
+
+本次也修复了 `benchmark_dog_capture_v1.py` 的漏测：原来回放时重新构建 `CaptureEngine` 未传入已经加载的 landmarker，实际又走了检测器跟踪。现在回放显式传入它，校验其执行后端，记录模型哈希和各模型调用次数。模型级测速使用新的 `benchmark_dog_landmark_pair.py`；两种计时口径分开报告。
+
+### 复现入口
+
+在包含本提交的仓库目录下运行；先按训练设备安装 PyTorch，再安装 `requirements-dog-landmark-training.txt`。已有归档无需再次导入。需要从另一个原始 ONNX 建立训练起点时：
+
+```bash
+python src/Pet-ReID-IMAG/tools/import_dog_landmark_weights.py --onnx models/pretrained/dog_capture_landmarks_v1/dog_face_landmarks.onnx --output models/pretrained/dog_capture_landmarks_v1/recovered_trainable.pt
+```
+
+公共视频下载及标注：
+
+```bash
+python src/Pet-ReID-IMAG/tools/fetch_dog_distillation_assets.py --manifest assets/dog_capture/video_distillation_sources.json --root .
+python src/Pet-ReID-IMAG/tools/prepare_dog_video_distillation.py --manifest assets/dog_capture/video_distillation_sources.json --root . --teacher models/pretrained/dog_capture_v1/dog_face_pose.onnx --out data/dog_capture/distillation/pilot_v2 --sample-fps 4 --max-per-video 200
+```
+
+标注目录保留原帧、逐点权重、拒绝计数、来源快照和 `audit_train.jpg` / `audit_val.jpg` / `audit_test.jpg`，先检查侧脸覆盖与叠加点位再训练。以下工具拒绝覆盖现有数据、训练目录或 checkpoint；重做实验需更换输出路径。
+
+```bash
+python src/Pet-ReID-IMAG/tools/train_dog_video_landmarks.py --data data/dog_capture/distillation/pilot_v2 --weights models/pretrained/dog_capture_landmarks_v1/recovered_trainable.pt --out artifacts/runs/dog_capture/video_distillation_20261112/train_pilot_v1 --device cuda --epochs 12 --repeats 4 --batch 16 --lr 0.00005
+python src/Pet-ReID-IMAG/tools/benchmark_dog_landmark_pair.py --data data/dog_capture/distillation/pilot_v2 --baseline models/pretrained/dog_capture_landmarks_v1/dog_face_landmarks.onnx --candidate models/pretrained/dog_capture_landmarks_video_pilot_20261113/dog_face_landmarks.onnx --output artifacts/runs/dog_capture/paired_cpu.json --providers cpu
+```
+
+导出后进行了 ONNX checker 和 16 张真实裁剪的 PyTorch/ORT 对照，最大输出差 `0.0000305`。Python 测试 103 项通过；SDK 34 项通过、1 项因缺少独立检测器参考照片而跳过，其中候选模型的 4 帧真实 Python/WASM refinement 对照实际运行并通过。速度、连续回放、独立选图复检和测试日志保存在 `artifacts/runs/dog_capture/video_distillation_20261112/`。
+
+下一轮应按内容补数据：以 6–10 只不同狗的短片为小规模采集目标，包含清楚的“正面—左转—正面—右转”、近景及侧躺；先确认左右两侧都有可靠眼鼻标注，再增加帧数。对教师持续放错的远侧眼或闭眼帧，补少量校正锚点及可见性标签。这个数量是采样目标，不是精度保证；回归视频继续隔离，新增侧脸验证视频后再选 checkpoint。

@@ -263,9 +263,9 @@ def build_model(init=None):
             return xy, logits, face, heat, turn
 
     from ultralytics import YOLO
-    layers = list(YOLO(init).model.model[:10]) if init else None
-    if layers is None:
-        raise ValueError('--init (a YOLO11 checkpoint) is required to build the backbone')
+    # The architecture can also be built before loading a complete landmark
+    # checkpoint recovered from ONNX; no detector .pt is needed in that case.
+    layers = list(YOLO(init or 'yolo11n.yaml').model.model[:10])
     return Landmarker(layers)
 
 
@@ -275,7 +275,7 @@ HEAT_SIGMA = 0.75                  # target heatmap spread, in cells of the stri
 def heat_targets(points, n):
     """Gaussian distributions over the n x n cells around each keypoint (points in 0..1)."""
     import torch
-    centres = (torch.arange(n, dtype=torch.float32) + 0.5) / n
+    centres = (torch.arange(n, dtype=points.dtype, device=points.device) + 0.5) / n
     gx, gy = centres.repeat(n), centres.repeat_interleave(n)
     dx = (gx[None, None] - points[..., :1]) * n
     dy = (gy[None, None] - points[..., 1:]) * n

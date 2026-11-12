@@ -208,13 +208,23 @@ def decoded_comparison(engine, config, frames):
     return reports
 
 
-def video_benchmark(config, detector, gate, path, realtime, output, repeat, expected_frames):
+def video_benchmark(config, detector, gate, path, realtime, output, repeat, expected_frames, *, landmarker=None):
     from dog_capture.engine.engine import CaptureEngine
     from dog_capture.engine.io import LatestFrameRunner, RunWriter, VideoSource
-    engine = CaptureEngine(config, detector, gate)  # fresh tracking/selection state
+    engine = CaptureEngine(config, detector, gate, landmarker)  # fresh tracking/selection state
     source = VideoSource(path)
     info = source.describe()
     rows, times, guidance = [], defaultdict(list), Counter()
+    calls, originals = Counter(), []
+    def counted(name, original):
+        def detect(*args, **kwargs):
+            calls[name] += 1
+            return original(*args, **kwargs)
+        return detect
+    for name, model in (('face', detector), ('body', gate), ('landmarks', landmarker)):
+        if model is not None:
+            originals.append((model, model.detect))
+            model.detect = counted(name, model.detect)
     started = time.perf_counter()
 
     def on_result(result, frame):
@@ -256,6 +266,8 @@ def video_benchmark(config, detector, gate, path, realtime, output, repeat, expe
             runner.close()
             processed = runner.processed
         source.close()
+        for model, original in originals:
+            model.detect = original
     elapsed = time.perf_counter() - started
     dropped = (runner.dropped if runner else 0) + sum(engine.dropped.values())
     if read != processed + dropped:
@@ -269,7 +281,10 @@ def video_benchmark(config, detector, gate, path, realtime, output, repeat, expe
     best = engine.finalize()
     selected = writer.save_bundle(best)
     writer.close()
-    result = {'source': relative(path), 'playback': 'realtime' if realtime else 'offline',
+    result = {'source': relative(path), 'models': engine.describe(),
+              'landmarks': landmarker.describe() if landmarker is not None else None,
+              'model_calls': dict(calls),
+              'playback': 'realtime' if realtime else 'offline',
               'repeat': repeat, 'source_fps': info['fps'], 'frames_read': read,
               'frames_processed': processed, 'frames_dropped': dropped, 'drop_rate': dropped / max(read, 1),
               'elapsed_s': elapsed, 'processed_fps': processed / elapsed,
@@ -348,11 +363,13 @@ def main():
 
     started = time.perf_counter()
     engine = build_engine(config)
+    landmarker = getattr(engine.refiner, 'landmarker', None)
     report['session_load_ms'] = (time.perf_counter() - started) * 1000
     expected = ALIASES[args.providers]
 
     def save():
         report['models'] = engine.describe()
+        report['landmarks'] = landmarker.describe() if landmarker is not None else None
         (args.output / 'summary.json').write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf8')
         for model in (engine.detector, engine.body_gate):
             if model is None or model.runtime['used'][0] != expected or model.runtime['fallback_errors']:
@@ -360,6 +377,11 @@ def main():
             graph = model.runtime['cuda_graph']
             if config.runtime.cuda_graph and not graph['active']:
                 raise RuntimeError(f'{model.kind}: CUDA Graph fallback: {graph["fallback_reason"]}')
+        if landmarker is not None:
+            if landmarker.runtime['used'][0] != expected or landmarker.runtime['fallback_errors']:
+                raise RuntimeError(f'Landmarker did not use the requested provider: {expected}')
+            if config.runtime.cuda_graph and not landmarker.runtime['cuda_graph']['active']:
+                raise RuntimeError('Landmarker CUDA Graph fallback')
 
     save()
     sample_sets = []
@@ -385,6 +407,8 @@ def main():
         save()
         print(f'{name}: {record}', flush=True)
     if args.stage in ('video', 'all'):
+        if landmarker is not None:
+            landmarker.warmup(args.warmup)
         for repeat in range(1, args.repeats + 1):
             for path, source_info in zip(args.source, report['sources']):
                 for playback in ('offline', 'realtime') if args.playback == 'both' else (args.playback,):
@@ -392,7 +416,7 @@ def main():
                     print(f'Starting {name}', flush=True)
                     row = video_benchmark(config, engine.detector, engine.body_gate, path,
                                           playback == 'realtime', args.output / name, repeat,
-                                          source_info['decoded_frames'])
+                                          source_info['decoded_frames'], landmarker=landmarker)
                     report['videos'].append(row)
                     save()
                     print(f'{name}: {row["processed_fps"]:.2f} fps; '

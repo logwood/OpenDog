@@ -1,0 +1,8 @@
+# Offline training tools only; capture runtime still uses requirements-dog-capture-v1.txt.
+# Install the PyTorch build appropriate for the training device separately.
+torch>=2.6
+ultralytics==8.4.210
+onnx>=1.17
+onnxruntime>=1.18
+numpy>=1.26,<3
+opencv-python>=4.8,<6
