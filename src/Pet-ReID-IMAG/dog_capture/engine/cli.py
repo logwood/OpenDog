@@ -63,9 +63,22 @@ def load_config(args):
 
 
 def cmd_run(args):
+    from .io import open_source
+    from .process_policy import cpu_qos
+    source = open_source(args.source, args.fps)
+    try:
+        with cpu_qos(args.cpu_qos, realtime=args.realtime or source.live) as policy:
+            if policy.get('error'):
+                print(f'warning: CPU QoS unchanged: {policy["error"]}', file=sys.stderr)
+            return _run_source(args, source, policy)
+    finally:
+        source.close()
+
+
+def _run_source(args, source, cpu_policy):
     import cv2
     from .engine import CaptureEngine
-    from .io import (DetectionLog, LatestFrameRunner, RunWriter, choose_output_dir, draw_overlay, open_source,
+    from .io import (DetectionLog, LatestFrameRunner, RunWriter, choose_output_dir, draw_overlay,
                      percentiles, upright, write_review)
     from .zoo import build_body_gate, build_engine
     if args.cv_threads < 0:
@@ -74,7 +87,6 @@ def cmd_run(args):
         cv2.setNumThreads(args.cv_threads)
     config = load_config(args)
     log = DetectionLog(args.detections) if args.detections else None
-    source = open_source(args.source, args.fps)
     if source.__class__.__name__ == 'ImageSource' and not config.runtime.still_images:
         config = config.merged({'runtime': {'still_images': True}})
     if log is not None:  # upstream detections: no face model is loaded
@@ -157,7 +169,6 @@ def cmd_run(args):
         if runner is not None:
             runner.close()
             processed = runner.processed
-        source.close()
         writer.close()
         if log is not None:
             log.close()
@@ -182,7 +193,7 @@ def cmd_run(args):
         'stats': {'frames_read': read, 'frames_processed': processed,
                   'frames_dropped': (runner.dropped if runner else 0) + sum(engine.dropped.values()),
                   'elapsed_s': round(elapsed, 3), 'processing_fps': processed / max(elapsed, 1e-6),
-                  'realtime': realtime, 'cv_threads': cv2.getNumThreads(),
+                  'realtime': realtime, 'cv_threads': cv2.getNumThreads(), 'cpu_policy': cpu_policy,
                   **{f'{k}_ms': percentiles(v) for k, v in timings.items()}},
         'guidance_counts': dict(guidance_counts.most_common()),
         'events': list(engine.events)[-200:], 'frame_log': not args.no_frame_log,
@@ -331,6 +342,8 @@ def main(argv=None):
     run.add_argument('--threads', type=int)
     run.add_argument('--cv-threads', type=int, default=1,
                      help='OpenCV threads (default 1; 0 preserves the installed default)')
+    run.add_argument('--cpu-qos', choices=('auto', 'inherit', 'high'), default='auto',
+                     help='auto: Windows HighQoS during realtime/live capture; inherit: keep host policy')
     run.add_argument('--spin-duration-us', type=int, help='ORT >= 1.26: bounded thread spin window; -1 = legacy')
     run.add_argument('--spin-backoff-max', type=int, help='ORT >= 1.26: power-of-two pause backoff, e.g. 8')
     run.add_argument('--views', help='comma list of front,left,right (default all three)')

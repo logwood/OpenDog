@@ -22,6 +22,7 @@ SOURCE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SOURCE))
 from dog_capture.engine.config import CaptureConfig
 from dog_capture.engine.io import RunWriter, VideoSource
+from dog_capture.engine.process_policy import cpu_qos
 from dog_capture.engine.zoo import build_engine
 
 
@@ -68,6 +69,10 @@ def normalize_diagnostics(reference, current, refine):
         if 'mirror_skipped' not in check:
             continue
         original = old['detection'].get('verify', {})
+        if 'mirror_skipped' in original:
+            # A newer reference already has the short circuit. Compare both
+            # diagnostics as-is, including the reason; do not remove only one.
+            continue
         # Both front and side use at least one of these thresholds. At least
         # one original rejection must exist; full per-frame decision equality
         # below additionally catches using a wrong front/side threshold.
@@ -110,6 +115,8 @@ def main():
     parser.add_argument('--optimized-config', type=Path, required=True)
     parser.add_argument('--source', type=Path, action='append', required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--reference-cpu-qos', choices=('inherit', 'high'), default='inherit')
+    parser.add_argument('--optimized-cpu-qos', choices=('inherit', 'high'), default='inherit')
     args = parser.parse_args()
     if args.output.exists():
         parser.error('Use a fresh output directory')
@@ -119,7 +126,8 @@ def main():
     optimized = config.merged(json.loads(args.optimized_config.read_text(encoding='utf8')))
     reference_class, hashes = load_reference(args.reference_root)
     report = {'method': __doc__, 'reference_source_sha256': hashes,
-              'config': config.to_dict(), 'optimized_config': optimized.to_dict(), 'videos': []}
+              'config': config.to_dict(), 'optimized_config': optimized.to_dict(), 'videos': [], 'cpu_policies': {}}
+    policies = {'reference': args.reference_cpu_qos, 'optimized': args.optimized_cpu_qos}
     for path in args.source:
         old_models = build_engine(config)
         original = reference_class(config, old_models.detector, old_models.body_gate, old_models.refiner.landmarker)
@@ -143,7 +151,9 @@ def main():
                 results = {}
                 for name in (('reference', 'optimized') if index % 2 == 0 else ('optimized', 'reference')):
                     traces[name].clear()
-                    results[name] = engines[name].process(frame, timestamp, index)
+                    with cpu_qos(policies[name]) as policy:
+                        results[name] = engines[name].process(frame, timestamp, index)
+                        report['cpu_policies'][name] = policy
                 old, new = (results[name].to_dict() for name in ('reference', 'optimized'))
                 old.pop('timings_ms'); new.pop('timings_ms')
                 skipped += normalize_diagnostics(old, new, config.refine)

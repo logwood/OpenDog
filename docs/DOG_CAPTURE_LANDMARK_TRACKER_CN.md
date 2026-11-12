@@ -271,3 +271,105 @@ CPU、原始视频 PTS、容量为 1 的处理队列，逐轮完整解码；两�
 实时丢帧会改变时间门控和选图：原版 A 的 Wolfhound 额外出现右侧候选，其余原版/优化轮次为正面、左侧；用户视频各轮均未选图。精度回归使用完整相同输入帧单独验证，不把实时采样差异当作模型精度变化，也不把多一张候选直接当作更准。
 
 全部单轮结果、模型哈希、运行时参数、聚合方法与逐帧回归结论在 `assets/dog_capture/runtime_optimization_benchmark.json`。原始 `summary.json`、逐帧计时与所选 PNG 保存在本地 `artifacts/runs/dog_capture/runtime_optimization_20261113/{baseline_a,optimized_a,optimized_b,baseline_b}`。本次主要收益来自运行时线程策略；精度约束下省去的 26 次大网络调用是较小但可验证的额外收益。
+
+## 10. 先按完整数据流排序，再优化大头（2026-11-13）
+
+新增 `tools/profile_dog_capture_flow.py`：在独立诊断进程中临时安装嵌套计时，保留每帧调用路径、调用次数、包含子步骤的耗时和扣除子步骤后的独占耗时。后者逐帧加总必须等于整帧时间，避免把裁剪、网络、复检重复相加。常规运行不安装计时钩子；钩子退出或异常时恢复。
+
+剖析覆盖视频解码、生产者迟到、工作队列等待、输入整理、全图检测、ROI 重捕获、跟踪裁剪与关键点网络、跟踪关联、物种门控、姿态、质量、精定位、镜像复检及选图。解码在生产者线程上，可与工作线程重叠，不能直接把解码平均时间加到帧处理时间。ORT 调用是含运行时与同步的墙钟耗时。测试关闭预览、网络与 ReID，最终图片保存也单独放在计时之后。
+
+输出包括 `profile.json`（统计与调用树）、`frames.json.gz`（逐帧嵌套区间）、`trace.json.gz`（Chrome trace 格式，真实单调时钟轴，分生产者/工作线程）、`components.png/svg`（独占耗时与最慢 5% 帧）以及 `flow.png/svg`（完整累计调用树）。调用树横向布局表示累计开销，不是某一帧的实际执行顺序；实际顺序应看逐帧区间或 trace。
+
+两段完整视频的离线和实时剖析表明，网络执行占整帧约 **40%–59%**，缩放占 **19%–28%**，输入打包只有 **2%–3%**。最慢 5% 帧里，网络执行合计约占 **66%–68%**。缩放主要来自近景跟踪裁剪中的面积平均；用户视频的大网全图调用为 539 / 628 次，Wolfhound 为 152 / 286 次。候选验证会制造局部高峰，但不能把它当作所有场景的最大累计开销。
+
+候选按收益上限、实现成本和精度风险统一排序：
+
+| 候选 | 覆盖的开销 | 筛查与决定 |
+|---|---|---|
+| CPU 进程调度提示 | 同时影响网络、缩放和其他 CPU 计算 | 采样发现调用线程大量落在效率核；显式 HighQoS 有收益，纳入完整回归 |
+| 网络线程 4 → 1 / 2 | 网络是最大累计开销 | 真实输入的交替筛查更慢，不采用；脸部网络还出现约 3–5e-5 原始输出差异 |
+| OpenCV 线程 1 → 2 / 4 | 缩放是第二大累计开销 | 抽样像素完全一致，但没有稳定速度收益，不采用 |
+| HighQoS 再加性能核绑定 | CPU 调度 | 没有稳定附加收益，不增加绑定与拓扑适配逻辑 |
+| 缩短大网调用链、异步候选验证 | 对慢帧有价值 | 改动成本与时序风险更高，留在后续队列；本次保持原采集判定顺序 |
+| 融合抗锯齿缩放或改变重捕获策略 | 覆盖缩放/全图检测 | 需要独立输入等价性或召回验证，不能靠改采样和跳帧直接降低精度 |
+| 仅将 RGB 打包移入 ONNX | 只有 2%–3% 的整帧开销 | 收益上限低，优先级后移 |
+
+实际采用的是 Windows 进程级 `ProcessPowerThrottling` 执行速度提示：设置 HighQoS，保留其他策略位，在作用域结束（含异常）时恢复原策略。[Microsoft 官方 API](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-setprocessinformation) 说明系统可能通过频率与核选择调整后台任务的 QoS。初始策略的 ControlMask 为 0，表示系统自行判断；不能据此宣称进程之前被显式设置为 EcoQoS。改动不设置 CPU 亲和性，也不改变优先级类别；没有做功耗测量。
+
+独立 CLI 的 `run` 新增 `--cpu-qos auto|inherit|high`。默认 `auto` 仅在 Windows 实时文件回放或实时输入期间请求 HighQoS；离线处理和其他平台保持继承。结果的 `stats.cpu_policy` 记录请求、实际读回的策略或自动请求失败原因。显式 `high` 不可用时直接报错。基准和剖析工具默认 `inherit`，用 `--cpu-qos high` 明确选择优化组。
+
+库的 `build_engine()` 不改变宿主进程策略。嵌入时由宿主在入口统一决定，可用以下作用域（不要从并发工作线程各自设置进程策略）：
+
+```python
+from dog_capture.engine.process_policy import cpu_qos
+
+with cpu_qos('auto', realtime=True) as cpu_policy:
+    # 在这个作用域里创建模型、采集和处理；结束后恢复进入时的策略。
+    run_capture()
+```
+
+复现完整耗时图：
+
+```bash
+python src/Pet-ReID-IMAG/tools/profile_dog_capture_flow.py --config CAPTURE_CONFIG --source USER_VIDEO --source WOLFHOUND_VIDEO --playback both --cpu-qos inherit --output NEW_BASELINE_DIR
+python src/Pet-ReID-IMAG/tools/profile_dog_capture_flow.py --config CAPTURE_CONFIG --source USER_VIDEO --source WOLFHOUND_VIDEO --playback both --cpu-qos high --output NEW_OPTIMIZED_DIR
+```
+
+原始剖析、线程筛查、CPU 核采样和完整视频回归记录保存在本机 `artifacts/runs/dog_capture/flow_optimization_20261113/`。计时插桩会增加开销，最终速度验收使用关闭插桩的 `benchmark_dog_capture_v1.py`，不用剖析图上的 FPS 宣称生产速度。
+
+### 优化后仍然占大头的位置
+
+![CPU 开销与全部实时 A/B 轮次](../assets/dog_capture/flow_profile/overview.svg)
+
+完整累计调用树：[用户视频](../assets/dog_capture/flow_profile/user_flow.svg)、[Wolfhound](../assets/dog_capture/flow_profile/wolfhound_flow.svg)。这两张图使用全帧离线输入，确保两组视频各自没有因实时丢帧改变工作量。图中父级包含子级，横坐标单位是平均每帧毫秒；小块的完整名称与逐次时间在 `profile.json` 和 trace 中。
+
+以下是 HighQoS 后完整离线剖析的独占耗时；处理均值分别为 9.19 / 9.88 ms，带计时钩子，不能直接当作实时延迟：
+
+| 独占步骤 | 用户视频，ms / 帧 | Wolfhound，ms / 帧 |
+|---|---:|---:|
+| 脸部大网，合计各调用入口 | 3.62 | 2.33 |
+| 所有缩放 | 1.92 | 2.39 |
+| 关键点网络 | 0.94 | 1.75 |
+| 身体网络 | 0.74 | 0.03 |
+| 质量评估的其余计算 | 0.42 | 1.00 |
+| 仿射采样 | 0.24 | 0.57 |
+| 输入打包 | 0.25 | 0.21 |
+| 其余控制、姿态、关联等 | 1.06 | 1.60 |
+
+合并离线/实时剖析范围，网络仍占 **40%–58%**、缩放 **21%–26%**，输入打包 **2%–3%**。最慢 5% 帧中的网络占比约 **61%–66%**。因此调度调整之后，后续结构工作仍应围绕网络调用链和近景裁剪，而不是转向小数组转换。
+
+缩放大头已经定位到 `refine → examine → crop → warp_crop → resize`：用户视频 1,112 次、摊到每帧 1.07 ms；Wolfhound 1,212 次、每帧 1.90 ms。下一步优先调查这一路能否共享**完全相同采样定义**的工作，再考虑更复杂的融合。不能先删掉抗锯齿后用帧率证明优化。全图检测和异步候选验证的理论收益更大，但需要重捕获召回与时间门控验证；当前没有经过验证的低成本实现，因此本轮不改变调用周期或判定顺序。
+
+### 本轮实际实时 A/B 验收
+
+同一台 i9-13980HX，CPUExecutionProvider，原始模型，4 个 ORT 线程、1,000 μs 限时忙等、退避 8、1 个 OpenCV 线程。基准预热每模型 15 次，使用视频 PTS 与容量为 1 的生产队列。顺序为继承 A → HighQoS A → HighQoS B → 继承 B；B 轮反转视频顺序。两组唯一生产行为差异为进程 QoS，各推理任务串行执行。未锁定系统负载或 CPU 频率，全部轮次如下：
+
+| 策略 / 轮次 | 用户视频 FPS | 处理 P95 | 丢帧 / 1,314 | Wolfhound FPS | 处理 P95 | 丢帧 / 1,212 |
+|---|---:|---:|---:|---:|---:|---:|
+| 继承 A | 24.26 | 87.53 ms | 251 | 23.08 | 60.68 ms | 46 |
+| HighQoS A | 29.73 | 26.98 ms | 12 | 23.82 | 26.64 ms | 10 |
+| HighQoS B | 29.52 | 28.60 ms | 21 | 23.85 | 24.20 ms | 8 |
+| 继承 B | 30.01 | 26.32 ms | 0 | 24.01 | 26.30 ms | 0 |
+
+合计丢帧 **297 / 5,052（5.88%）→ 51 / 5,052（1.01%）**。按所有处理帧合并后计算，用户视频 P95 **59.16 → 27.18 ms**、P99 **135.33 → 44.52 ms**；Wolfhound P95 **44.01 → 25.28 ms**、P99 **78.06 → 50.21 ms**。HighQoS 各轮从计划视频时刻到结果的 P95 为 **25.44–31.50 ms**。
+
+继承 B 已经很快，部分指标优于 HighQoS；本轮证据支持减少较差轮次和长尾，不能声称每次都加速或消除调度抖动。HighQoS 中仍有约 236 / 250 ms 的最大单帧值，最大延迟没有硬上界。此处所有速度均是 CPU 采集处理测量，未包含预览、UI、网络、ReID 和最终图片保存。
+
+实时采样差异会影响选图：Wolfhound 的继承 A 与 HighQoS B 均出现右侧候选，其他两轮为正面、左侧；具体帧号记录于结果 JSON。用户视频各轮均未选图。最终精度验收另用完整相同帧，避免把队列丢帧造成的候选变化当成数值或模型精度变化。
+
+### 数值、判定与入口回归
+
+以 `d870074f7d9eb5b3a00ca7414bfa3d8e53d78c87` 为对照，在每帧交替先后运行继承策略与 HighQoS，所有 **2,526 帧零差异**。检查包括原始网络输出哈希、未舍入的框/关键点/姿态/质量分、排除计时后的完整逐帧结果和最终图片像素哈希。模型调用数也完全相同：用户视频脸部 / 身体 / 关键点 **628 / 125 / 1,178** 次，Wolfhound **286 / 1 / 1,233** 次。最终离线选图均为用户视频无图、Wolfhound 正面第 20 帧与左侧第 278 帧。模型、采样、阈值和检出周期都未改动；这证明本轮改动在这两段输入上的回归一致性，不代表扩展数据集的模型准确率。
+
+比较工具兼容新旧对照提交：当两边已经都有 `mirror_skipped` 时，完整比较该诊断字段；只有旧对照确实没有短路字段时才使用原有归一化逻辑。新增回归覆盖同字段、不同原因及旧版对照，避免测试工具误报或掩盖差异。本轮最终严格核对没有归一化任何镜像诊断字段。
+
+```bash
+python src/Pet-ReID-IMAG/tools/compare_dog_capture_runtime.py --reference-root D870074_CHECKOUT --config CAPTURE_CONFIG --optimized-config assets/dog_capture/cpu_realtime.json --reference-cpu-qos inherit --optimized-cpu-qos high --source USER_VIDEO --source WOLFHOUND_VIDEO --output NEW_EQUIVALENCE_DIR
+python src/Pet-ReID-IMAG/tools/benchmark_dog_capture_v1.py --config CAPTURE_CONFIG --source USER_VIDEO --source WOLFHOUND_VIDEO --providers cpu --threads 4 --cv-threads 1 --cpu-qos high --stage video --playback realtime --warmup 15 --repeats 1 --samples 4 --output NEW_BENCHMARK_DIR
+```
+
+基准中的 `CAPTURE_CONFIG` 应包含上文完整的限时忙等参数与原版模型路径；对照将 `--cpu-qos high` 换为 `inherit`，第二轮交换视频顺序。每轮使用新输出目录。
+
+主回归 **148 项通过、1 项因缺少可选 Brotli 包跳过**；比较器修正后相关 4 项通过（其中 3 项已包含在主回归中），总计 149 项不同测试通过。测试覆盖计时自耗时核对、工作线程追踪、异常恢复、QoS 的自动启用/跨平台/失败行为及宿主策略恢复。
+
+原生 `python -m dog_capture run ... --realtime` 默认 `auto` 的实际前三秒检查：读取并处理 **91 / 91 帧、零丢帧、处理 P95 25.99 ms**，策略读回为 HighQoS，OpenCV 为 1 线程，原视频帧数正确记录为 1,314。使用 CLI 原有每模型 2 次预热；没有合格照片时按既有约定返回 2，报告正常生成。所有原始记录和精简汇总在 `flow_optimization_20261113/`；随代码提交的可审阅结果为 [flow_profile_benchmark.json](../assets/dog_capture/flow_profile_benchmark.json)。

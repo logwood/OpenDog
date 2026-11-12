@@ -310,6 +310,7 @@ def main():
     parser.add_argument('--spin-duration-us', type=int)
     parser.add_argument('--spin-backoff-max', type=int)
     parser.add_argument('--cv-threads', type=int, default=0, help='0 preserves the installed OpenCV default')
+    parser.add_argument('--cpu-qos', choices=('auto', 'inherit', 'high'), default='inherit')
     parser.add_argument('--stage', choices=('micro', 'video', 'all'), default='all')
     parser.add_argument('--playback', choices=('offline', 'realtime', 'both'), default='both')
     parser.add_argument('--repeats', type=int, default=2)
@@ -328,6 +329,12 @@ def main():
         parser.error('Use a fresh output directory')
     if args.verify_decoded_fp32 and args.providers != 'cuda':
         parser.error('--verify-decoded-fp32 requires --providers cuda')
+    from dog_capture.engine.process_policy import cpu_qos
+    with cpu_qos(args.cpu_qos, realtime=args.playback != 'offline') as policy:
+        benchmark(args, policy)
+
+
+def benchmark(args, cpu_policy):
     args.output.mkdir(parents=True)
     if args.preload_cuda:
         preload_cuda()
@@ -351,7 +358,8 @@ def main():
         'command': sys.argv, 'python': sys.version, 'executable': sys.executable,
         'platform': platform.platform(), 'processor': platform.processor(), 'logical_cpus': os.cpu_count(),
         'versions': {'numpy': np.__version__, 'opencv': cv2.__version__, 'onnxruntime': ort.__version__},
-        'cv_threads': cv2.getNumThreads(), 'config': config.to_dict(), 'gpu_before': gpu_snapshot(),
+        'cv_threads': cv2.getNumThreads(), 'cpu_policy': cpu_policy,
+        'config': config.to_dict(), 'gpu_before': gpu_snapshot(),
         'method': {'warmup_calls_per_model': args.warmup, 'micro_timed_calls_per_stage': args.runs,
             'micro_sampling': 'uniform across each whole video; sequential decode; interleaved videos',
             'inference': 'prepared CPU tensor to returned CPU outputs, including GPU transfers/synchronization',
