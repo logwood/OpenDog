@@ -1,0 +1,186 @@
+{
+  "schema": "dog_capture_rgb_packing_benchmark_v1",
+  "measured_date": "2026-11-13",
+  "environment": {
+    "cpu": "Intel Core i9-13980HX",
+    "provider": "CPUExecutionProvider",
+    "ort_threads": 4,
+    "thread_spinning": false,
+    "opencv_threads": 1,
+    "python": "3.12.13"
+  },
+  "change": "Direct FP32 BGR-to-RGB NCHW packing with one allocation; unchanged model weights, pixel resampling, thresholds and call scheduling.",
+  "microbenchmark": {
+    "method": "10 alternating-order blocks of 30 calls per implementation per size/normalization; equality checked on contiguous, mirrored and quarter-turn inputs; warm continuous calls, not frame latency",
+    "results": [
+      {
+        "size": 128,
+        "mean": 0.0,
+        "exact_equal": true,
+        "ms": {
+          "old": 0.022128999892932676,
+          "fused": 0.024456999963149432
+        }
+      },
+      {
+        "size": 128,
+        "mean": 127.5,
+        "exact_equal": true,
+        "ms": {
+          "old": 0.022987666501042742,
+          "fused": 0.031693000346422195
+        }
+      },
+      {
+        "size": 320,
+        "mean": 0.0,
+        "exact_equal": true,
+        "ms": {
+          "old": 1.0665910000291965,
+          "fused": 0.4969199998110222
+        }
+      },
+      {
+        "size": 320,
+        "mean": 127.5,
+        "exact_equal": true,
+        "ms": {
+          "old": 0.9643573331413791,
+          "fused": 0.43918233326015377
+        }
+      },
+      {
+        "size": 416,
+        "mean": 0.0,
+        "exact_equal": true,
+        "ms": {
+          "old": 1.5750303331878968,
+          "fused": 0.6541266666802887
+        }
+      },
+      {
+        "size": 416,
+        "mean": 127.5,
+        "exact_equal": true,
+        "ms": {
+          "old": 1.6150043335316393,
+          "fused": 0.7079689999227412
+        }
+      }
+    ]
+  },
+  "full_video_parity": {
+    "method": "all decoded frames, offline deterministic replay; original archived landmark checkpoint; same model sessions/frames/config; independent capture state; old/new order alternates each frame; output comparison excludes only timing; not real-time FPS",
+    "videos": [
+      {
+        "video": "data/dog_capture/user/2611101816341481.mp4",
+        "frames": 1314,
+        "elapsed_s": 33.96348710000166,
+        "frame_result_mismatches": [],
+        "raw_output_mismatches": [],
+        "raw_model_calls_per_implementation": 1952,
+        "final_shots_identical": true,
+        "timing": {
+          "old": {
+            "mean_ms": 12.035033561563427,
+            "p95_ms": 30.256014989572556
+          },
+          "new": {
+            "mean_ms": 11.2797034250477,
+            "p95_ms": 28.4064050079905
+          }
+        }
+      },
+      {
+        "video": "data/dog_capture/public/wolfhound_panting.ogv",
+        "frames": 1212,
+        "elapsed_s": 22.581689100014046,
+        "frame_result_mismatches": [],
+        "raw_output_mismatches": [],
+        "raw_model_calls_per_implementation": 1525,
+        "final_shots_identical": true,
+        "timing": {
+          "old": {
+            "mean_ms": 8.263791914353655,
+            "p95_ms": 25.546699992264625
+          },
+          "new": {
+            "mean_ms": 7.944588531785539,
+            "p95_ms": 23.325789991940848
+          }
+        }
+      }
+    ]
+  },
+  "checkpoint_sha256": "1fb6ad2185d0e4d65addf62c1d5fd79f32f84e61e62ae0dd9694609ca7cc1171",
+  "unmodified_realtime_diagnostic": {
+    "method": "nested wall-clock timers; exclusive rows disjoint; no weights/config changes; CPU 4 ORT threads no spin, CV 1 thread; candidate diagnostic only",
+    "note": "Experimental candidate used for diagnosis only. Measured before RGB implementation changed; faster than an earlier 33.39 ms run with the same code/config. The difference is not an optimization result; system/scheduling effects remain unisolated.",
+    "processed": 1311,
+    "read": 1314,
+    "dropped": 3,
+    "stages": {
+      "total": {
+        "mean_ms": 13.910696262541325,
+        "p95_ms": 30.61345001333393
+      },
+      "capture_to_result": {
+        "mean_ms": 14.56712967227142,
+        "p95_ms": 31.881250004516914
+      },
+      "tracking": {
+        "mean_ms": 0.20203356224223745,
+        "p95_ms": 0.4236000095261261
+      }
+    },
+    "components": {
+      "face.run": {
+        "calls": 631,
+        "inclusive_ms_per_frame": 4.9574139588100685,
+        "exclusive_ms_per_frame": 4.9574139588100685
+      },
+      "body.run": {
+        "calls": 144,
+        "inclusive_ms_per_frame": 0.9702280701754386,
+        "exclusive_ms_per_frame": 0.9702280701754386
+      },
+      "landmark.run": {
+        "calls": 1222,
+        "inclusive_ms_per_frame": 1.8274041952707858,
+        "exclusive_ms_per_frame": 1.8274041952707858
+      },
+      "cv.resize": {
+        "calls": 2227,
+        "inclusive_ms_per_frame": 2.8826012204424107,
+        "exclusive_ms_per_frame": 2.8826012204424107
+      },
+      "cv.warpAffine": {
+        "calls": 1976,
+        "inclusive_ms_per_frame": 0.32973302822273076,
+        "exclusive_ms_per_frame": 0.32973302822273076
+      },
+      "quality": {
+        "calls": 796,
+        "inclusive_ms_per_frame": 1.0022719298245615,
+        "exclusive_ms_per_frame": 0.11671113653699465
+      },
+      "pose": {
+        "calls": 1758,
+        "inclusive_ms_per_frame": 0.06622265446224257,
+        "exclusive_ms_per_frame": 0.06622265446224257
+      }
+    },
+    "timing_caution": "Inclusive components can overlap; do not add parent and child times."
+  },
+  "tests": {
+    "python_passed": 111,
+    "new_numerical_contract_cases": 8
+  },
+  "evidence_directory": "artifacts/runs/dog_capture/video_distillation_20261112",
+  "limitations": [
+    "Offline A/B throughput is not real-time capture FPS.",
+    "This change does not solve side-face training quality or promote the experimental candidate.",
+    "The 128px packing microbenchmark itself did not speed up.",
+    "Real-time latency varies with device state and runtime scheduling; one fast replay is not a stable latency guarantee."
+  ]
+}

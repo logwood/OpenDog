@@ -136,8 +136,24 @@ class OnnxDetector:
 
 
 def _rgb_tensor(canvas, scale=1 / 255.0, mean=0.0):
-    rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB).astype(np.float32)
-    return ((rgb - mean) * scale).transpose(2, 0, 1)[None]
+    """BGR -> contiguous RGB/NCHW, with one allocation and FP32 arithmetic.
+
+    Write each channel straight to its final plane: an HWC float copy, separate
+    subtract/multiply arrays and ORT's implicit contiguous copy are unnecessary.
+    Keep subtraction before multiplication (including SCRFD's nonzero mean).
+    """
+    h, w = canvas.shape[:2]
+    tensor = np.empty((1, 3, h, w), np.float32)
+    scale, mean = np.float32(scale), np.float32(mean)
+    for channel in range(3):
+        plane = tensor[0, channel]
+        source = canvas[:, :, 2 - channel]
+        if mean:
+            np.subtract(source, mean, out=plane, dtype=np.float32)
+            np.multiply(plane, scale, out=plane)
+        else:
+            np.multiply(source, scale, out=plane, dtype=np.float32)
+    return tensor
 
 
 def _xywh_to_xyxy(b):

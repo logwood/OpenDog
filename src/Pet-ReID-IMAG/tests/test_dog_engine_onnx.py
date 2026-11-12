@@ -52,6 +52,31 @@ def test_letterbox_geometry():
     assert pad == (0, 0)
 
 
+@pytest.mark.parametrize('scale,mean', [(1 / 255.0, 0.0), (1 / 128.0, 127.5)])
+@pytest.mark.parametrize('layout', ['contiguous', 'mirror', 'quarter_turn', 'strided'])
+def test_rgb_tensor_preserves_all_pixel_values_and_nchw_layout(scale, mean, layout):
+    # Exhaust the uint8 range in distinct B/G/R channels. Mirrored/rotated ROI
+    # views can have negative strides; the model must still receive packed RGB.
+    values = np.arange(256, dtype=np.uint8)
+    image = np.tile(np.stack([values, values[::-1], np.roll(values, 37)], -1)[None], (5, 1, 1))
+    if layout == 'mirror':
+        image = image[:, ::-1]
+    elif layout == 'quarter_turn':
+        image = np.rot90(image)
+    elif layout == 'strided':
+        image = np.repeat(image, 2, axis=1)[:, ::2]
+    before = image.copy()
+    # Reference is the previous deployed FP32 preprocessing, including its
+    # rounding order. Input equality matters at confidence/view thresholds.
+    import cv2
+    expected = ((cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype(np.float32) - mean)
+                * scale).transpose(2, 0, 1)[None]
+    actual = detectors._rgb_tensor(image, scale, mean)
+    assert actual.dtype == np.float32 and actual.flags.c_contiguous
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(image, before)
+
+
 def test_yolo_pose_decoder(tmp_path):
     k, n = 6, 10
     out = np.zeros((1, 4 + 1 + 3 * k, n), np.float32)
