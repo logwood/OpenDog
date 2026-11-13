@@ -108,6 +108,12 @@ class OnnxDetector:
         embedded = session.get_modelmeta().custom_metadata_map or {}
         if embedded.get('dog_capture.conditional_score_input') != self.conditional_score_input:
             raise ValueError('CPU conditional graph requires its matching compilation sidecar')
+        contract = compiled.get('raw_output_contract')
+        if (contract != embedded.get('dog_capture.raw_output_contract')
+                or contract not in (None, 'scores_and_eligible_anchors_exact')
+                or (contract is not None and not self.conditional_score_input)):
+            raise ValueError('CPU conditional graph and sidecar output contract disagree')
+        self.masked_scale_heads = contract == 'scores_and_eligible_anchors_exact'
         if self.conditional_score_input:
             inputs = session.get_inputs()
             if (len(inputs) != 2 or inputs[1].name != self.conditional_score_input

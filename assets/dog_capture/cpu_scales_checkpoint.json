@@ -1,0 +1,64 @@
+{
+  "schema": "dog_capture_cpu_scales_v1",
+  "original_checkpoint_retained": true,
+  "local_directory": "models/pretrained/dog_capture_cpu_scales_v1",
+  "model": "models/pretrained/dog_capture_cpu_scales_v1/dog_face_pose_cpu.onnx",
+  "configuration": "models/pretrained/dog_capture_cpu_scales_v1/capture.json",
+  "metadata": {
+    "kind": "yolo_pose",
+    "schema": "dogface6",
+    "kpt_shape": [
+      6,
+      3
+    ],
+    "input_size": 320,
+    "source_weights": "/tmp/claude-0/-home-user-OpenDog/e43a0a33-2b4a-5e73-809a-6ec999a35337/scratchpad/models/dogface6_e12_best.pt",
+    "sha256": "5e950729bdc977037b7aac4cd732aa26071925493757f83989959d478b0f5d27",
+    "license": "Trained with Ultralytics (AGPL-3.0) on StanfordExtra/Stanford Dogs (research use)",
+    "cpu_compiled": {
+      "version": 1,
+      "target": {
+        "ort_version": "1.26.0",
+        "ort_build": "ORT Build Info: git-branch=HEAD, git-commit-id=8c546c37b4, fp8-kv-cache=1, build type=Release",
+        "machine": "AMD64",
+        "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+        "system": "Windows",
+        "cpu_features": "SSE SSE2 SSE3 *SSE4.1 *SSE4.2 *AVX *FP16 *AVX2 *AVX512-SKX?"
+      },
+      "source_sha256": "48c2b9f580a6b29f6ec92f81d58bffcb06c609b4da4d77e4c85f259dc1b8d74c",
+      "conditional_score_input": "capture_gate_threshold",
+      "head_nodes": 68,
+      "score_and_shared_nodes": 251,
+      "output_width": 23,
+      "conditional_scales": [
+        {
+          "anchors": [
+            0,
+            1600
+          ],
+          "head_nodes": 14
+        },
+        {
+          "anchors": [
+            1600,
+            2000
+          ],
+          "head_nodes": 14
+        },
+        {
+          "anchors": [
+            2000,
+            2100
+          ],
+          "head_nodes": 14
+        }
+      ],
+      "raw_output_contract": "scores_and_eligible_anchors_exact"
+    }
+  },
+  "size_bytes": 11594786,
+  "compiler": "src/Pet-ReID-IMAG/tools/compile_dog_capture_cpu.py",
+  "build": "python src/Pet-ReID-IMAG/tools/compile_dog_capture_cpu.py --config ORIGINAL_FULL_CAPTURE_CONFIG --output NEW_CPU_MODEL_DIR --per-scale",
+  "contract": "All class scores and every eligible anchor are exact; discarded box/keypoint raw values may differ. Whole-image empty outputs are unchanged from the previous conditional graph.",
+  "deployment": "CPU/ORT target-specific. Use the generated capture.json; rebuild from the pinned portable checkpoint after a target change. Other checkpoints may use the whole-image compiler without --per-scale."
+}

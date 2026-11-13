@@ -193,6 +193,12 @@ Ultralytics 还能直接导出 TFLite / CoreML / NCNN / RKNN / OpenVINO / Tensor
 保持原检测机会与阈值。产物校验 CPU / ORT 目标，换设备或运行时需重建。完整视频精度回归、实际实时耗时和使用方法见
 [`DOG_CAPTURE_LANDMARK_TRACKER_CN.md` 第 11 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#11-网络分支与近景面积缩放的结构优化2026-11-13)。
 
+**有效候选内的继续优化**：对已归档的 320 px `dog_face_pose` checkpoint，上述构建命令增加 `--per-scale`，
+可在保留全部原分数的同时，省去各尺度中确定无法通过阈值的框/关键点分支。精定位、倾角修正、复检和镜像的调用顺序不变。
+本机已归档完整配置 `models/pretrained/dog_capture_cpu_scales_v1/capture.json`；构建器校验原 checkpoint 哈希，
+不将此改写套用到未验证的其他模型。调用依赖、完整视频回归和四轮实时结果见
+[`DOG_CAPTURE_LANDMARK_TRACKER_CN.md` 第 12 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#12-有效候选的精定位复检依赖与分尺度省算2026-11-13)。
+
 `python -m dog_capture config --write my.yaml` 会导出全部参数。常改的几项：
 
 ```yaml

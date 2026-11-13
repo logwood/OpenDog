@@ -3,8 +3,9 @@
 The default keeps current adapters for compatibility with old engine revisions.
 --isolated-reference loads the complete old package, including image sampling
 and model adapters. Conditional empty outputs are accepted only when the original
-scores prove no detection passes the same threshold. All nonempty outputs remain
-bit-exact. This checks numerical and decision parity, not throughput.
+scores prove no detection passes the same threshold. Scale-gated models must keep
+every score and every eligible anchor bit-exact; only rejected heads may differ.
+This checks numerical and decision parity, not throughput.
 """
 from __future__ import annotations
 
@@ -78,14 +79,25 @@ def trace_models(engine, trace, counts):
             empty = raw_pose and not np.any(result[0][:, 4:4 + model.num_classes] >= model.score_threshold)
             skipped = bool(raw_pose and getattr(model, 'conditional_score_input', None)
                            and result[0].shape[-1] == 0)
-            trace[key] = {'outputs': outputs, 'empty': bool(empty), 'skipped_heads': skipped}
+            signature = eligible_pose_signature(result[0], model.num_classes, model.score_threshold) if raw_pose else None
+            trace[key] = {'outputs': outputs, 'empty': bool(empty), 'skipped_heads': skipped,
+                          'eligible_outputs': signature, 'masked_scale_heads': bool(getattr(model, 'masked_scale_heads', False))}
             counts[label] += 1
             return result
         model._run = run
 
 
-def compare_outputs(reference, current):
-    """Only an explicit conditional empty result may omit unused raw heads."""
+def eligible_pose_signature(output, classes, threshold):
+    """Hash all scores, anchor positions and every value the decoder may keep."""
+    scores = output[:, 4:4 + classes]
+    mask = scores.max(axis=1)[0] >= threshold
+    kept = output[:, :, mask]
+    return (float(threshold), scores.shape, scores.dtype.str, digest(scores.tobytes()),
+            digest(mask.tobytes()), kept.shape, kept.dtype.str, digest(kept.tobytes()))
+
+
+def compare_outputs(reference, current, *, counts=None):
+    """Only explicitly declared rejected-head outputs may differ."""
     bad, skipped = [], 0
     for key, value in current.items():
         old = reference.get(key)
@@ -93,6 +105,11 @@ def compare_outputs(reference, current):
             continue
         if old is not None and old['empty'] and value['skipped_heads']:
             skipped += 1
+        elif (old is not None and value.get('masked_scale_heads')
+              and old.get('eligible_outputs') is not None
+              and old['eligible_outputs'] == value.get('eligible_outputs')):
+            if counts is not None:
+                counts['inactive_scale_calls'] += 1
         else:
             bad.append(key[0])
     return bad, skipped
@@ -191,6 +208,7 @@ def main():
         for name, engine in engines.items():
             trace_models(engine, traces[name], counts[name])
         mismatches, n, skipped, skipped_heads = [], 0, 0, 0
+        suppressed = Counter()
         source = VideoSource(path)
         declared = int(source.capture.get(cv2.CAP_PROP_FRAME_COUNT))
         try:
@@ -204,7 +222,7 @@ def main():
                 old, new = (results[name].to_dict() for name in ('reference', 'optimized'))
                 old.pop('timings_ms'); new.pop('timings_ms')
                 skipped += normalize_diagnostics(old, new, config.refine)
-                bad_outputs, empty_heads = compare_outputs(traces['reference'], traces['optimized'])
+                bad_outputs, empty_heads = compare_outputs(traces['reference'], traces['optimized'], counts=suppressed)
                 skipped_heads += empty_heads
                 if old != new or numeric_faces(results['reference']) != numeric_faces(results['optimized']) or bad_outputs:
                     mismatches.append({'frame': index, 'frame_result_differs': old != new,
@@ -222,6 +240,7 @@ def main():
                'model_calls': {name: dict(value) for name, value in counts.items()},
                'mirror_diagnostics_skipped': skipped, 'mismatches': mismatches,
                'conditional_empty_heads_skipped': skipped_heads,
+               'inactive_scale_raw_output_changes': suppressed['inactive_scale_calls'],
                'selection_identical': selection['reference'] == selection['optimized'], 'selection': selection}
         for name, bundle in bundles.items():
             directory = args.output / path.stem / name

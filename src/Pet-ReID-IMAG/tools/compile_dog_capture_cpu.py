@@ -19,6 +19,11 @@ from onnx import helper, numpy_helper, TensorProto
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# This decoder's DFL/keypoint operations never mix anchor positions. The scale
+# rewrite relies on that property, not merely on a YOLO-looking output shape.
+SCALE_CHECKPOINT_SHA256 = '48c2b9f580a6b29f6ec92f81d58bffcb06c609b4da4d77e4c85f259dc1b8d74c'
+SCALE_OUTPUT_CONTRACT = 'scores_and_eligible_anchors_exact'
+
 
 def conditional_heads(model):
     """Move non-score ancestors behind If after the CPU fusions are fixed.
@@ -103,7 +108,78 @@ all original nodes, weights, raw anchors and NMS ordering.
                    'score_and_shared_nodes': len(outside), 'output_width': width}
 
 
-def compile_config(config, output):
+def conditional_scale_heads(base):
+    """Specialize the archived 320 px decoder; compile_config pins its source.
+
+    Scores and all anchors reaching the supplied threshold remain exact. Only
+    box/keypoint intermediates of a wholly rejected scale may be replaced by
+    zeros; these anchors are discarded by the unchanged decoder before NMS.
+    Keep the original operator fusions and the whole-image empty fast path.
+    """
+    nodes = list(base.graph.node)
+    producers = {name: i for i, node in enumerate(nodes) for name in node.output}
+    shapes = {v.name: [d.dim_value for d in v.type.tensor_type.shape.dim] for v in base.graph.value_info}
+    model, detail = conditional_heads(base)
+    scores = nodes[producers[base.graph.output[0].name]].input[1]
+    shared = set()
+
+    def require(name, indices, stop=()):
+        index = producers.get(name)
+        if index is None or index in indices or index in stop:
+            return
+        indices.add(index)
+        for source in nodes[index].input:
+            require(source, indices, stop)
+
+    require(scores, shared)
+    positive = next(a.g for a in model.graph.node[-1].attribute if a.name == 'then_branch')
+    original = list(positive.node)
+    moved, gates, levels = set(), [], []
+    boundaries = (0, 1600, 2000, 2100)
+    for level, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
+        suffixes = (('', '_1', '_2')[level], ('_6', '_7', '_8')[level])
+        outputs = [f'/model.23/Reshape{suffix}_output_0' for suffix in suffixes]
+        if any(shapes.get(name) != [1, channels, end - start]
+               for name, channels in zip(outputs, (64, 18))):
+            raise ValueError('Unsupported archived pose head layout for scale compilation')
+        needed = set()
+        for name in outputs:
+            require(name, needed, shared)
+        if not needed or moved & needed:
+            raise ValueError('Scale heads share unexpected intermediate nodes')
+        internal = {name for i in needed for name in nodes[i].output} - set(outputs)
+        if any(name in internal for i, node in enumerate(nodes) if i not in needed for name in node.input):
+            raise ValueError('A scale head intermediate has an outside consumer')
+        moved.update(needed)
+        prefix = f'capture_scale_{level}_'
+        for name, value in (('start', [start]), ('end', [end]), ('axis', [2])):
+            model.graph.initializer.append(numpy_helper.from_array(np.asarray(value, np.int64), prefix + name))
+        yes = helper.make_graph([node for i, node in enumerate(nodes) if i in needed], prefix + 'heads', [],
+                                [helper.make_tensor_value_info(name, TensorProto.FLOAT, shapes[name]) for name in outputs])
+        no = helper.make_graph([
+            helper.make_node('Constant', [], [prefix + 'empty' + str(i)],
+                             value=numpy_helper.from_array(np.zeros(shapes[name], np.float32)))
+            for i, name in enumerate(outputs)], prefix + 'empty', [], [
+                helper.make_tensor_value_info(prefix + 'empty' + str(i), TensorProto.FLOAT, shapes[name])
+                for i, name in enumerate(outputs)])
+        gates.extend([
+            helper.make_node('Slice', [scores, prefix + 'start', prefix + 'end', prefix + 'axis'], [prefix + 'scores']),
+            helper.make_node('GreaterOrEqual', [prefix + 'scores', detail['conditional_score_input']], [prefix + 'pass']),
+            helper.make_node('Cast', [prefix + 'pass'], [prefix + 'int'], to=TensorProto.INT64),
+            helper.make_node('ReduceMax', [prefix + 'int'], [prefix + 'any'], keepdims=0),
+            helper.make_node('Cast', [prefix + 'any'], [prefix + 'run'], to=TensorProto.BOOL),
+            helper.make_node('If', [prefix + 'run'], outputs, name=prefix + 'heads', then_branch=yes, else_branch=no)])
+        levels.append({'anchors': [start, end], 'head_nodes': len(needed)})
+    positive.ClearField('node')
+    positive.node.extend(gates + [node for node in original if producers[node.output[0]] not in moved])
+    metadata = {p.key: p.value for p in model.metadata_props}
+    metadata['dog_capture.raw_output_contract'] = SCALE_OUTPUT_CONTRACT
+    helper.set_model_props(model, metadata)
+    onnx.checker.check_model(model)
+    return model, {**detail, 'conditional_scales': levels, 'raw_output_contract': SCALE_OUTPUT_CONTRACT}
+
+
+def compile_config(config, output, *, per_scale=False):
     import onnxruntime as ort
     from dog_capture.engine.runtime import _session_options, cpu_model_target
     from dog_capture.engine.zoo import find_face_model, sha256, verify_model
@@ -113,6 +189,9 @@ def compile_config(config, output):
     original_sha, sidecar = verify_model(source)
     if sidecar.get('cpu_compiled'):
         raise ValueError('Compile from the original checkpoint, not an already compiled graph')
+    if per_scale and original_sha != SCALE_CHECKPOINT_SHA256:
+        raise ValueError('Per-scale compilation supports only the archived dog_face_pose checkpoint; '
+                         'other models can use whole-image conditional compilation')
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=False)
     base = output / 'base_cpu.onnx'
@@ -121,7 +200,7 @@ def compile_config(config, output):
     settings.optimized_model_filepath = str(base)
     optimizer = ort.InferenceSession(str(source), settings, providers=['CPUExecutionProvider'])
     del optimizer
-    compiled, detail = conditional_heads(onnx.load(base))
+    compiled, detail = (conditional_scale_heads if per_scale else conditional_heads)(onnx.load(base))
     path = output / 'dog_face_pose_cpu.onnx'
     onnx.save(compiled, path)
     profile = {'version': 1, 'target': cpu_model_target(), 'source_sha256': original_sha, **detail}
@@ -139,8 +218,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True, help='New local model directory')
+    parser.add_argument('--per-scale', action='store_true',
+                        help='Also skip rejected scales of the archived 320 px pose checkpoint')
     args = parser.parse_args()
-    path, profile = compile_config(CaptureConfig.load(args.config), args.output)
+    path, profile = compile_config(CaptureConfig.load(args.config), args.output, per_scale=args.per_scale)
     print(json.dumps({'config': str(path), 'cpu_compiled': profile}, indent=2))
 
 
