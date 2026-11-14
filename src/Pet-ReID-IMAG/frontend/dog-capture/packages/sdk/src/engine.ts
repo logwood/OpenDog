@@ -7,6 +7,7 @@
 import { alignFace } from './alignment';
 import { defaultConfig, mergeConfig, type CaptureConfig, type ViewSpec } from './config';
 import type { BodyGate, FaceDetector } from './detectors';
+import { TemporalEvidence, type GateCheck, type GateStatus } from './evidence';
 import { guidance, type Guidance } from './guidance';
 import { crop, mirror, rotate, type Frame } from './image';
 import { faceGeometry, ViewClassifier, type FaceGeometry, type ViewState } from './pose';
@@ -110,7 +111,7 @@ export interface FrameResult {
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-interface Context { classifier: ViewClassifier; shots: TrackShots; retryAt?: number }
+interface Context { classifier: ViewClassifier; shots: TrackShots; evidence: TemporalEvidence; retryAt?: number }
 /** The detection a shot is judged on and kept with, and what was measured from it. */
 interface Sharpened { det: Detection; geometry: FaceGeometry; report: QualityReport; aligned: ReturnType<QualityAssessor['assess']>['aligned'] }
 
@@ -140,10 +141,7 @@ export class CaptureEngine {
   private fullDetected = -Infinity;
   private fullDetectedFrame = -1e9;
   private timings: Record<string, number> = {};
-  /** (time, cx, cy, size, 'pass' | 'fail' | 'present') per analysed face, keyed by place (not track id) */
-  private gateHistory: [number, number, number, number, string][] = [];
   private frameTimes: number[] = [];
-  private gateStatus = new Map<Detection, string>();
   /** Track near misses (each costs a landmark check); the H5 does not show them. */
   trackNearMisses = false;
   /** Per view: the best verified face that missed only the quality level (for review). */
@@ -173,7 +171,7 @@ export class CaptureEngine {
   private context(id: number): Context {
     let ctx = this.contexts.get(id);
     if (!ctx) {
-      ctx = { classifier: new ViewClassifier(this.config.pose),
+      ctx = { classifier: new ViewClassifier(this.config.pose), evidence: new TemporalEvidence(),
         shots: new TrackShots(id, this.viewNames, this.config.selection,
           Object.fromEntries(this.config.pose.views.map((v) => [v.name, v.shots]))) };
       this.contexts.set(id, ctx);
@@ -308,7 +306,6 @@ export class CaptureEngine {
     const window = this.config.refine.gate_window_s, keep = this.config.refine.gate_min_frames;
     this.frameTimes.push(t);
     while (this.frameTimes.length > keep && t - this.frameTimes[0] > window) this.frameTimes.shift();
-    while (this.gateHistory.length && this.gateHistory[0][0] < this.frameTimes[0]) this.gateHistory.shift();
     const external = detections !== undefined;
     const [rotation, probe] = external ? [0, false] : this.orientation.next(t);
     let work = rotate(frame, rotation);
@@ -344,7 +341,12 @@ export class CaptureEngine {
       timings.refine = now() - tr;
     }
     const [ok, roll] = this.uprightEvidence(valid);
-    if (!external && this.orientation.report(rotation, false, ok, t, roll)) this.resetForRotation(t);
+    if (!external && this.orientation.report(rotation, false, ok, t, roll)) {
+      this.resetForRotation(t);
+      // These detections still use the OLD rotation. Start fresh next frame;
+      // do not seed temporary tracks or perform a second inference pass.
+      return this.result([], [], index, t, rotation, rejected, timings, started);
+    }
     const t1 = now();
     let tracks = this.tracker.update(valid, t);
     for (const track of this.tracker.removed) this.archive(track.id, t);
@@ -368,14 +370,21 @@ export class CaptureEngine {
   }
 
   private resetForRotation(t: number) {
-    for (const track of this.tracker.tracks) this.archive(track.id, t);
+    for (const id of [...this.contexts.keys()]) this.archive(id, t);
     this.tracker.reset();
     this.refiner?.reset();
-    this.bodyTime = this.bodyChecked = -Infinity;
+    this.primaryId = null;
+    this.bodyBoxes = []; this.bodyScores = [];
+    this.bodyTime = this.bodyChecked = this.roiChecked = -Infinity;
+    this.fullDetected = -Infinity; this.fullDetectedFrame = -1e9;
+    this.frameTimes = [];
+    this.history = []; this.shownCode = null;
   }
 
   private async analyse(frame: Frame, track: Track, t: number, index: number, rotation: number): Promise<[FaceResult, CaptureEvent[]]> {
     const ctx = this.context(track.id);
+    if (this.frameTimes.length) ctx.evidence.trim(this.frameTimes[0]);
+    let gateStatus: GateStatus = 'present';
     const det = track.detection;
     const geometry = faceGeometry(det, this.config.pose);
     const state = ctx.classifier.update(t, geometry);
@@ -390,7 +399,7 @@ export class CaptureEngine {
       accepted: false, speedIodPerS: speed / Math.max(geometry.iod, 1e-6) };
     let eligible = inBand && report.passed && ctx.shots.eligibleLevel(report.level);
     if (inBand && report.passed && !eligible && this.trackNearMisses) {
-      await this.nearMiss(ctx, frame, det, target, state.view!, report, track.id, index, t);
+      gateStatus = await this.nearMiss(ctx, frame, det, target, state.view!, report, track.id, index, t);
     }
     // With a crop landmarker the per-frame keypoints are the tracker's; a shot candidate gets the
     // precise detector's (same view rule as the server's re-check), and those are judged and kept.
@@ -404,8 +413,9 @@ export class CaptureEngine {
       if (sharp) { pick = sharp; eligible = sharp.report.passed && ctx.shots.eligibleLevel(sharp.report.level); }
       // Landmarks first, sharpness second: a confident hallucination must not win on texture.
       if (problem === null && eligible && pick.aligned && ctx.shots.wants(state.view!, pick.report.score)) {
-        problem = await this.trusted(ctx, frame, pick.det, target, t);
-      } else if (problem !== null) this.gateStatus.set(det, 'fail');
+        const check = await this.trusted(ctx, frame, pick.det, target);
+        problem = check.problem; gateStatus = check.status;
+      } else if (problem !== null) gateStatus = 'fail';
       // (not while the temporal gate is still collecting its passes: those must be consecutive)
       if (problem && landmarked && problem !== 'landmarks_unstable') ctx.retryAt = t + this.config.refine.candidate_retry_s;
       if (problem) {
@@ -436,8 +446,7 @@ export class CaptureEngine {
     }
     this.pushEvents(events);
     if (this.refiner && det.source !== 'external') {
-      this.gateHistory.push([t, ...place(det), this.gateStatus.get(pick.det) ?? this.gateStatus.get(det) ?? 'present']);
-      this.gateStatus.delete(det); this.gateStatus.delete(pick.det);
+      ctx.evidence.record(t, place(det), gateStatus);
     }
     return [face, events];
   }
@@ -486,30 +495,24 @@ export class CaptureEngine {
   }
 
   /** Shot gate: this frame's landmark checks and a consistent recent history on the track. */
-  private async trusted(ctx: Context, frame: Frame, det: Detection, target: ViewSpec | null, t: number): Promise<string | null> {
-    void ctx; void t;
+  private async trusted(ctx: Context, frame: Frame, det: Detection, target: ViewSpec | null): Promise<GateCheck> {
     const problem = await this.unreliable(frame, det, target);
-    if (!this.refiner || det.source === 'external') return problem;
-    const f = this.config.refine;
-    this.gateStatus.set(det, problem ? 'fail' : 'pass');
-    if (problem) return problem;
-    const [cx, cy, size] = place(det);
-    const here = this.gateHistory.filter(([, x, y, s]) => Math.hypot(x - cx, y - cy) <= 0.5 * Math.max(s, size));
-    const passes = 1 + here.filter((e) => e[4] === 'pass').length;
-    const fails = here.filter((e) => e[4] === 'fail').length;
-    const missing = Math.max(0, this.frameTimes.length - 1 - new Set(here.map((e) => e[0])).size);
-    return passes < f.gate_min_passes || passes < f.gate_min_ratio * (passes + fails + missing) ? 'landmarks_unstable' : null;
+    if (!this.refiner || det.source === 'external') return { problem, status: 'present' };
+    if (problem) return { problem, status: 'fail' };
+    return { problem: ctx.evidence.rejectReason(place(det), this.frameTimes.length, this.config.refine), status: 'pass' };
   }
 
   private async nearMiss(ctx: Context, frame: Frame, det: Detection, target: ViewSpec | null, view: string,
-    report: QualityReport, trackId: number, index: number, t: number) {
+    report: QualityReport, trackId: number, index: number, t: number): Promise<GateStatus> {
     const best = this.nearMisses.get(view);
-    if (best && best.score >= report.score) return;
-    if (await this.trusted(ctx, frame, det, target, t)) return;   // never shown as "almost" unless verified
+    if (best && best.score >= report.score) return 'present';
+    const check = await this.trusted(ctx, frame, det, target);
+    if (check.problem) return check.status;   // never shown as "almost" unless verified
     const factors = Object.entries(report.factors ?? {});
     this.nearMisses.set(view, { view, frameIndex: index, timeS: t, trackId, score: report.score, level: report.level,
       needed: this.config.selection.min_level,
       weakest: factors.length ? factors.reduce((a, b) => (b[1] < a[1] ? b : a))[0] : null });
+    return check.status;
   }
 
   private debounce(advice: Guidance, t: number, windowS = 0.6): Guidance {

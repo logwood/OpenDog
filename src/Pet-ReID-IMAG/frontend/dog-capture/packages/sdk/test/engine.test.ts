@@ -5,7 +5,7 @@ import { inflateSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildManifest, CaptureEngine, defaultConfig, encodeBundle, FaceRefiner, fromBGR, getSchema, sha256Hex, SignalRecorder, YoloPoseDetector,
-  YoloxBodyGate, type Detection, type Frame, type Runner, type SessionConfig,
+  Track, YoloxBodyGate, type Detection, type Frame, type Runner, type SessionConfig,
 } from '../src';
 
 const DIR = resolve(__dirname, '../../../../../dog_capture/protocol/conformance');
@@ -16,6 +16,86 @@ const frames = Object.fromEntries(quality.frames.map((f: any) => {
   const det: Detection = { box: f.box, score: 0.9, keypoints: f.keypoints, schema: getSchema('anyface5') };
   return [f.name, { frame: fromBGR(unpack(f.frame_bgr), w, h), det }];
 })) as Record<string, { frame: Frame; det: Detection }>;
+
+function evidenceEngine() {
+  const engine = new CaptureEngine({ pose: { min_dwell_s: 0, min_dwell_obs: 1 }, selection: { mode: 'best' },
+    refine: { gate_min_passes: 2, gate_min_ratio: 0 } }, { size: 320, detect: async () => [] });
+  const internal = engine as any;
+  // Spatial/model checks pass. Isolate temporal ownership from pixel/model accuracy.
+  vi.spyOn(internal, 'unreliable').mockResolvedValue(null);
+  vi.spyOn(engine.assessor, 'assess').mockImplementation(() => ({ report: {
+    score: .9, level: 'high', passed: true, reasons: [], factors: {}, metrics: {},
+  }, aligned: {} as any }));
+  return { engine, internal };
+}
+
+it.each([false, true])('does not count nearby dogs as repeated frames (reverse=%s)', async (reverse) => {
+  const { engine, internal } = evidenceEngine();
+  const { frame, det } = frames.sharp;
+  const offset = .4 * Math.max(det.box[2] - det.box[0], det.box[3] - det.box[1]);
+  const other: Detection = { ...det, box: [det.box[0] + offset, det.box[1], det.box[2] + offset, det.box[3]],
+    keypoints: det.keypoints.map(([x, y]) => [x + offset, y]) };
+  const tracks = [new Track(1, det, 0, engine.tracker.kalman), new Track(2, other, 0, engine.tracker.kalman)];
+  if (reverse) tracks.reverse();
+  for (let i = 0; i < 2; i++) {
+    internal.frameTimes.push(i / 30);
+    const accepted = [];
+    for (const track of tracks) accepted.push((await internal.analyse(frame, track, i / 30, i, 0))[0].accepted);
+    expect(accepted).toEqual([i === 1, i === 1]);
+  }
+});
+
+it('requires fresh temporal evidence for a new track at the same place', async () => {
+  const { engine, internal } = evidenceEngine();
+  const { frame, det } = frames.sharp;
+  const first = new Track(1, det, 0, engine.tracker.kalman);
+  for (let i = 0; i < 2; i++) {
+    internal.frameTimes.push(i / 30);
+    await internal.analyse(frame, first, i / 30, i, 0);
+  }
+  internal.archive(1, 2 / 30);
+  internal.frameTimes.push(2 / 30);
+  const replacement = new Track(2, det, 2 / 30, engine.tracker.kalman);
+  const [result] = await internal.analyse(frame, replacement, 2 / 30, 2, 0);
+  expect(result.accepted).toBe(false);
+  expect(result.quality.reasons).toContain('landmarks_unstable');
+  expect(engine.bestBundle()!.best('front')).not.toBeNull(); // archived photos remain available
+});
+
+it('starts fresh after a rotation switch without seeding old-coordinate tracks', async () => {
+  const { frame, det } = frames.sharp;
+  const sideways: Detection = { ...det, keypoints: det.keypoints.map(([x, y]) => [frame.width - y, x]) };
+  const detect = vi.fn(async () => [sideways]);
+  const engine = new CaptureEngine({ refine: { enabled: false } }, { detect });
+  await engine.process(frame, 0, 0);
+  (engine as any).roiChecked = 0;
+  const result = await engine.process(frame, 1 / 30, 1);
+  expect(engine.orientation.rotation).toBe(270);
+  expect(result).toMatchObject({ rotationDeg: 0, faces: [] });
+  expect(engine.tracker.tracks).toHaveLength(0);
+  expect((engine as any).frameTimes).toHaveLength(0);
+  expect((engine as any).fullDetected).toBe(-Infinity);
+  expect((engine as any).roiChecked).toBe(-Infinity);
+  expect(detect).toHaveBeenCalledTimes(2);
+});
+
+it('clears all coordinate-bound caches when a probe changes the rotation', async () => {
+  const { frame, det } = frames.sharp;
+  const engine = new CaptureEngine({ refine: { enabled: false } }, { detect: async () => [det] });
+  const internal = engine as any;
+  internal.context(7); engine.primaryId = 7;
+  internal.bodyBoxes = [[0, 0, 100, 100]]; internal.bodyScores = [.9];
+  internal.bodyTime = internal.bodyChecked = internal.roiChecked = internal.fullDetected = 0;
+  internal.frameTimes = [0, .1];
+  expect(engine.orientation.report(90, true, true, .1, 0)).toBe(false);
+  vi.spyOn(engine.orientation, 'next').mockReturnValue([90, true]);
+  await engine.process(frame, .2, 2);
+  expect(engine.orientation.rotation).toBe(90);
+  expect(engine.contexts.size).toBe(0); expect(engine.primaryId).toBeNull();
+  expect(internal.frameTimes).toHaveLength(0);
+  expect(internal.bodyBoxes).toHaveLength(0); expect(internal.bodyScores).toHaveLength(0);
+  expect([internal.fullDetected, internal.roiChecked, internal.bodyChecked]).toEqual([-Infinity, -Infinity, -Infinity]);
+});
 
 async function run(engine: CaptureEngine, names: string[], start = 0) {
   const results = [];

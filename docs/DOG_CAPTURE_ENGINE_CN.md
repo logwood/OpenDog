@@ -178,7 +178,7 @@ Ultralytics 还能直接导出 TFLite / CoreML / NCNN / RKNN / OpenVINO / Tensor
 ## 8. 配置要点
 
 **2026-11-11 起的第二阶段重定位（`refine`）**：每张脸在规范化裁剪上重新定位（脸占 35%，整 90° 搜索 + 眼线细调），
-选图前再做三层核实（开环复查、眼睛图像证据、同一位置的时间稳定性），`dogface6` 的 `yaw_scale` 由 1.90 改为 1.05。
+选图前再做三层核实（开环复查、眼睛图像证据、同一轨迹近期位置的时间稳定性），`dogface6` 的 `yaw_scale` 由 1.90 改为 1.05。
 依据和数字见 [`DOG_CAPTURE_USER_VIDEO_ANALYSIS_CN.md`](DOG_CAPTURE_USER_VIDEO_ANALYSIS_CN.md)。新的拒绝原因：
 `landmarks_unreliable`（五官位置无法确认）、`eyes_not_visible`（看不到睁开的眼睛）、`landmarks_unstable`（时有时无）。
 手机相关的两项：`refine.empty_search_period_s` / `empty_search_min_frames`（四向搜索一无所获的位置短时间内不再重搜，默认开）；
@@ -204,6 +204,13 @@ Ultralytics 还能直接导出 TFLite / CoreML / NCNN / RKNN / OpenVINO / Tensor
 同时只对有效尺度解码框。本机完整配置为 `models/pretrained/dog_capture_cpu_layout_v1/capture.json`。
 构建需要 `onnx`、`sympy`；推理没有新增依赖。原 checkpoint、阈值、采样和复检次数保留。
 静态减算证明、完整视频精度与实时验收见 [跟踪网络文档第 14 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#14-将成本预算落实到共享网络与解码优化2026-11-15)。
+
+**采集状态结构修正（2026-11-15）**：Python 与 SDK 的时间证据改为每条轨迹独立保存，每帧最多记一次，
+避免相邻目标或新轨迹借用旧检查结果；检查直接返回结果，不再依赖 Detection 对象身份传递。
+方向切换统一清理旧坐标下的跟踪、ROI、时间与引导状态，保留已选照片，下一帧重新确认目标。
+模型、阈值与配置不变，不增加推理；两个视频 2,526 帧正常路径完全一致。CPU 实时新版均跑满 30 / 24 fps，
+平均约 11–12 ms，但 Wolfhound 的 P95 略增，不能称为全面提速。完整边界回归和全部轮次见
+[跟踪网络文档第 15 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#15-在保持速度的同时修正证据归属与坐标状态2026-11-15)。
 
 `python -m dog_capture config --write my.yaml` 会导出全部参数。常改的几项：
 

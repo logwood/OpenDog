@@ -1,0 +1,2193 @@
+{
+  "schema": "dog_capture_state_structure_v1",
+  "date": "2026-11-15",
+  "reference_commit": "43fe9b7b809239706645974fe09f7237a6cf4435",
+  "changes": [
+    "Track-owned temporal evidence; one observation per frame; explicit local pass/fail/present result replaces object-identity side channel.",
+    "Central coordinate reset for probe/direct rotation changes; archive shots, clear coordinate-bound live state, and wait for the next frame instead of seeding old-coordinate tracks."
+  ],
+  "before_after_reproductions": {
+    "before": "artifacts/runs/dog_capture/state_structure_20261115/before.txt",
+    "old_failing_cases": 5,
+    "issues": [
+      "Nearby dogs counted as repeated observations, depending on processing order.",
+      "A new track inherited the previous track's evidence at the same location.",
+      "Rotation reset immediately seeded new tracks from old-coordinate detections.",
+      "Probe reset retained coordinate-bound caches/contexts."
+    ]
+  },
+  "structural_cost": {
+    "added_network_inference": 0,
+    "models_weights_precision_sampling_thresholds": "unchanged",
+    "history_scan": "For T tracks with W recent observations each: global per-candidate filtering can inspect O(T^2 W) records per frame; track-owned filtering inspects O(T W). This is bookkeeping, not a claim about total frame speed.",
+    "scope": "Normal two-video paths remain exact. Targeted multi-track/rotation cases intentionally change to reject borrowed evidence and stale coordinates."
+  },
+  "method": {
+    "hardware": "Intel Core i9-13980HX, Windows 11, CPUExecutionProvider; RTX 4060 unused.",
+    "versions": {
+      "numpy": "2.4.4",
+      "opencv": "5.0.0",
+      "onnxruntime": "1.26.0"
+    },
+    "config": {
+      "detector": {
+        "kind": "auto",
+        "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_pose_cpu.onnx",
+        "input_size": 0,
+        "score_threshold": 0.35,
+        "nms_iou": 0.45,
+        "max_faces": 8,
+        "schema": "",
+        "roi_zoom": true,
+        "roi_min_zoom": 1.5,
+        "roi_period_s": 0.1
+      },
+      "refine": {
+        "enabled": true,
+        "landmarks": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_landmarks_cpu.onnx",
+        "share": 0.35,
+        "crop_size": 0,
+        "antialias": "tracker",
+        "candidate_retry_s": 0.25,
+        "search_period_s": 0.5,
+        "confident_score": 1.0,
+        "max_search_period_s": 2.0,
+        "switch_margin": 0.05,
+        "fine_min_deg": 8.0,
+        "research_below": 0.4,
+        "carry_frames": 3,
+        "match_iou": 0.3,
+        "full_detect_period_s": 0.3,
+        "min_shot_score": 0.5,
+        "max_mirror_disagreement": 0.2,
+        "min_front_eye_conf": 0.7,
+        "max_agreement": 0.3,
+        "min_side_eye_conf": 0.5,
+        "max_side_mirror_disagreement": 0.3,
+        "max_side_agreement": 0.5,
+        "min_eye_contrast": 0.2,
+        "gate_window_s": 0.5,
+        "gate_min_frames": 8,
+        "gate_min_ratio": 0.35,
+        "gate_min_passes": 3,
+        "full_detect_min_frames": 3,
+        "search_min_frames": 6,
+        "backoff_margin": 0.1,
+        "max_backoff": 4,
+        "empty_search_period_s": 0.25,
+        "empty_search_min_frames": 2
+      },
+      "body_gate": {
+        "enabled": "auto",
+        "model": "models/pretrained/dog_capture_v1/yolox_nano.onnx",
+        "input_size": 416,
+        "score_threshold": 0.3,
+        "class_id": 16,
+        "period_s": 0.25,
+        "hold_s": 0.75,
+        "margin": 0.15,
+        "head_score_threshold": 0.5
+      },
+      "tracker": {
+        "high_score": 0.5,
+        "low_score": 0.2,
+        "new_track_score": 0.55,
+        "match_iou": 0.2,
+        "low_match_iou": 0.5,
+        "unconfirmed_match_iou": 0.3,
+        "max_lost_s": 1.0,
+        "max_tracks": 16,
+        "nominal_fps": 30.0
+      },
+      "pose": {
+        "views": [
+          {
+            "name": "front",
+            "center": 0.0,
+            "lower": -0.13,
+            "upper": 0.13,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "left",
+            "center": -0.45,
+            "lower": -0.75,
+            "upper": -0.25,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "right",
+            "center": 0.45,
+            "lower": 0.25,
+            "upper": 0.75,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          }
+        ],
+        "exit_margin": 0.05,
+        "min_dwell_s": 0.12,
+        "min_dwell_obs": 3,
+        "max_gap_s": 0.3,
+        "smooth_min_cutoff": 1.5,
+        "smooth_beta": 0.5,
+        "snout_factor": 0.8,
+        "min_iod_box_ratio": 0.12,
+        "max_iod_box_ratio": 1.1,
+        "pitch_range": [
+          0.05,
+          2.2
+        ],
+        "max_abs_yaw": 1.2
+      },
+      "quality": {
+        "min_iod_px": 18.0,
+        "good_iod_px": 64.0,
+        "min_sharpness": 0.15,
+        "min_brightness": 30.0,
+        "max_brightness": 230.0,
+        "max_clipped": 0.3,
+        "min_contrast": 16.0,
+        "border_margin": 0.005,
+        "min_kp_score": 0.35,
+        "max_alignment_residual": 0.45,
+        "motion_ref_iod_per_s": 3.0,
+        "weights": {
+          "sharpness": 3.0,
+          "eye_detail": 2.0,
+          "exposure": 1.0,
+          "resolution": 1.5,
+          "confidence": 1.0,
+          "motion": 1.0,
+          "pose_fit": 0.75,
+          "alignment": 0.5
+        },
+        "high_level": 0.7,
+        "medium_level": 0.5
+      },
+      "selection": {
+        "mode": "hybrid",
+        "good_enough": 0.65,
+        "improve_window_s": 2.0,
+        "top_k": 1,
+        "min_gap_s": 0.3,
+        "min_level": "medium"
+      },
+      "output": {
+        "aligned_size": 224,
+        "template": "petface_dog",
+        "face_margin": 0.2,
+        "keep_frames": true,
+        "image_format": "png"
+      },
+      "runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "cache_dir": ".tmp/dog-capture-v1-ort-cache",
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": true,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8
+      }
+    },
+    "benchmark": {
+      "warmup_calls_per_model": 15,
+      "micro_timed_calls_per_stage": 300,
+      "micro_sampling": "uniform across each whole video; sequential decode; interleaved videos",
+      "inference": "prepared CPU tensor to returned CPU outputs, including GPU transfers/synchronization",
+      "detect": "BGR frame preprocessing + inference + decode/NMS",
+      "total": "production CaptureEngine.process; all gates/rotation/tracking/quality/selection enabled",
+      "capture_to_result": "submission to result, including worker queue; excludes camera/driver",
+      "scheduled_to_result": "scheduled video PTS to result, including producer lateness",
+      "excluded": "preview/UI rendering, network, Re-ID, final image saving; models warm before replay",
+      "startup": "new model sessions in an existing Python process; OS file cache not flushed"
+    },
+    "runtime": "Same compiled CPU layout models/config in both groups; HighQoS, ORT 4 threads, 1000 us spin/backoff 8, OpenCV 1 thread.",
+    "trial_order": [
+      "baseline_a",
+      "optimized_a",
+      "optimized_b",
+      "baseline_b"
+    ],
+    "video_order": "User then Wolfhound in A; reversed in B. Runs serial, no profiler.",
+    "pooling": "Pool individual frame timings; do not average per-run percentiles.",
+    "limitations": [
+      "CPU frequency and external system load not locked; no worst-case latency guarantee.",
+      "Dropped-frame trials can have different subsequent work/selection; not an equal-work speed comparison.",
+      "Two-video equivalence and synthetic boundary tests do not measure broader animal-identification accuracy.",
+      "SDK tests/typecheck/build passed; no new real phone throughput/energy or WebGPU/WASM model accuracy benchmark.",
+      "Missing-frame sensitivity of recurrent crop tracking and relative detection schedules remains outside these fixes."
+    ]
+  },
+  "realtime_trials": [
+    {
+      "trial": "baseline_a",
+      "video": "2611101816341481",
+      "evidence": "artifacts/runs/dog_capture/state_structure_20261115/baseline_a/summary.json",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1291,
+      "frames_dropped": 23,
+      "processed_fps": 29.47746929589712,
+      "elapsed_s": 43.796161300037056,
+      "model_calls": {
+        "face": 616,
+        "body": 122,
+        "landmarks": 1190
+      },
+      "timings_ms": {
+        "decode": {
+          "count": 1314,
+          "mean": 3.529074200399963,
+          "p50": 3.3116999838966876,
+          "p95": 4.636174987535923,
+          "p99": 11.145552993984829,
+          "max": 28.57129997573793
+        },
+        "producer_lateness": {
+          "count": 1314,
+          "mean": 0.4116472884976561,
+          "p50": 0.3784833495341644,
+          "p95": 0.6807133609733729,
+          "p99": 0.9087523502114595,
+          "max": 24.091900035273284
+        },
+        "detector": {
+          "count": 531,
+          "mean": 11.24811864169946,
+          "p50": 10.564600001089275,
+          "p95": 15.460750000784174,
+          "p99": 28.245260025141942,
+          "max": 91.31749998778105
+        },
+        "body_gate": {
+          "count": 91,
+          "mean": 14.90929011181304,
+          "p50": 11.278699967078865,
+          "p95": 28.252550022443756,
+          "p99": 77.53724997746728,
+          "max": 123.80579998716712
+        },
+        "refine": {
+          "count": 1289,
+          "mean": 4.434210396136241,
+          "p50": 4.561699985060841,
+          "p95": 9.215180017054077,
+          "p99": 15.102367973886402,
+          "max": 34.25020002759993
+        },
+        "tracking": {
+          "count": 1289,
+          "mean": 0.23642792916460045,
+          "p50": 0.22209994494915009,
+          "p95": 0.4373000119812785,
+          "p99": 0.7467959891073405,
+          "max": 2.9941999819129705
+        },
+        "analysis": {
+          "count": 1289,
+          "mean": 1.771315361576876,
+          "p50": 0.17399998614564538,
+          "p95": 7.24170000758022,
+          "p99": 16.50570402154688,
+          "max": 83.78670003730804
+        },
+        "total": {
+          "count": 1291,
+          "mean": 12.76233780077326,
+          "p50": 10.309199977200478,
+          "p95": 25.08135003154166,
+          "p99": 49.78740998194549,
+          "max": 260.63800003612414
+        },
+        "queue_wait": {
+          "count": 1291,
+          "mean": 0.7997224624355278,
+          "p50": 0.4325999761931598,
+          "p95": 0.7222999993246049,
+          "p99": 17.80587998800907,
+          "max": 36.22230002656579
+        },
+        "capture_to_result": {
+          "count": 1291,
+          "mean": 13.579641981149564,
+          "p50": 10.791900043841451,
+          "p95": 25.96490000723861,
+          "p99": 59.945960011100055,
+          "max": 260.9824999817647
+        },
+        "scheduled_to_result": {
+          "count": 1291,
+          "mean": 14.009349654139179,
+          "p50": 11.204400006681325,
+          "p95": 26.564033366348383,
+          "p99": 60.386420011054796,
+          "max": 261.30363338937104
+        },
+        "orientation_probe": {
+          "count": 2,
+          "mean": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 1.0
+        },
+        "head_gate": {
+          "count": 30,
+          "mean": 17.291826671377446,
+          "p50": 11.694449989590794,
+          "p95": 28.03369000030215,
+          "p99": 114.41796199302199,
+          "max": 149.3172000045888
+        },
+        "precise": {
+          "count": 28,
+          "mean": 10.766410703321785,
+          "p50": 9.070349973626435,
+          "p95": 16.581959967152216,
+          "p99": 34.651201979140765,
+          "max": 41.20069998316467
+        },
+        "shot_check": {
+          "count": 105,
+          "mean": 4.437696188688278,
+          "p50": 1.198299985844642,
+          "p95": 13.639840006362647,
+          "p99": 22.44112401269375,
+          "max": 23.438600008375943
+        },
+        "roi_detector": {
+          "count": 1,
+          "mean": 14.48409998556599,
+          "p50": 14.48409998556599,
+          "p95": 14.48409998556599,
+          "p99": 14.48409998556599,
+          "max": 14.48409998556599
+        }
+      },
+      "selected_frames": {},
+      "slowest_frames": [
+        {
+          "frame_index": 668,
+          "time_s": 22.26666666666667,
+          "timings_ms": {
+            "detector": 20.997899991925806,
+            "refine": 15.691899985540658,
+            "tracking": 0.8796000038273633,
+            "body_gate": 72.39629997638986,
+            "head_gate": 149.3172000045888,
+            "analysis": 0.38439995842054486,
+            "total": 260.63800003612414,
+            "queue_wait": 0.3225000109523535,
+            "capture_to_result": 260.9824999817647
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "not_dog"
+        },
+        {
+          "frame_index": 591,
+          "time_s": 19.700000000000003,
+          "timings_ms": {
+            "detector": 62.63589998707175,
+            "refine": 0.046600005589425564,
+            "tracking": 2.9941999819129705,
+            "body_gate": 123.80579998716712,
+            "analysis": 0.001500011421740055,
+            "total": 189.91610000375658,
+            "queue_wait": 0.5742000066675246,
+            "capture_to_result": 190.51849999232218
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "no_face"
+        },
+        {
+          "frame_index": 648,
+          "time_s": 21.6,
+          "timings_ms": {
+            "detector": 91.31749998778105,
+            "refine": 29.54019996104762,
+            "tracking": 0.8030000026337802,
+            "analysis": 0.0012999516911804676,
+            "total": 122.64420004794374,
+            "queue_wait": 17.764099990017712,
+            "capture_to_result": 140.4507999541238
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "no_face"
+        }
+      ]
+    },
+    {
+      "trial": "baseline_a",
+      "video": "wolfhound_panting",
+      "evidence": "artifacts/runs/dog_capture/state_structure_20261115/baseline_a/summary.json",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1212,
+      "frames_dropped": 0,
+      "processed_fps": 24.008076554667614,
+      "elapsed_s": 50.48301129997708,
+      "model_calls": {
+        "face": 286,
+        "body": 1,
+        "landmarks": 1233
+      },
+      "timings_ms": {
+        "decode": {
+          "count": 1212,
+          "mean": 3.5401980204660624,
+          "p50": 3.6148499930277467,
+          "p95": 4.983209993224591,
+          "p99": 5.513746957876726,
+          "max": 13.05299997329712
+        },
+        "producer_lateness": {
+          "count": 1212,
+          "mean": 0.42359208536129955,
+          "p50": 0.4010999982746455,
+          "p95": 0.7091416812460949,
+          "p99": 0.8709076970526297,
+          "max": 10.904100025072694
+        },
+        "detector": {
+          "count": 152,
+          "mean": 13.280982894541108,
+          "p50": 13.947500032372773,
+          "p95": 17.03898996929638,
+          "p99": 18.884881999110807,
+          "max": 19.252500031143427
+        },
+        "body_gate": {
+          "count": 1,
+          "mean": 9.780500025954098,
+          "p50": 9.780500025954098,
+          "p95": 9.780500025954098,
+          "p99": 9.780500025954098,
+          "max": 9.780500025954098
+        },
+        "refine": {
+          "count": 1212,
+          "mean": 5.689265182347071,
+          "p50": 5.740149994380772,
+          "p95": 8.451914979377761,
+          "p99": 9.648178011993906,
+          "max": 15.060999954584986
+        },
+        "tracking": {
+          "count": 1212,
+          "mean": 0.27850841532427534,
+          "p50": 0.27834996581077576,
+          "p95": 0.4564999835565688,
+          "p99": 0.5991370347328507,
+          "max": 0.8659000159241259
+        },
+        "analysis": {
+          "count": 1212,
+          "mean": 3.2846595708353035,
+          "p50": 2.2979500063229352,
+          "p95": 6.123794990708122,
+          "p99": 29.418858986464343,
+          "max": 38.19839999778196
+        },
+        "total": {
+          "count": 1212,
+          "mean": 11.186054537553808,
+          "p50": 10.133100004168227,
+          "p95": 22.496309989946905,
+          "p99": 36.453721992438716,
+          "max": 50.11109996121377
+        },
+        "queue_wait": {
+          "count": 1212,
+          "mean": 0.4831417494936825,
+          "p50": 0.4718500131275505,
+          "p95": 0.6777700065867975,
+          "p99": 0.8266840147553017,
+          "max": 9.201299981214106
+        },
+        "capture_to_result": {
+          "count": 1212,
+          "mean": 11.68621138604427,
+          "p50": 10.662299988325685,
+          "p95": 23.11090002185665,
+          "p99": 37.04609500069644,
+          "max": 50.572600041050464
+        },
+        "scheduled_to_result": {
+          "count": 1212,
+          "mean": 12.135232761488265,
+          "p50": 11.13086666252272,
+          "p95": 23.79768165798826,
+          "p99": 37.660715680491954,
+          "max": 51.17553334760849
+        },
+        "precise": {
+          "count": 53,
+          "mean": 11.406071700445676,
+          "p50": 10.365900001488626,
+          "p95": 19.295900000724938,
+          "p99": 27.081772014498704,
+          "max": 27.982100029475987
+        },
+        "shot_check": {
+          "count": 35,
+          "mean": 12.549351421850067,
+          "p50": 12.944100017193705,
+          "p95": 17.25470003439113,
+          "p99": 19.206910008797415,
+          "max": 19.823500013444573
+        }
+      },
+      "selected_frames": {
+        "front": [
+          20
+        ],
+        "left": [
+          278
+        ]
+      },
+      "slowest_frames": [
+        {
+          "frame_index": 232,
+          "time_s": 9.666666666666666,
+          "timings_ms": {
+            "detector": 15.493799990508705,
+            "refine": 4.074900003615767,
+            "tracking": 0.18590001855045557,
+            "precise": 15.087100036907941,
+            "shot_check": 12.126399960834533,
+            "analysis": 30.136499961372465,
+            "total": 50.11109996121377,
+            "queue_wait": 0.4494000459089875,
+            "capture_to_result": 50.572600041050464
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 144,
+          "time_s": 6.0,
+          "timings_ms": {
+            "detector": 11.154200008604676,
+            "refine": 3.10700002592057,
+            "tracking": 0.12590002734214067,
+            "precise": 11.986500001512468,
+            "shot_check": 16.34199998807162,
+            "analysis": 33.36180001497269,
+            "total": 47.9666999890469,
+            "queue_wait": 0.28089998522773385,
+            "capture_to_result": 48.26010001124814
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 344,
+          "time_s": 14.333333333333332,
+          "timings_ms": {
+            "detector": 11.227399983908981,
+            "refine": 3.6988999927416444,
+            "tracking": 0.2881000400520861,
+            "precise": 26.250700000673532,
+            "analysis": 30.783800000790507,
+            "total": 46.246099984273314,
+            "queue_wait": 0.3947000368498266,
+            "capture_to_result": 46.653400000650436
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        }
+      ]
+    },
+    {
+      "trial": "optimized_a",
+      "video": "2611101816341481",
+      "evidence": "artifacts/runs/dog_capture/state_structure_20261115/optimized_a/summary.json",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1314,
+      "frames_dropped": 0,
+      "processed_fps": 30.00019774102807,
+      "elapsed_s": 43.799711300001945,
+      "model_calls": {
+        "face": 628,
+        "body": 125,
+        "landmarks": 1178
+      },
+      "timings_ms": {
+        "decode": {
+          "count": 1314,
+          "mean": 2.984975114465823,
+          "p50": 2.8045000217389315,
+          "p95": 4.7560400096699595,
+          "p99": 5.326186993042938,
+          "max": 22.48789998702705
+        },
+        "producer_lateness": {
+          "count": 1314,
+          "mean": 0.42455740610586334,
+          "p50": 0.40433334846134983,
+          "p95": 0.6900933765172644,
+          "p99": 0.8273033804316106,
+          "max": 22.75290002580732
+        },
+        "detector": {
+          "count": 539,
+          "mean": 10.450508535350629,
+          "p50": 10.2377999573946,
+          "p95": 16.3428800238762,
+          "p99": 18.10462798923254,
+          "max": 18.811299989465624
+        },
+        "body_gate": {
+          "count": 92,
+          "mean": 12.845797826151323,
+          "p50": 11.997599969618022,
+          "p95": 20.80395504017361,
+          "p99": 23.818091991706762,
+          "max": 26.44690003944561
+        },
+        "refine": {
+          "count": 1312,
+          "mean": 3.708417303109522,
+          "p50": 3.497800003970042,
+          "p95": 7.841264997841791,
+          "p99": 12.650589998811505,
+          "max": 16.471500042825937
+        },
+        "tracking": {
+          "count": 1312,
+          "mean": 0.20513384200656706,
+          "p50": 0.16685001901350915,
+          "p95": 0.4153050191234798,
+          "p99": 0.5731569987256081,
+          "max": 0.7838000310584903
+        },
+        "analysis": {
+          "count": 1312,
+          "mean": 1.7616329267450677,
+          "p50": 0.2099999983329326,
+          "p95": 7.177450001472608,
+          "p99": 15.023816972970991,
+          "max": 23.560900008305907
+        },
+        "total": {
+          "count": 1314,
+          "mean": 11.38805662017972,
+          "p50": 9.897800016915426,
+          "p95": 25.91939500998705,
+          "p99": 31.096825005370192,
+          "max": 41.80250002536923
+        },
+        "queue_wait": {
+          "count": 1314,
+          "mean": 0.46354596668930903,
+          "p50": 0.42464997386559844,
+          "p95": 0.6932050193427131,
+          "p99": 0.951323005720037,
+          "max": 11.599199962802231
+        },
+        "capture_to_result": {
+          "count": 1314,
+          "mean": 11.864071461702364,
+          "p50": 10.371400014264509,
+          "p95": 26.305895013501868,
+          "p99": 31.782406003912882,
+          "max": 42.29539999505505
+        },
+        "scheduled_to_result": {
+          "count": 1314,
+          "mean": 12.307060221263642,
+          "p50": 10.731450025922573,
+          "p95": 26.765776696652207,
+          "p99": 32.67498303763146,
+          "max": 44.895600003656
+        },
+        "orientation_probe": {
+          "count": 2,
+          "mean": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 1.0
+        },
+        "head_gate": {
+          "count": 33,
+          "mean": 13.592015152839435,
+          "p50": 11.066700040828437,
+          "p95": 22.062319994438436,
+          "p99": 23.515104008838534,
+          "max": 23.761600023135543
+        },
+        "precise": {
+          "count": 27,
+          "mean": 9.768874071866136,
+          "p50": 10.80829999409616,
+          "p95": 16.105119977146387,
+          "p99": 17.851236009737473,
+          "max": 18.387200019787997
+        },
+        "shot_check": {
+          "count": 104,
+          "mean": 4.433777887383117,
+          "p50": 1.577200018800795,
+          "p95": 12.002759982715359,
+          "p99": 13.498492984799668,
+          "max": 15.92729997355491
+        },
+        "roi_detector": {
+          "count": 2,
+          "mean": 6.208150007296354,
+          "p50": 6.208150007296354,
+          "p95": 6.282085046404973,
+          "p99": 6.288657049881294,
+          "max": 6.290300050750375
+        }
+      },
+      "selected_frames": {},
+      "slowest_frames": [
+        {
+          "frame_index": 861,
+          "time_s": 28.700000000000003,
+          "timings_ms": {
+            "detector": 16.28149999305606,
+            "refine": 5.338400020264089,
+            "tracking": 0.24889997439458966,
+            "precise": 15.037700009997934,
+            "analysis": 19.70659999642521,
+            "total": 41.80250002536923,
+            "queue_wait": 0.477299967315048,
+            "capture_to_result": 42.29539999505505
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "capture_view"
+        },
+        {
+          "frame_index": 708,
+          "time_s": 23.6,
+          "timings_ms": {
+            "refine": 7.49539997195825,
+            "tracking": 0.37729996256530285,
+            "body_gate": 20.119100052397698,
+            "head_gate": 10.83629997447133,
+            "analysis": 0.000300002284348011,
+            "total": 38.98989997105673,
+            "queue_wait": 0.8873000042513013,
+            "capture_to_result": 39.89840002031997
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "not_dog"
+        },
+        {
+          "frame_index": 716,
+          "time_s": 23.866666666666667,
+          "timings_ms": {
+            "refine": 9.155999985523522,
+            "tracking": 0.45849999878555536,
+            "body_gate": 18.81320000393316,
+            "head_gate": 9.653499990236014,
+            "analysis": 0.000300002284348011,
+            "total": 38.29260001657531,
+            "queue_wait": 0.5197999998927116,
+            "capture_to_result": 38.823199982289225
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "not_dog"
+        }
+      ]
+    },
+    {
+      "trial": "optimized_a",
+      "video": "wolfhound_panting",
+      "evidence": "artifacts/runs/dog_capture/state_structure_20261115/optimized_a/summary.json",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1212,
+      "frames_dropped": 0,
+      "processed_fps": 24.007924469167623,
+      "elapsed_s": 50.48333109996747,
+      "model_calls": {
+        "face": 286,
+        "body": 1,
+        "landmarks": 1233
+      },
+      "timings_ms": {
+        "decode": {
+          "count": 1212,
+          "mean": 3.1755822614640636,
+          "p50": 3.220699989469722,
+          "p95": 4.724819978582673,
+          "p99": 5.279829994542525,
+          "max": 11.637900024652481
+        },
+        "producer_lateness": {
+          "count": 1212,
+          "mean": 0.41037943548000383,
+          "p50": 0.3931333388536018,
+          "p95": 0.7006416572652441,
+          "p99": 0.8671306356948193,
+          "max": 10.420699953101575
+        },
+        "detector": {
+          "count": 152,
+          "mean": 14.314532896892878,
+          "p50": 16.28345000790432,
+          "p95": 19.06673498742748,
+          "p99": 19.4923620269401,
+          "max": 19.61220003431663
+        },
+        "body_gate": {
+          "count": 1,
+          "mean": 9.084000019356608,
+          "p50": 9.084000019356608,
+          "p95": 9.084000019356608,
+          "p99": 9.084000019356608,
+          "max": 9.084000019356608
+        },
+        "refine": {
+          "count": 1212,
+          "mean": 5.249394307131249,
+          "p50": 5.615850037429482,
+          "p95": 7.918559966492467,
+          "p99": 9.397047988604779,
+          "max": 13.320199970621616
+        },
+        "tracking": {
+          "count": 1212,
+          "mean": 0.2649509893648062,
+          "p50": 0.29495000489987433,
+          "p95": 0.39496501267421996,
+          "p99": 0.5932430352550009,
+          "max": 0.7166999857872725
+        },
+        "analysis": {
+          "count": 1212,
+          "mean": 3.223101814391196,
+          "p50": 2.558549982495606,
+          "p95": 6.3707600056659475,
+          "p99": 30.413097008131476,
+          "max": 36.82219999609515
+        },
+        "total": {
+          "count": 1212,
+          "mean": 10.764143811792394,
+          "p50": 9.619399963412434,
+          "p95": 25.82064499438275,
+          "p99": 37.82792799465826,
+          "max": 55.88559998432174
+        },
+        "queue_wait": {
+          "count": 1212,
+          "mean": 0.47097632108393,
+          "p50": 0.45224998029880226,
+          "p95": 0.6955599994398654,
+          "p99": 0.9597649535862838,
+          "max": 14.965499984100461
+        },
+        "capture_to_result": {
+          "count": 1212,
+          "mean": 11.248647773130443,
+          "p50": 10.10169999790378,
+          "p95": 26.409455024986528,
+          "p99": 38.19261599041059,
+          "max": 56.472099968232214
+        },
+        "scheduled_to_result": {
+          "count": 1212,
+          "mean": 11.679571680092044,
+          "p50": 10.51669998560456,
+          "p95": 26.847428300728726,
+          "p99": 38.71255864195269,
+          "max": 57.05483329560046
+        },
+        "precise": {
+          "count": 53,
+          "mean": 11.554169807943323,
+          "p50": 11.79799996316433,
+          "p95": 16.81080003036186,
+          "p99": 20.939312009140835,
+          "max": 23.211399966385216
+        },
+        "shot_check": {
+          "count": 35,
+          "mean": 11.357908572868578,
+          "p50": 11.543799948412925,
+          "p95": 14.296990016009659,
+          "p99": 16.88659601029939,
+          "max": 18.109099997673184
+        }
+      },
+      "selected_frames": {
+        "front": [
+          20
+        ],
+        "left": [
+          278
+        ]
+      },
+      "slowest_frames": [
+        {
+          "frame_index": 232,
+          "time_s": 9.666666666666666,
+          "timings_ms": {
+            "detector": 19.115299975965172,
+            "refine": 6.2750999932177365,
+            "tracking": 0.28520001797005534,
+            "precise": 15.276599966455251,
+            "shot_check": 11.516799975652248,
+            "analysis": 29.94620002573356,
+            "total": 55.88559998432174,
+            "queue_wait": 0.5734000005759299,
+            "capture_to_result": 56.472099968232214
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 144,
+          "time_s": 6.0,
+          "timings_ms": {
+            "detector": 9.887899970635772,
+            "refine": 5.216399964410812,
+            "tracking": 0.24580000899732113,
+            "precise": 13.169499987270683,
+            "shot_check": 11.083099991083145,
+            "analysis": 29.82309996150434,
+            "total": 45.37359997630119,
+            "queue_wait": 0.36639999598264694,
+            "capture_to_result": 45.750999997835606
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 240,
+          "time_s": 10.0,
+          "timings_ms": {
+            "detector": 16.459800011944026,
+            "refine": 4.0422999882139266,
+            "tracking": 0.20020001102238894,
+            "precise": 9.15200001327321,
+            "shot_check": 11.543799948412925,
+            "analysis": 23.801099974662066,
+            "total": 44.70420000143349,
+            "queue_wait": 0.39770000148564577,
+            "capture_to_result": 45.11469998396933
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        }
+      ]
+    },
+    {
+      "trial": "optimized_b",
+      "video": "wolfhound_panting",
+      "evidence": "artifacts/runs/dog_capture/state_structure_20261115/optimized_b/summary.json",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1212,
+      "frames_dropped": 0,
+      "processed_fps": 24.005799515945117,
+      "elapsed_s": 50.487799800001085,
+      "model_calls": {
+        "face": 286,
+        "body": 1,
+        "landmarks": 1233
+      },
+      "timings_ms": {
+        "decode": {
+          "count": 1212,
+          "mean": 3.350825906585573,
+          "p50": 3.3790500019676983,
+          "p95": 4.88029996631667,
+          "p99": 5.273896007565783,
+          "max": 13.276200043037534
+        },
+        "producer_lateness": {
+          "count": 1212,
+          "mean": 0.4156798002052525,
+          "p50": 0.40133334308389834,
+          "p95": 0.7123483247923446,
+          "p99": 0.8561113717368585,
+          "max": 11.622400023043156
+        },
+        "detector": {
+          "count": 152,
+          "mean": 15.0312026284825,
+          "p50": 17.08259995211847,
+          "p95": 19.11299002240412,
+          "p99": 19.636661979020577,
+          "max": 19.98219999950379
+        },
+        "body_gate": {
+          "count": 1,
+          "mean": 9.683299984317273,
+          "p50": 9.683299984317273,
+          "p95": 9.683299984317273,
+          "p99": 9.683299984317273,
+          "max": 9.683299984317273
+        },
+        "refine": {
+          "count": 1212,
+          "mean": 5.5390584976362405,
+          "p50": 5.853550013853237,
+          "p95": 8.04808999528177,
+          "p99": 9.09110697626602,
+          "max": 13.853399956133217
+        },
+        "tracking": {
+          "count": 1212,
+          "mean": 0.27965544502054135,
+          "p50": 0.3080999886151403,
+          "p95": 0.42087997135240585,
+          "p99": 0.5910849670181058,
+          "max": 0.8664000197313726
+        },
+        "analysis": {
+          "count": 1212,
+          "mean": 3.422330197539694,
+          "p50": 2.68169998889789,
+          "p95": 6.171334994724024,
+          "p99": 29.925142005085977,
+          "max": 41.73970001284033
+        },
+        "total": {
+          "count": 1212,
+          "mean": 11.369303959708434,
+          "p50": 9.991500002797693,
+          "p95": 26.58564002776984,
+          "p99": 38.693739004084,
+          "max": 54.21370000112802
+        },
+        "queue_wait": {
+          "count": 1212,
+          "mean": 0.5042322605107558,
+          "p50": 0.4776999703608453,
+          "p95": 0.752219997229986,
+          "p99": 0.8752889710012823,
+          "max": 12.957300001289696
+        },
+        "capture_to_result": {
+          "count": 1212,
+          "mean": 11.886977969834783,
+          "p50": 10.551949992077425,
+          "p95": 27.188940008636568,
+          "p99": 39.18007299420434,
+          "max": 54.63239998789504
+        },
+        "scheduled_to_result": {
+          "count": 1212,
+          "mean": 12.322615525492978,
+          "p50": 11.02233333707403,
+          "p95": 27.630395005691,
+          "p99": 39.37107035851451,
+          "max": 55.20313334030469
+        },
+        "precise": {
+          "count": 53,
+          "mean": 11.670198116917163,
+          "p50": 11.30760001251474,
+          "p95": 18.853619997389615,
+          "p99": 20.75142001034692,
+          "max": 20.964100025594234
+        },
+        "shot_check": {
+          "count": 35,
+          "mean": 11.663828570661801,
+          "p50": 11.617699987255037,
+          "p95": 16.898089979076754,
+          "p99": 18.54723999276757,
+          "max": 18.781499995384365
+        }
+      },
+      "selected_frames": {
+        "front": [
+          20
+        ],
+        "left": [
+          278
+        ]
+      },
+      "slowest_frames": [
+        {
+          "frame_index": 232,
+          "time_s": 9.666666666666666,
+          "timings_ms": {
+            "detector": 17.204100033268332,
+            "refine": 5.43449999531731,
+            "tracking": 0.2610000083222985,
+            "precise": 16.784300038125366,
+            "shot_check": 10.829899983946234,
+            "analysis": 31.088799994904548,
+            "total": 54.21370000112802,
+            "queue_wait": 0.40929997339844704,
+            "capture_to_result": 54.63239998789504
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 144,
+          "time_s": 6.0,
+          "timings_ms": {
+            "detector": 14.085999981034547,
+            "refine": 4.104499996174127,
+            "tracking": 0.16529997810721397,
+            "precise": 14.25609999569133,
+            "shot_check": 10.922000044956803,
+            "analysis": 29.959000006783754,
+            "total": 48.480199999175966,
+            "queue_wait": 0.3559000324457884,
+            "capture_to_result": 48.84689999744296
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 305,
+          "time_s": 12.708333333333332,
+          "timings_ms": {
+            "refine": 5.469900032039732,
+            "tracking": 0.2673999988473952,
+            "precise": 14.963400026317686,
+            "shot_check": 18.781499995384365,
+            "analysis": 41.73970001284033,
+            "total": 47.699399990960956,
+            "queue_wait": 0.5042999982833862,
+            "capture_to_result": 48.21449995506555
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        }
+      ]
+    },
+    {
+      "trial": "optimized_b",
+      "video": "2611101816341481",
+      "evidence": "artifacts/runs/dog_capture/state_structure_20261115/optimized_b/summary.json",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1314,
+      "frames_dropped": 0,
+      "processed_fps": 30.006961340972897,
+      "elapsed_s": 43.78983880003216,
+      "model_calls": {
+        "face": 628,
+        "body": 125,
+        "landmarks": 1178
+      },
+      "timings_ms": {
+        "decode": {
+          "count": 1314,
+          "mean": 3.1182693310090466,
+          "p50": 3.1911000260151923,
+          "p95": 4.672010010108352,
+          "p99": 5.161211991799053,
+          "max": 16.492699971422553
+        },
+        "producer_lateness": {
+          "count": 1314,
+          "mean": 0.39575936578610477,
+          "p50": 0.3667833186522529,
+          "p95": 0.6855366557506848,
+          "p99": 0.8542436858767899,
+          "max": 16.744800028391182
+        },
+        "detector": {
+          "count": 539,
+          "mean": 10.78932467558212,
+          "p50": 10.856000008061528,
+          "p95": 16.625060036312785,
+          "p99": 18.47462998353876,
+          "max": 22.50140003161505
+        },
+        "body_gate": {
+          "count": 92,
+          "mean": 12.905081523374816,
+          "p50": 12.625950010260567,
+          "p95": 20.857864993740804,
+          "p99": 22.966068031964824,
+          "max": 23.252899991348386
+        },
+        "refine": {
+          "count": 1312,
+          "mean": 4.176481555676706,
+          "p50": 4.281550005543977,
+          "p95": 9.499140016851015,
+          "p99": 13.024277013028044,
+          "max": 17.435999994631857
+        },
+        "tracking": {
+          "count": 1312,
+          "mean": 0.22994725458840726,
+          "p50": 0.2056499943137169,
+          "p95": 0.44846498058177536,
+          "p99": 0.613590015564114,
+          "max": 1.0406000073999166
+        },
+        "analysis": {
+          "count": 1312,
+          "mean": 2.0064116621453163,
+          "p50": 0.2526500029489398,
+          "p95": 7.316459991852762,
+          "p99": 17.4663970124675,
+          "max": 31.892400002107024
+        },
+        "total": {
+          "count": 1314,
+          "mean": 12.272905251052007,
+          "p50": 10.428599984152243,
+          "p95": 26.541729993186884,
+          "p99": 33.98713801347176,
+          "max": 58.63759998464957
+        },
+        "queue_wait": {
+          "count": 1314,
+          "mean": 0.4919006092217999,
+          "p50": 0.40034999256022274,
+          "p95": 0.6961250037420538,
+          "p99": 1.9275360234314365,
+          "max": 26.00059995893389
+        },
+        "capture_to_result": {
+          "count": 1314,
+          "mean": 12.777693150821957,
+          "p50": 11.003199993865564,
+          "p95": 27.06203997367992,
+          "p99": 35.237969979061646,
+          "max": 59.11730002844706
+        },
+        "scheduled_to_result": {
+          "count": 1314,
+          "mean": 13.193811877587425,
+          "p50": 11.42599999438998,
+          "p95": 27.649826645888417,
+          "p99": 35.58517001464367,
+          "max": 59.61363331492464
+        },
+        "orientation_probe": {
+          "count": 2,
+          "mean": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 1.0
+        },
+        "head_gate": {
+          "count": 33,
+          "mean": 13.32148484652862,
+          "p50": 12.387900031171739,
+          "p95": 21.622260008007288,
+          "p99": 22.040336029604077,
+          "max": 22.234000032767653
+        },
+        "precise": {
+          "count": 27,
+          "mean": 11.12389629189339,
+          "p50": 9.57860000198707,
+          "p95": 22.788729990134012,
+          "p99": 24.60421599796973,
+          "max": 24.621999997179955
+        },
+        "shot_check": {
+          "count": 104,
+          "mean": 5.102852886641183,
+          "p50": 1.8710499862208962,
+          "p95": 15.136740013258532,
+          "p99": 15.87491798622068,
+          "max": 18.162299995310605
+        },
+        "roi_detector": {
+          "count": 2,
+          "mean": 6.031049997545779,
+          "p50": 6.031049997545779,
+          "p95": 6.061875022714958,
+          "p99": 6.064615024952218,
+          "max": 6.065300025511533
+        }
+      },
+      "selected_frames": {},
+      "slowest_frames": [
+        {
+          "frame_index": 1118,
+          "time_s": 37.266666666666666,
+          "timings_ms": {
+            "detector": 22.50140003161505,
+            "refine": 7.812600000761449,
+            "tracking": 0.5341999931260943,
+            "precise": 18.670699966605753,
+            "analysis": 27.331800025422126,
+            "total": 58.63759998464957,
+            "queue_wait": 0.4553000326268375,
+            "capture_to_result": 59.11730002844706
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "dog_far"
+        },
+        {
+          "frame_index": 716,
+          "time_s": 23.866666666666667,
+          "timings_ms": {
+            "refine": 11.647799983620644,
+            "tracking": 0.526699994225055,
+            "body_gate": 23.252899991348386,
+            "head_gate": 10.081299988087267,
+            "analysis": 0.000300002284348011,
+            "total": 45.75780004961416,
+            "queue_wait": 0.6693999748677015,
+            "capture_to_result": 46.4405000093393
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "not_dog"
+        },
+        {
+          "frame_index": 278,
+          "time_s": 9.266666666666667,
+          "timings_ms": {
+            "detector": 17.865700006950647,
+            "refine": 4.7768999938853085,
+            "tracking": 0.3492000396363437,
+            "precise": 13.696099980734289,
+            "analysis": 20.042799995280802,
+            "total": 43.2703000260517,
+            "queue_wait": 0.7229999755509198,
+            "capture_to_result": 44.00639998493716
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        }
+      ]
+    },
+    {
+      "trial": "baseline_b",
+      "video": "wolfhound_panting",
+      "evidence": "artifacts/runs/dog_capture/state_structure_20261115/baseline_b/summary.json",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1212,
+      "frames_dropped": 0,
+      "processed_fps": 24.006429064320905,
+      "elapsed_s": 50.48647579998942,
+      "model_calls": {
+        "face": 286,
+        "body": 1,
+        "landmarks": 1233
+      },
+      "timings_ms": {
+        "decode": {
+          "count": 1212,
+          "mean": 3.3421570942514323,
+          "p50": 3.454499994404614,
+          "p95": 4.762110029696487,
+          "p99": 5.211858988041058,
+          "max": 13.578999962192029
+        },
+        "producer_lateness": {
+          "count": 1212,
+          "mean": 0.41014873983764194,
+          "p50": 0.38114996277971436,
+          "p95": 0.6810316330936318,
+          "p99": 0.9092916226170386,
+          "max": 13.797999999951571
+        },
+        "detector": {
+          "count": 152,
+          "mean": 13.820138157155414,
+          "p50": 14.916949992766604,
+          "p95": 18.899839997175146,
+          "p99": 20.004210022161722,
+          "max": 21.642700012307614
+        },
+        "body_gate": {
+          "count": 1,
+          "mean": 11.69590000063181,
+          "p50": 11.69590000063181,
+          "p95": 11.69590000063181,
+          "p99": 11.69590000063181,
+          "max": 11.69590000063181
+        },
+        "refine": {
+          "count": 1212,
+          "mean": 5.471633085516118,
+          "p50": 5.5925500055309385,
+          "p95": 8.217639973736368,
+          "p99": 9.125467972480697,
+          "max": 13.454900006763637
+        },
+        "tracking": {
+          "count": 1212,
+          "mean": 0.27265099089334505,
+          "p50": 0.2748499973677099,
+          "p95": 0.4331199801526964,
+          "p99": 0.6242799933534128,
+          "max": 0.7913000299595296
+        },
+        "analysis": {
+          "count": 1212,
+          "mean": 3.222951403538168,
+          "p50": 2.3374500160571188,
+          "p95": 6.118834973312915,
+          "p99": 29.465681978035768,
+          "max": 39.29980000248179
+        },
+        "total": {
+          "count": 1212,
+          "mean": 10.952515181865952,
+          "p50": 9.80615001753904,
+          "p95": 24.585815018508583,
+          "p99": 37.45787097257562,
+          "max": 57.18800000613555
+        },
+        "queue_wait": {
+          "count": 1212,
+          "mean": 0.46481699704864177,
+          "p50": 0.4351499956101179,
+          "p95": 0.6790900224586949,
+          "p99": 0.8442379737971355,
+          "max": 15.927399974316359
+        },
+        "capture_to_result": {
+          "count": 1212,
+          "mean": 11.432661469989277,
+          "p50": 10.30620001256466,
+          "p95": 25.419164990307767,
+          "p99": 37.869489002623595,
+          "max": 57.822000002488494
+        },
+        "scheduled_to_result": {
+          "count": 1212,
+          "mean": 11.865522914516367,
+          "p50": 10.704433302939798,
+          "p95": 25.873291636041067,
+          "p99": 38.59721966650613,
+          "max": 58.18659998476505
+        },
+        "precise": {
+          "count": 53,
+          "mean": 11.41188868413732,
+          "p50": 11.18460000725463,
+          "p95": 18.954719998873767,
+          "p99": 21.393936031963673,
+          "max": 22.067700047045946
+        },
+        "shot_check": {
+          "count": 35,
+          "mean": 12.125022859046501,
+          "p50": 12.003200012259185,
+          "p95": 16.46459998446516,
+          "p99": 23.986106008524043,
+          "max": 27.12230000179261
+        }
+      },
+      "selected_frames": {
+        "front": [
+          20
+        ],
+        "left": [
+          278
+        ]
+      },
+      "slowest_frames": [
+        {
+          "frame_index": 144,
+          "time_s": 6.0,
+          "timings_ms": {
+            "detector": 18.63700000103563,
+            "refine": 4.906799993477762,
+            "tracking": 0.2253999700769782,
+            "precise": 15.872300020419061,
+            "shot_check": 11.411799991037697,
+            "analysis": 33.202200022060424,
+            "total": 57.18800000613555,
+            "queue_wait": 0.6199999479576945,
+            "capture_to_result": 57.822000002488494
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 232,
+          "time_s": 9.666666666666666,
+          "timings_ms": {
+            "detector": 16.400200023781508,
+            "refine": 3.6314999451860785,
+            "tracking": 0.16160000814124942,
+            "precise": 13.245000038295984,
+            "shot_check": 12.67959998222068,
+            "analysis": 28.33450003527105,
+            "total": 48.735400021541864,
+            "queue_wait": 0.548600044567138,
+            "capture_to_result": 49.29910000646487
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 131,
+          "time_s": 5.458333333333333,
+          "timings_ms": {
+            "refine": 6.408499961253256,
+            "tracking": 0.31859998125582933,
+            "precise": 18.164000008255243,
+            "shot_check": 13.992700027301908,
+            "analysis": 39.29980000248179,
+            "total": 46.25710000982508,
+            "queue_wait": 0.3893999964930117,
+            "capture_to_result": 46.65719997137785
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        }
+      ]
+    },
+    {
+      "trial": "baseline_b",
+      "video": "2611101816341481",
+      "evidence": "artifacts/runs/dog_capture/state_structure_20261115/baseline_b/summary.json",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1296,
+      "frames_dropped": 18,
+      "processed_fps": 29.597046691582133,
+      "elapsed_s": 43.788152699999046,
+      "model_calls": {
+        "face": 626,
+        "body": 128,
+        "landmarks": 1180
+      },
+      "timings_ms": {
+        "decode": {
+          "count": 1314,
+          "mean": 3.3729132422553643,
+          "p50": 2.941300015663728,
+          "p95": 5.8093450090382195,
+          "p99": 9.491702985251308,
+          "max": 73.45240004360676
+        },
+        "producer_lateness": {
+          "count": 1314,
+          "mean": 0.5269453482499749,
+          "p50": 0.38935000193163205,
+          "p95": 0.6902449968038126,
+          "p99": 1.2470729685147945,
+          "max": 44.9456333027527
+        },
+        "detector": {
+          "count": 540,
+          "mean": 10.3077937003777,
+          "p50": 9.44659998640418,
+          "p95": 15.93562500493135,
+          "p99": 27.348439984489243,
+          "max": 58.937299996614456
+        },
+        "body_gate": {
+          "count": 95,
+          "mean": 13.988805265705052,
+          "p50": 11.997799971140921,
+          "p95": 23.215200012782585,
+          "p99": 36.89254799624906,
+          "max": 38.82969997357577
+        },
+        "refine": {
+          "count": 1294,
+          "mean": 4.485134233362898,
+          "p50": 4.043449996970594,
+          "p95": 10.76608001894783,
+          "p99": 19.123212033300653,
+          "max": 119.18689997401088
+        },
+        "tracking": {
+          "count": 1294,
+          "mean": 0.2507273565421465,
+          "p50": 0.1903500233311206,
+          "p95": 0.5535700242035091,
+          "p99": 0.9238819876918561,
+          "max": 7.494300021789968
+        },
+        "analysis": {
+          "count": 1294,
+          "mean": 2.3643894903210656,
+          "p50": 0.19069999689236283,
+          "p95": 9.518729968112876,
+          "p99": 23.17855698813213,
+          "max": 77.75920000858605
+        },
+        "total": {
+          "count": 1296,
+          "mean": 12.954120601748008,
+          "p50": 10.278499976266176,
+          "p95": 29.483825026545674,
+          "p99": 57.93486502079745,
+          "max": 149.11140000913292
+        },
+        "queue_wait": {
+          "count": 1296,
+          "mean": 0.9878314043884596,
+          "p50": 0.4335499834269285,
+          "p95": 1.4764250081498176,
+          "p99": 18.001704971538853,
+          "max": 33.27409998746589
+        },
+        "capture_to_result": {
+          "count": 1296,
+          "mean": 13.95735871793241,
+          "p50": 10.781749995658174,
+          "p95": 33.02694999729283,
+          "p99": 63.46113500185302,
+          "max": 160.8857000246644
+        },
+        "scheduled_to_result": {
+          "count": 1296,
+          "mean": 14.437283891010543,
+          "p50": 11.207099980674151,
+          "p95": 33.44982500129756,
+          "p99": 64.1471349669158,
+          "max": 161.38863330318821
+        },
+        "orientation_probe": {
+          "count": 2,
+          "mean": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 1.0
+        },
+        "head_gate": {
+          "count": 33,
+          "mean": 12.401366664562374,
+          "p50": 10.584299976471812,
+          "p95": 20.03362000687048,
+          "p99": 20.778700003866106,
+          "max": 20.8627000101842
+        },
+        "precise": {
+          "count": 30,
+          "mean": 12.2990533321475,
+          "p50": 9.262699983082712,
+          "p95": 26.93785997398662,
+          "p99": 33.26606999791694,
+          "max": 35.010999999940395
+        },
+        "shot_check": {
+          "count": 106,
+          "mean": 6.193652831430916,
+          "p50": 1.7894500051625073,
+          "p95": 18.56237498577684,
+          "p99": 37.836765008978546,
+          "max": 38.59169996576384
+        },
+        "roi_detector": {
+          "count": 2,
+          "mean": 7.343950012000278,
+          "p50": 7.343950012000278,
+          "p95": 7.972285003052093,
+          "p99": 8.028137002256699,
+          "max": 8.04210000205785
+        }
+      },
+      "selected_frames": {},
+      "slowest_frames": [
+        {
+          "frame_index": 413,
+          "time_s": 13.766666666666667,
+          "timings_ms": {
+            "refine": 119.18689997401088,
+            "tracking": 7.494300021789968,
+            "analysis": 20.46659996267408,
+            "total": 149.11140000913292,
+            "queue_wait": 11.7401999887079,
+            "capture_to_result": 160.8857000246644
+          },
+          "faces": 2,
+          "rotation_deg": 0,
+          "guidance": "blurred"
+        },
+        {
+          "frame_index": 378,
+          "time_s": 12.600000000000001,
+          "timings_ms": {
+            "refine": 58.976200001779944,
+            "tracking": 5.529399961233139,
+            "analysis": 57.980399986263365,
+            "total": 125.09770004544407,
+            "queue_wait": 1.316900015808642,
+            "capture_to_result": 126.46960001438856
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "blurred"
+        },
+        {
+          "frame_index": 267,
+          "time_s": 8.9,
+          "timings_ms": {
+            "refine": 10.268600017298013,
+            "tracking": 0.8926000446081161,
+            "precise": 24.424799950793386,
+            "shot_check": 37.88650000933558,
+            "analysis": 77.75920000858605,
+            "total": 89.3936000065878,
+            "queue_wait": 25.111299997661263,
+            "capture_to_result": 114.519199996721
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "capture_view"
+        }
+      ]
+    }
+  ],
+  "pooled_realtime": [
+    {
+      "group": "baseline",
+      "video": "2611101816341481",
+      "frames_read": 2628,
+      "frames_processed": 2587,
+      "frames_dropped": 41,
+      "elapsed_s": 87.5843140000361,
+      "processed_fps": 29.537252526735937,
+      "timings_ms": {
+        "total": {
+          "count": 2587,
+          "mean": 12.858414534466059,
+          "p50": 10.298100009094924,
+          "p95": 27.54606000380586,
+          "p99": 56.58985399059016,
+          "max": 260.63800003612414,
+          "total_ms": 33264.718400663696,
+          "mean_per_processed_frame": 12.858414534466059
+        },
+        "refine": {
+          "count": 2583,
+          "mean": 4.4597216022420465,
+          "p50": 4.307699971832335,
+          "p95": 10.070719977375122,
+          "p99": 18.541290009161443,
+          "max": 119.18689997401088,
+          "total_ms": 11519.460898591205,
+          "mean_per_processed_frame": 4.452826014144262
+        },
+        "analysis": {
+          "count": 2583,
+          "mean": 2.068426442720887,
+          "p50": 0.18159998580813408,
+          "p95": 8.652550011174755,
+          "p99": 20.090330027742265,
+          "max": 83.78670003730804,
+          "total_ms": 5342.745501548052,
+          "mean_per_processed_frame": 2.0652282572663516
+        },
+        "precise": {
+          "count": 58,
+          "mean": 11.559156890645431,
+          "p50": 9.17549998848699,
+          "p95": 25.11017995711881,
+          "p99": 37.67257099272683,
+          "max": 41.20069998316467,
+          "total_ms": 670.431099657435,
+          "mean_per_processed_frame": 0.2591538846762408
+        },
+        "shot_check": {
+          "count": 211,
+          "mean": 5.319835544758039,
+          "p50": 1.3954999740235507,
+          "p95": 17.708600003970787,
+          "p99": 36.381220002658694,
+          "max": 38.59169996576384,
+          "total_ms": 1122.4852999439463,
+          "mean_per_processed_frame": 0.43389458830457917
+        },
+        "queue_wait": {
+          "count": 2587,
+          "mean": 0.8939587163091265,
+          "p50": 0.4327999777160585,
+          "p95": 0.9754099941346784,
+          "p99": 18.007653974927955,
+          "max": 36.22230002656579,
+          "total_ms": 2312.67119909171,
+          "mean_per_processed_frame": 0.8939587163091265
+        },
+        "capture_to_result": {
+          "count": 2587,
+          "mean": 13.768865363782176,
+          "p50": 10.787800012622029,
+          "p95": 29.93755998904816,
+          "p99": 63.30345599097199,
+          "max": 260.9824999817647,
+          "total_ms": 35620.05469610449,
+          "mean_per_processed_frame": 13.768865363782176
+        }
+      }
+    },
+    {
+      "group": "baseline",
+      "video": "wolfhound_panting",
+      "frames_read": 2424,
+      "frames_processed": 2424,
+      "frames_dropped": 0,
+      "elapsed_s": 100.9694870999665,
+      "processed_fps": 24.00725278122963,
+      "timings_ms": {
+        "total": {
+          "count": 2424,
+          "mean": 11.06928485970988,
+          "p50": 9.954549983376637,
+          "p95": 23.83659002080094,
+          "p99": 37.43402401159983,
+          "max": 57.18800000613555,
+          "total_ms": 26831.94649993675,
+          "mean_per_processed_frame": 11.06928485970988
+        },
+        "refine": {
+          "count": 2424,
+          "mean": 5.5804491339315945,
+          "p50": 5.695350002497435,
+          "p95": 8.342030015774071,
+          "p99": 9.363367974874564,
+          "max": 15.060999954584986,
+          "total_ms": 13527.008700650185,
+          "mean_per_processed_frame": 5.5804491339315945
+        },
+        "analysis": {
+          "count": 2424,
+          "mean": 3.2538054871867357,
+          "p50": 2.3157000250648707,
+          "p95": 6.123754964210092,
+          "p99": 29.49976397503633,
+          "max": 39.29980000248179,
+          "total_ms": 7887.224500940647,
+          "mean_per_processed_frame": 3.2538054871867357
+        },
+        "precise": {
+          "count": 106,
+          "mean": 11.408980192291498,
+          "p50": 10.84390000323765,
+          "p95": 19.75789999414701,
+          "p99": 26.041550002992164,
+          "max": 27.982100029475987,
+          "total_ms": 1209.3519003828987,
+          "mean_per_processed_frame": 0.498907549662912
+        },
+        "shot_check": {
+          "count": 70,
+          "mean": 12.337187140448284,
+          "p50": 12.26994997705333,
+          "p95": 17.46296003402676,
+          "p99": 22.086128009832482,
+          "max": 27.12230000179261,
+          "total_ms": 863.60309983138,
+          "mean_per_processed_frame": 0.35627190587103136
+        },
+        "queue_wait": {
+          "count": 2424,
+          "mean": 0.47397937327116213,
+          "p50": 0.454850000096485,
+          "p95": 0.6790000392356887,
+          "p99": 0.8319929905701429,
+          "max": 15.927399974316359,
+          "total_ms": 1148.926000809297,
+          "mean_per_processed_frame": 0.47397937327116213
+        },
+        "capture_to_result": {
+          "count": 2424,
+          "mean": 11.559436428016774,
+          "p50": 10.472499998286366,
+          "p95": 24.482775010983456,
+          "p99": 37.80207998293917,
+          "max": 57.822000002488494,
+          "total_ms": 28020.07390151266,
+          "mean_per_processed_frame": 11.559436428016774
+        }
+      }
+    },
+    {
+      "group": "optimized",
+      "video": "2611101816341481",
+      "frames_read": 2628,
+      "frames_processed": 2628,
+      "frames_dropped": 0,
+      "elapsed_s": 87.5895501000341,
+      "processed_fps": 30.00357915982693,
+      "timings_ms": {
+        "total": {
+          "count": 2628,
+          "mean": 11.830480935615864,
+          "p50": 10.134149983059615,
+          "p95": 26.215429970761765,
+          "p99": 32.74862602993381,
+          "max": 58.63759998464957,
+          "total_ms": 31090.503898798488,
+          "mean_per_processed_frame": 11.830480935615864
+        },
+        "refine": {
+          "count": 2624,
+          "mean": 3.9424494293931143,
+          "p50": 3.897100017638877,
+          "p95": 8.560415025567632,
+          "p99": 12.914177990751341,
+          "max": 17.435999994631857,
+          "total_ms": 10344.987302727532,
+          "mean_per_processed_frame": 3.936448745330111
+        },
+        "analysis": {
+          "count": 2624,
+          "mean": 1.8840222944451919,
+          "p50": 0.24359999224543571,
+          "p95": 7.227269976283424,
+          "p99": 16.8149359972449,
+          "max": 31.892400002107024,
+          "total_ms": 4943.674500624184,
+          "mean_per_processed_frame": 1.8811546806028097
+        },
+        "precise": {
+          "count": 54,
+          "mean": 10.446385181879762,
+          "p50": 9.906549996230751,
+          "p95": 18.48642500117421,
+          "p99": 24.585747998789884,
+          "max": 24.621999997179955,
+          "total_ms": 564.1047998215072,
+          "mean_per_processed_frame": 0.21465175031259787
+        },
+        "shot_check": {
+          "count": 208,
+          "mean": 4.768315387012151,
+          "p50": 1.6479000041726977,
+          "p95": 13.449469988699999,
+          "p99": 15.853741985629316,
+          "max": 18.162299995310605,
+          "total_ms": 991.8096004985273,
+          "mean_per_processed_frame": 0.3774009134317075
+        },
+        "queue_wait": {
+          "count": 2628,
+          "mean": 0.47772328795555447,
+          "p50": 0.4107500135432929,
+          "p95": 0.6946899928152561,
+          "p99": 1.2258460331941057,
+          "max": 26.00059995893389,
+          "total_ms": 1255.4568007471971,
+          "mean_per_processed_frame": 0.47772328795555447
+        },
+        "capture_to_result": {
+          "count": 2628,
+          "mean": 12.32088230626216,
+          "p50": 10.649200004991144,
+          "p95": 26.75563002412673,
+          "p99": 33.45635900332127,
+          "max": 59.11730002844706,
+          "total_ms": 32379.278700856958,
+          "mean_per_processed_frame": 12.32088230626216
+        }
+      }
+    },
+    {
+      "group": "optimized",
+      "video": "wolfhound_panting",
+      "frames_read": 2424,
+      "frames_processed": 2424,
+      "frames_dropped": 0,
+      "elapsed_s": 100.97113089996856,
+      "processed_fps": 24.006861945534126,
+      "timings_ms": {
+        "total": {
+          "count": 2424,
+          "mean": 11.066723885750413,
+          "p50": 9.850050002569333,
+          "p95": 26.21507997100707,
+          "p99": 38.13512600201647,
+          "max": 55.88559998432174,
+          "total_ms": 26825.738699059002,
+          "mean_per_processed_frame": 11.066723885750413
+        },
+        "refine": {
+          "count": 2424,
+          "mean": 5.394226402383745,
+          "p50": 5.724799993913621,
+          "p95": 8.009749988559633,
+          "p99": 9.163350000744684,
+          "max": 13.853399956133217,
+          "total_ms": 13075.604799378198,
+          "mean_per_processed_frame": 5.394226402383745
+        },
+        "analysis": {
+          "count": 2424,
+          "mean": 3.322716005965445,
+          "p50": 2.6212999946437776,
+          "p95": 6.309590011369429,
+          "p99": 30.243844998767596,
+          "max": 41.73970001284033,
+          "total_ms": 8054.263598460238,
+          "mean_per_processed_frame": 3.322716005965445
+        },
+        "precise": {
+          "count": 106,
+          "mean": 11.612183962430242,
+          "p50": 11.500549997435883,
+          "p95": 18.503024999517947,
+          "p99": 20.943650024128146,
+          "max": 23.211399966385216,
+          "total_ms": 1230.8915000176057,
+          "mean_per_processed_frame": 0.5077935231095733
+        },
+        "shot_check": {
+          "count": 70,
+          "mean": 11.510868571765188,
+          "p50": 11.588149995077401,
+          "p95": 16.35100999556016,
+          "p99": 18.31754399696365,
+          "max": 18.781499995384365,
+          "total_ms": 805.7608000235632,
+          "mean_per_processed_frame": 0.3324095709668165
+        },
+        "queue_wait": {
+          "count": 2424,
+          "mean": 0.48760429079734285,
+          "p50": 0.4634000069927424,
+          "p95": 0.731269980315119,
+          "p99": 0.8776870340807362,
+          "max": 14.965499984100461,
+          "total_ms": 1181.9528008927591,
+          "mean_per_processed_frame": 0.48760429079734285
+        },
+        "capture_to_result": {
+          "count": 2424,
+          "mean": 11.567812871482614,
+          "p50": 10.35865000449121,
+          "p95": 26.774479958112348,
+          "p99": 38.42737302533351,
+          "max": 56.472099968232214,
+          "total_ms": 28040.378400473855,
+          "mean_per_processed_frame": 11.567812871482614
+        }
+      }
+    }
+  ],
+  "equivalence": {
+    "frames": 2526,
+    "mismatches": 0,
+    "selected_pixels_identical": true,
+    "evidence": "artifacts/runs/dog_capture/state_structure_20261115/equivalence/result.json",
+    "reference_source_sha256": {
+      "alignment.py": "05140df792fae9045510ad05a428da9cb91c341655ba2315cb6a7163df382791",
+      "cli.py": "d91a03248346ff2ea2643995a6c650975d3bcefcc18585b9b1c8a6e71ec25fb1",
+      "config.py": "ade9585e485e647322adc615281a12cd5a7f79317250dbcbea17c941acdd6af1",
+      "detectors.py": "d88cc916289f4e43a0c12f772a5a40064316ff6384c38b637bcf6b29819916b9",
+      "engine.py": "7e78e262657b0972a04225926382a77861072d85aac32f69ae2da67e2e86417b",
+      "guidance.py": "766d023d84a37bf93db8c9755accb763cc63e21522c890e33b280291505ae5de",
+      "io.py": "05dcff40cd77a77be24012e01c3325a3645753201b5093a254f2b3602eb13a6b",
+      "pose.py": "6dfb827881c6c349aab1ef7e0bb53d32561939c212e7ddd896de1cb53bf37b62",
+      "process_policy.py": "17acc998b54de0115499bfcd5c2bb41bab58fb240d89561ea649d77190e964ba",
+      "profiling.py": "5ec1c7c1cf31d5ddd79bd83e53d48049e220d84da0c7537c304bc58fd844c758",
+      "quality.py": "c9e949e6de6e39304c0890c1d3544e91bd2f76cfc16ed82b839c6a26759db017",
+      "refine.py": "7ec1ec7ae82005750532b09eaa429d3a3fef6db1b8a8942ceacb09b34e8bc98f",
+      "resampling.py": "df1295be814a8d5e287582a13a13da417d327731308eef8422ff36c59109eb25",
+      "runtime.py": "0b86d62eb0aa90346535cb1da1635b5e7402bbce5a9868f0df6ad1ef98c03310",
+      "schema.py": "3a28dcbb5809eb18f8a15ad2847c770d7c59e78b0cee90b7ee0ef2ad27d388af",
+      "selection.py": "d351599779344c2c325f76f8dd7c32b9afbde9bdb83e4c3265bce6db1dbd2615",
+      "tracking.py": "60b5326e72bf44f66063ae21b9c12848e3fdce700dfb5f5f8d489d2e9e13dbae",
+      "zoo.py": "6a1fae9d7ce074ffaf94e5208272c7c594d925679fd03b69c007cce75e17ce38",
+      "__init__.py": "f46d5c254b146a41e18a7b09a9515659e53aa32b4b436e146ad9cff086df2fda"
+    },
+    "videos": [
+      {
+        "video": "data/dog_capture/user/2611101816341481.mp4",
+        "sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06",
+        "frames": 1314,
+        "model_calls": {
+          "reference": {
+            "face": 628,
+            "body": 125,
+            "landmarks": 1178
+          },
+          "optimized": {
+            "face": 628,
+            "body": 125,
+            "landmarks": 1178
+          }
+        },
+        "mirror_diagnostics_skipped": 0,
+        "mismatches": [],
+        "conditional_empty_heads_skipped": 0,
+        "inactive_scale_raw_output_changes": 0,
+        "selection_identical": true
+      },
+      {
+        "video": "data/dog_capture/public/wolfhound_panting.ogv",
+        "sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893",
+        "frames": 1212,
+        "model_calls": {
+          "reference": {
+            "face": 286,
+            "body": 1,
+            "landmarks": 1233
+          },
+          "optimized": {
+            "face": 286,
+            "body": 1,
+            "landmarks": 1233
+          }
+        },
+        "mirror_diagnostics_skipped": 0,
+        "mismatches": [],
+        "conditional_empty_heads_skipped": 0,
+        "inactive_scale_raw_output_changes": 0,
+        "selection_identical": true
+      }
+    ]
+  },
+  "checks": {
+    "python": {
+      "passed": 261,
+      "skipped": 2,
+      "log": "artifacts/runs/dog_capture/state_structure_20261115/python_tests.txt"
+    },
+    "sdk": {
+      "passed": 49,
+      "skipped": 2,
+      "log": "artifacts/runs/dog_capture/state_structure_20261115/sdk_test.txt"
+    },
+    "sdk_and_h5_typecheck": "passed",
+    "h5_build": "passed",
+    "environment": "Local shared node_modules pointed at review-2232476. Current worktree workspace links now resolve its own SDK/H5; original shared dependency tree preserved."
+  },
+  "source_sha256": {
+    "src\\Pet-ReID-IMAG\\dog_capture\\engine\\engine.py": "0b54cb65bff0c228a9a161af1ec97923bc33dc4be46cb989a6f4e44de2806d0c",
+    "src\\Pet-ReID-IMAG\\dog_capture\\engine\\evidence.py": "bbeab7a74c9dda5cc401c4b4cfe87511877425389d7641e6a586de85323dfdeb",
+    "src\\Pet-ReID-IMAG\\tests\\test_dog_capture_state.py": "88256832dbd58e952ee12a5e77d947211092d79ad62b79d8f9f9982812d5472c",
+    "src\\Pet-ReID-IMAG\\frontend\\dog-capture\\packages\\sdk\\src\\engine.ts": "b10bf1a2e8332c36419b5648f4aba47f72c741c5f14569282e8275a35d529db6",
+    "src\\Pet-ReID-IMAG\\frontend\\dog-capture\\packages\\sdk\\src\\evidence.ts": "6158d424aefe2e3041b4c0406c81e48ad00c6a03972fbfa4bb8b298226ba63e3",
+    "src\\Pet-ReID-IMAG\\frontend\\dog-capture\\packages\\sdk\\test\\engine.test.ts": "57286498943eceb18501ab7ca5c70949365604ef810e37de3063564585980d99",
+    "src\\Pet-ReID-IMAG\\frontend\\dog-capture\\packages\\sdk\\test\\evidence.test.ts": "081528903b2301f99af0e08ce7bd66f92a2017d43e41d397a9dbfa4b7e5de5a9"
+  },
+  "evidence_root": "artifacts/runs/dog_capture/state_structure_20261115"
+}

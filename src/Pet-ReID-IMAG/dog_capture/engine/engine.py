@@ -25,6 +25,7 @@ import numpy as np
 
 from .alignment import align_face, load_template
 from .config import CaptureConfig
+from .evidence import TemporalEvidence
 from .guidance import guidance
 from .pose import ViewClassifier, face_geometry
 from .quality import QualityAssessor, QualityReport
@@ -183,6 +184,7 @@ class _TrackContext:
         self.shots = TrackShots(track_id, engine.view_names, selection,
                                 {v.name: v.shots for v in engine.config.pose.views})
         self.retry_at = -math.inf   # next shot candidate allowed (refine.candidate_retry_s)
+        self.evidence = TemporalEvidence()
 
 
 
@@ -220,9 +222,7 @@ class CaptureEngine:
         self._timings = {}
         # Per view: the best credible candidate that missed only the quality level (for review).
         self.near_misses: dict[str, dict] = {}
-        self.gate_history = deque()   # (time, cx, cy, size, 'pass'|'fail'|'present') per analysed face
         self.frame_times = deque()    # times of processed frames
-        self._gate_status = {}        # id(detection) -> this frame's check result
         self.guidance_history = deque()
         self.shown_code = None
 
@@ -393,8 +393,6 @@ class CaptureEngine:
         self.frame_times.append(timestamp)
         while len(self.frame_times) > keep and timestamp - self.frame_times[0] > window:
             self.frame_times.popleft()
-        while self.gate_history and self.gate_history[0][0] < self.frame_times[0]:
-            self.gate_history.popleft()
         if external:
             rotation, probe = 0, False
         elif self.config.runtime.still_images:  # photos are searched per image instead
@@ -449,12 +447,11 @@ class CaptureEngine:
             timings['refine'] = (time.perf_counter() - t0) * 1000
         found, roll = self._upright_evidence(valid)
         if not external and self.orientation.report(rotation, False, found, timestamp, roll):
-            for track in self.tracker.tracks:  # coordinates change with rotation
-                self._archive(track.id, timestamp)
-            self.tracker.reset()
-            if self.refiner is not None:
-                self.refiner.reset()
-            self.body_time = self.body_checked = -math.inf
+            self._reset_for_rotation(timestamp)
+            # This frame's detections still use the OLD rotation. The next
+            # frame starts fresh in the new coordinates, without a second
+            # detection pass or a temporary track seeded from stale geometry.
+            return self._result([], [], index, timestamp, rotation, rejected, timings, started)
         t0 = time.perf_counter()
         tracks = self.tracker.update(valid, timestamp)
         for track in self.tracker.removed:
@@ -497,18 +494,32 @@ class CaptureEngine:
         found, roll = self._upright_evidence(detections)
         upright = found and roll is not None and abs(roll) <= 45
         if self.orientation.report(rotation, True, upright, timestamp, roll):
-            for track in self.tracker.tracks:  # coordinates change with rotation
-                self._archive(track.id, timestamp)
-            self.tracker.reset()
-            if self.refiner is not None:
-                self.refiner.reset()
-            self.body_time = self.body_checked = -math.inf
+            self._reset_for_rotation(timestamp)
         timings['orientation_probe'] = 1.0
         # Report the base rotation: a probe frame shows nothing and must not look rotated.
         return self._result([], [], index, timestamp, self.orientation.rotation, rejected, timings, started)
 
+    def _reset_for_rotation(self, timestamp):
+        """Retain finished shots; release all state tied to the old coordinates."""
+        for track_id in list(self.contexts):
+            self._archive(track_id, timestamp)
+        self.tracker.reset()
+        if self.refiner is not None:
+            self.refiner.reset()
+        self.primary_id = None
+        self.body_boxes = np.zeros((0, 4), np.float32)
+        self.body_scores = np.zeros((0,), np.float32)
+        self.body_time = self.body_checked = self.roi_checked = -math.inf
+        self.full_detected, self.full_detected_frame = -math.inf, -10 ** 9
+        self.frame_times.clear()
+        self.guidance_history.clear()
+        self.shown_code = None
+
     def _analyse(self, frame, track, timestamp, index, rotation, still=False):
         context = self._context(track.id)
+        if self.frame_times:
+            context.evidence.trim(self.frame_times[0])
+        gate_status = 'present'  # explicit per-frame result, not keyed by Detection object identity
         det = track.detection
         geometry = face_geometry(det, self.config.pose)
         state = context.classifier.update(timestamp, geometry)
@@ -523,7 +534,7 @@ class CaptureEngine:
                           speed_iod_per_s=speed / max(geometry.iod, 1e-6))
         eligible = in_band and quality.passed and context.shots.eligible_level(quality.level)
         if in_band and quality.passed and not eligible:
-            self._near_miss(context, frame, det, target, state.view, quality, track.id, index, timestamp, still)
+            gate_status = self._near_miss(context, frame, det, target, state.view, quality, track.id, index, timestamp, still)
         tracked = det
         landmarked = self.refiner is not None and self.refiner.landmarker is not None and not still
         if landmarked and timestamp < context.retry_at:
@@ -539,9 +550,9 @@ class CaptureEngine:
             # Landmarks first, sharpness second: a confident but hallucinated face (the model on a
             # dog lying sideways with closed eyes) must not win on texture or exposure.
             if problem is None and eligible and context.shots.wants(state.view, quality.score):
-                problem = self._trusted(context, frame, det, target, timestamp, still)
+                problem, gate_status = self._trusted(context, frame, det, target, still=still)
             elif problem is not None:
-                self._gate_status[id(det)] = 'fail'
+                gate_status = 'fail'
             if problem and landmarked and problem != 'landmarks_unstable':
                 # (not while the temporal gate is still collecting its passes: those must be consecutive)
                 context.retry_at = timestamp + self.config.refine.candidate_retry_s
@@ -569,9 +580,7 @@ class CaptureEngine:
             events += new
         self.events.extend(events)
         if self.refiner is not None and not still and det.source != 'external':
-            status = self._gate_status.pop(id(det), None) or self._gate_status.pop(id(tracked), 'present')
-            self._gate_status.pop(id(tracked), None)
-            self.gate_history.append((timestamp, *_place(tracked), status))
+            context.evidence.record(timestamp, _place(tracked), gate_status)
         return face, events
 
     def _sharpen(self, frame, det, view, target, speed):
@@ -627,34 +636,28 @@ class CaptureEngine:
             return 'landmarks_unreliable'
         return None
 
-    def _trusted(self, context, frame, det, target, timestamp, still=False):
-        """Shot gate: this frame's landmark checks, and (video) a consistent recent history."""
+    def _trusted(self, context, frame, det, target, still=False):
+        """Return (reason, evidence): spatial checks precede this track's temporal gate."""
         problem = self._unreliable(frame, det, target)
         if still or self.refiner is None or det.source == 'external':
-            return problem
-        f = self.config.refine
-        self._gate_status[id(det)] = 'fail' if problem else 'pass'
+            return problem, 'present'
         if problem:
-            return problem
-        cx, cy, size = _place(det)
-        here = [e for e in self.gate_history if math.hypot(e[1] - cx, e[2] - cy) <= 0.5 * max(e[3], size)]
-        passes = 1 + sum(1 for e in here if e[4] == 'pass')
-        fails = sum(1 for e in here if e[4] == 'fail')
-        missing = max(0, len(self.frame_times) - 1 - len({e[0] for e in here}))   # frames with no face here
-        if passes < f.gate_min_passes or passes < f.gate_min_ratio * (passes + fails + missing):
-            return 'landmarks_unstable'
-        return None
+            return problem, 'fail'
+        reason = context.evidence.reject_reason(_place(det), len(self.frame_times), self.config.refine)
+        return reason, 'pass'  # a good check still counts while the temporal gate is gathering passes
 
     def _near_miss(self, context, frame, det, target, view, quality, track_id, index, timestamp, still=False):
         best = self.near_misses.get(view)
         if best is not None and best['score'] >= quality.score:
-            return
-        if self._trusted(context, frame, det, target, timestamp, still):
-            return   # not a credible face: never shown as "almost"
+            return 'present'
+        problem, status = self._trusted(context, frame, det, target, still=still)
+        if problem:
+            return status   # not a credible face: never shown as "almost"
         self.near_misses[view] = {'view': view, 'frame_index': index, 'time_s': round(timestamp, 4),
                                   'track_id': track_id, 'score': round(quality.score, 4), 'level': quality.level,
                                   'needed': self.config.selection.min_level,
                                   'weakest': min(quality.factors, key=quality.factors.get) if quality.factors else None}
+        return status
 
     def _timing(self, name, started):
         self._timings[name] = self._timings.get(name, 0) + (time.perf_counter() - started) * 1000
