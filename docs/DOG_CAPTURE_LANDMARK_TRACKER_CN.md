@@ -624,3 +624,7 @@ python src/Pet-ReID-IMAG/tools/benchmark_dog_capture_v1.py --config NEW_CPU_MODE
 候选链内部剩余的大头仍是必须执行的共享网络与有效头部；候选自身的缩放和打包已不是优先项。全帧仍有全图检测、跟踪网络和跟踪裁剪的常规成本。当前证据不支持继续增加低命中输入缓存，也不支持直接减少必要复检或永久禁用最细尺度。下轮应继续按累计成本和慢帧覆盖面排序，再验证更深的网络执行改动，而非追着单个偶发最大值改判定结构。
 
 完整数值、各轮慢帧、阶段拆分、微测、调用审计和精度证据见 [candidate_optimization_benchmark.json](../assets/dog_capture/candidate_optimization_benchmark.json)，模型清单见 [cpu_scales_checkpoint.json](../assets/dog_capture/cpu_scales_checkpoint.json)。原始逐帧计时、调用事件、全部 profiler/trace、对照图、真实网络输入样本及复现脚本保存在本机 `artifacts/runs/dog_capture/candidate_optimization_20261113/`。
+
+## 13. 优化前先计算结构预算（2026-11-14）
+
+新增无推理、无视频回放的 [静态计算量分析](DOG_CAPTURE_COMPUTE_BUDGET_CN.md)：完整脸部网络 826.574 MMAC，小跟踪网 71.665 MMAC；当前常见中尺度脸部路径 656.970 MMAC，其中共享网络与分数已占 91.54%。先按节点、分支、调用次数、图像数据规模和串行依赖筛选改动，再对入围方案验收精度与实时效果。完整预算见 [static_compute_budget.json](../assets/dog_capture/static_compute_budget.json)，逐节点账本可用 `tools/analyze_dog_capture_compute.py --nodes-output ...` 静态生成。

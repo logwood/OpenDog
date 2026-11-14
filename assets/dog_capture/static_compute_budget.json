@@ -1,0 +1,1121 @@
+{
+  "schema": "dog_capture_static_compute_v1",
+  "method": {
+    "unit": "One MAC is one multiply-accumulate in Conv/Gemm/MatMul; M=1e6, G=1e9.",
+    "execution": "Static shape inference only. No model inference, video replay or timed benchmark.",
+    "flops": "2*MACs is a dot-product convention, excludes bias, activations, reductions and control.",
+    "memory": "Logical graph tensor payloads, not DRAM traffic or peak resident memory; fusions and reuse change physical traffic.",
+    "limits": "Logical dense operators, not padded CPU kernels, Winograd transforms, SIMD instructions or runtime latency."
+  },
+  "models": {
+    "face": {
+      "filename": "dog_face_pose.onnx",
+      "sha256": "48c2b9f580a6b29f6ec92f81d58bffcb06c609b4da4d77e4c85f259dc1b8d74c",
+      "inputs": {
+        "images": [
+          1,
+          3,
+          320,
+          320
+        ]
+      },
+      "shape_inference": "onnx.shape_inference",
+      "nodes": 354,
+      "operators": {
+        "Conv": 97,
+        "Sigmoid": 85,
+        "Mul": 87,
+        "Split": 10,
+        "Add": 17,
+        "Concat": 23,
+        "MaxPool": 3,
+        "Reshape": 16,
+        "Transpose": 3,
+        "MatMul": 2,
+        "Softmax": 2,
+        "Resize": 2,
+        "Slice": 4,
+        "Sub": 2,
+        "Div": 1
+      },
+      "macs": 826573600,
+      "dot_product_flops_convention": 1653147200,
+      "logical_output_bytes_sum": 66243600,
+      "largest_single_node_output_bytes": 1638400,
+      "non_dot_output_elements_by_operator": {
+        "Sigmoid": 4013500,
+        "Mul": 4064000,
+        "Split": 665600,
+        "Add": 379200,
+        "Concat": 1996800,
+        "MaxPool": 38400,
+        "Reshape": 443900,
+        "Transpose": 160800,
+        "Softmax": 154400,
+        "Resize": 307200,
+        "Slice": 46200,
+        "Sub": 8400,
+        "Div": 4200
+      },
+      "largest_mac_nodes": [
+        {
+          "index": 21,
+          "node": "/model.3/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              40,
+              40
+            ]
+          ],
+          "macs": 58982400,
+          "logical_output_elements": 102400,
+          "logical_output_bytes": 409600,
+          "execution_group": "shared_and_scores"
+        },
+        {
+          "index": 39,
+          "node": "/model.5/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              128,
+              20,
+              20
+            ]
+          ],
+          "macs": 58982400,
+          "logical_output_elements": 51200,
+          "logical_output_bytes": 204800,
+          "execution_group": "shared_and_scores"
+        },
+        {
+          "index": 182,
+          "node": "/model.23/cv2.0/cv2.0.0/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              40,
+              40
+            ]
+          ],
+          "macs": 58982400,
+          "logical_output_elements": 102400,
+          "logical_output_bytes": 409600,
+          "execution_group": "fine_40"
+        },
+        {
+          "index": 194,
+          "node": "/model.23/cv2.0/cv2.0.1/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              40,
+              40
+            ]
+          ],
+          "macs": 58982400,
+          "logical_output_elements": 102400,
+          "logical_output_bytes": 409600,
+          "execution_group": "fine_40"
+        },
+        {
+          "index": 3,
+          "node": "/model.1/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              32,
+              80,
+              80
+            ]
+          ],
+          "macs": 29491200,
+          "logical_output_elements": 204800,
+          "logical_output_bytes": 819200,
+          "execution_group": "shared_and_scores"
+        },
+        {
+          "index": 74,
+          "node": "/model.7/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              256,
+              10,
+              10
+            ]
+          ],
+          "macs": 29491200,
+          "logical_output_elements": 25600,
+          "logical_output_bytes": 102400,
+          "execution_group": "shared_and_scores"
+        },
+        {
+          "index": 231,
+          "node": "/model.23/cv2.1/cv2.1.0/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              20,
+              20
+            ]
+          ],
+          "macs": 29491200,
+          "logical_output_elements": 25600,
+          "logical_output_bytes": 102400,
+          "execution_group": "middle_20"
+        },
+        {
+          "index": 166,
+          "node": "/model.16/cv1/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              40,
+              40
+            ]
+          ],
+          "macs": 26214400,
+          "logical_output_elements": 102400,
+          "logical_output_bytes": 409600,
+          "execution_group": "shared_and_scores"
+        },
+        {
+          "index": 18,
+          "node": "/model.2/cv2/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              80,
+              80
+            ]
+          ],
+          "macs": 19660800,
+          "logical_output_elements": 409600,
+          "logical_output_bytes": 1638400,
+          "execution_group": "shared_and_scores"
+        },
+        {
+          "index": 36,
+          "node": "/model.4/cv2/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              128,
+              40,
+              40
+            ]
+          ],
+          "macs": 19660800,
+          "logical_output_elements": 204800,
+          "logical_output_bytes": 819200,
+          "execution_group": "shared_and_scores"
+        },
+        {
+          "index": 149,
+          "node": "/model.13/cv1/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              128,
+              20,
+              20
+            ]
+          ],
+          "macs": 19660800,
+          "logical_output_elements": 51200,
+          "logical_output_bytes": 204800,
+          "execution_group": "shared_and_scores"
+        },
+        {
+          "index": 184,
+          "node": "/model.23/cv4.0/cv4.0.0/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              18,
+              40,
+              40
+            ]
+          ],
+          "macs": 16588800,
+          "logical_output_elements": 28800,
+          "logical_output_bytes": 115200,
+          "execution_group": "fine_40"
+        }
+      ]
+    },
+    "landmarks": {
+      "filename": "dog_face_landmarks.onnx",
+      "sha256": "1fb6ad2185d0e4d65addf62c1d5fd79f32f84e61e62ae0dd9694609ca7cc1171",
+      "inputs": {
+        "images": [
+          1,
+          3,
+          128,
+          128
+        ]
+      },
+      "shape_inference": "onnx.shape_inference + ORT symbolic shape inference",
+      "nodes": 275,
+      "operators": {
+        "Constant": 61,
+        "Conv": 39,
+        "Sigmoid": 39,
+        "Mul": 52,
+        "Shape": 5,
+        "Gather": 11,
+        "Add": 14,
+        "Div": 5,
+        "Slice": 12,
+        "Concat": 12,
+        "MaxPool": 3,
+        "Resize": 2,
+        "Reshape": 1,
+        "Softmax": 1,
+        "ReduceSum": 2,
+        "Unsqueeze": 7,
+        "ReduceMean": 1,
+        "Gemm": 2,
+        "Exp": 1,
+        "Sub": 1,
+        "Neg": 1,
+        "ReduceL2": 1,
+        "Clip": 1,
+        "Flatten": 1
+      },
+      "macs": 71664896,
+      "dot_product_flops_convention": 143329792,
+      "logical_output_bytes_sum": 5930956,
+      "largest_single_node_output_bytes": 262144,
+      "non_dot_output_elements_by_operator": {
+        "Constant": 67,
+        "Sigmoid": 408704,
+        "Mul": 412824,
+        "Shape": 20,
+        "Gather": 13,
+        "Add": 51206,
+        "Div": 6,
+        "Slice": 61464,
+        "Concat": 106544,
+        "MaxPool": 6144,
+        "Resize": 20480,
+        "Reshape": 2048,
+        "Softmax": 2048,
+        "ReduceSum": 16,
+        "Unsqueeze": 21,
+        "ReduceMean": 256,
+        "Exp": 1,
+        "Sub": 2,
+        "Neg": 1,
+        "ReduceL2": 1,
+        "Clip": 1,
+        "Flatten": 12
+      },
+      "largest_mac_nodes": [
+        {
+          "index": 36,
+          "node": "/m/layers.3/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              16,
+              16
+            ]
+          ],
+          "macs": 9437184,
+          "logical_output_elements": 16384,
+          "logical_output_bytes": 65536
+        },
+        {
+          "index": 67,
+          "node": "/m/layers.5/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              128,
+              8,
+              8
+            ]
+          ],
+          "macs": 9437184,
+          "logical_output_elements": 8192,
+          "logical_output_bytes": 32768
+        },
+        {
+          "index": 191,
+          "node": "/m/fuse3/fuse3.0/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              16,
+              16
+            ]
+          ],
+          "macs": 9437184,
+          "logical_output_elements": 16384,
+          "logical_output_bytes": 65536
+        },
+        {
+          "index": 4,
+          "node": "/m/layers.1/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              32,
+              32,
+              32
+            ]
+          ],
+          "macs": 4718592,
+          "logical_output_elements": 32768,
+          "logical_output_bytes": 131072
+        },
+        {
+          "index": 115,
+          "node": "/m/layers.7/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              256,
+              4,
+              4
+            ]
+          ],
+          "macs": 4718592,
+          "logical_output_elements": 4096,
+          "logical_output_bytes": 16384
+        },
+        {
+          "index": 33,
+          "node": "/m/layers.2/cv2/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              32,
+              32
+            ]
+          ],
+          "macs": 3145728,
+          "logical_output_elements": 65536,
+          "logical_output_bytes": 262144
+        },
+        {
+          "index": 64,
+          "node": "/m/layers.4/cv2/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              128,
+              16,
+              16
+            ]
+          ],
+          "macs": 3145728,
+          "logical_output_elements": 32768,
+          "logical_output_bytes": 131072
+        },
+        {
+          "index": 182,
+          "node": "/m/fuse4/fuse4.0/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              8,
+              8
+            ]
+          ],
+          "macs": 2359296,
+          "logical_output_elements": 4096,
+          "logical_output_bytes": 16384
+        },
+        {
+          "index": 170,
+          "node": "/m/layers.9/cv2/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              256,
+              4,
+              4
+            ]
+          ],
+          "macs": 2097152,
+          "logical_output_elements": 4096,
+          "logical_output_bytes": 16384
+        },
+        {
+          "index": 185,
+          "node": "/m/lat3/lat3.0/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              16,
+              16
+            ]
+          ],
+          "macs": 2097152,
+          "logical_output_elements": 16384,
+          "logical_output_bytes": 65536
+        },
+        {
+          "index": 1,
+          "node": "/m/layers.0/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              16,
+              64,
+              64
+            ]
+          ],
+          "macs": 1769472,
+          "logical_output_elements": 65536,
+          "logical_output_bytes": 262144
+        },
+        {
+          "index": 112,
+          "node": "/m/layers.6/cv2/conv/Conv",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              128,
+              8,
+              8
+            ]
+          ],
+          "macs": 1572864,
+          "logical_output_elements": 8192,
+          "logical_output_bytes": 32768
+        }
+      ]
+    },
+    "body": {
+      "filename": "yolox_nano.onnx",
+      "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+      "inputs": {
+        "images": [
+          1,
+          3,
+          416,
+          416
+        ]
+      },
+      "shape_inference": "onnx.shape_inference",
+      "nodes": 369,
+      "operators": {
+        "Slice": 8,
+        "Concat": 18,
+        "Conv": 113,
+        "Sigmoid": 110,
+        "Mul": 104,
+        "Add": 7,
+        "MaxPool": 3,
+        "Resize": 2,
+        "Reshape": 3,
+        "Transpose": 1
+      },
+      "macs": 522553408,
+      "dot_product_flops_convention": 1045106816,
+      "logical_output_bytes_sum": 126721608,
+      "largest_single_node_output_bytes": 2768896,
+      "non_dot_output_elements_by_operator": {
+        "Slice": 1557504,
+        "Concat": 2896322,
+        "Sigmoid": 8669869,
+        "Mul": 8382400,
+        "Add": 562432,
+        "MaxPool": 64896,
+        "Resize": 259584,
+        "Reshape": 301665,
+        "Transpose": 301665
+      },
+      "largest_mac_nodes": [
+        {
+          "index": 9,
+          "node": "Conv_41",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              16,
+              208,
+              208
+            ]
+          ],
+          "macs": 74760192,
+          "logical_output_elements": 692224,
+          "logical_output_bytes": 2768896
+        },
+        {
+          "index": 143,
+          "node": "Conv_175",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              256,
+              13,
+              13
+            ]
+          ],
+          "macs": 22151168,
+          "logical_output_elements": 43264,
+          "logical_output_bytes": 173056
+        },
+        {
+          "index": 280,
+          "node": "Conv_314",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              80,
+              52,
+              52
+            ]
+          ],
+          "macs": 13844480,
+          "logical_output_elements": 216320,
+          "logical_output_bytes": 865280
+        },
+        {
+          "index": 35,
+          "node": "Conv_67",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              32,
+              104,
+              104
+            ]
+          ],
+          "macs": 11075584,
+          "logical_output_elements": 346112,
+          "logical_output_bytes": 1384448
+        },
+        {
+          "index": 81,
+          "node": "Conv_113",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              52,
+              52
+            ]
+          ],
+          "macs": 11075584,
+          "logical_output_elements": 173056,
+          "logical_output_bytes": 692224
+        },
+        {
+          "index": 127,
+          "node": "Conv_159",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              128,
+              26,
+              26
+            ]
+          ],
+          "macs": 11075584,
+          "logical_output_elements": 86528,
+          "logical_output_bytes": 346112
+        },
+        {
+          "index": 162,
+          "node": "Conv_194",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              256,
+              13,
+              13
+            ]
+          ],
+          "macs": 11075584,
+          "logical_output_elements": 43264,
+          "logical_output_bytes": 173056
+        },
+        {
+          "index": 170,
+          "node": "Conv_203",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              26,
+              26
+            ]
+          ],
+          "macs": 11075584,
+          "logical_output_elements": 43264,
+          "logical_output_bytes": 173056
+        },
+        {
+          "index": 173,
+          "node": "Conv_206",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              64,
+              26,
+              26
+            ]
+          ],
+          "macs": 11075584,
+          "logical_output_elements": 43264,
+          "logical_output_bytes": 173056
+        },
+        {
+          "index": 186,
+          "node": "Conv_219",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              128,
+              26,
+              26
+            ]
+          ],
+          "macs": 11075584,
+          "logical_output_elements": 86528,
+          "logical_output_bytes": 346112
+        },
+        {
+          "index": 194,
+          "node": "Conv_228",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              32,
+              52,
+              52
+            ]
+          ],
+          "macs": 11075584,
+          "logical_output_elements": 86528,
+          "logical_output_bytes": 346112
+        },
+        {
+          "index": 197,
+          "node": "Conv_231",
+          "op": "Conv",
+          "output_shapes": [
+            [
+              1,
+              32,
+              52,
+              52
+            ]
+          ],
+          "macs": 11075584,
+          "logical_output_elements": 86528,
+          "logical_output_bytes": 346112
+        }
+      ]
+    }
+  },
+  "pose_execution_groups": {
+    "shared_and_scores": {
+      "nodes": 280,
+      "operators": {
+        "Conv": 78,
+        "Sigmoid": 72,
+        "Mul": 72,
+        "Split": 10,
+        "Add": 14,
+        "Concat": 18,
+        "MaxPool": 3,
+        "Reshape": 6,
+        "Transpose": 2,
+        "MatMul": 2,
+        "Softmax": 1,
+        "Resize": 2
+      },
+      "macs": 601369600,
+      "dot_product_flops_convention": 1202739200,
+      "logical_output_bytes_sum": 57028800,
+      "largest_single_node_output_bytes": 1638400,
+      "non_dot_output_elements_by_operator": {
+        "Sigmoid": 3656500,
+        "Mul": 3660800,
+        "Split": 665600,
+        "Add": 345600,
+        "Concat": 1730100,
+        "MaxPool": 38400,
+        "Reshape": 53300,
+        "Transpose": 26400,
+        "Softmax": 20000,
+        "Resize": 307200
+      }
+    },
+    "fine_40": {
+      "nodes": 16,
+      "operators": {
+        "Conv": 6,
+        "Sigmoid": 4,
+        "Mul": 4,
+        "Reshape": 2
+      },
+      "macs": 146291200,
+      "dot_product_flops_convention": 292582400,
+      "logical_output_bytes_sum": 4198400,
+      "largest_single_node_output_bytes": 409600,
+      "non_dot_output_elements_by_operator": {
+        "Sigmoid": 262400,
+        "Mul": 262400,
+        "Reshape": 131200
+      }
+    },
+    "middle_20": {
+      "nodes": 16,
+      "operators": {
+        "Conv": 6,
+        "Sigmoid": 4,
+        "Mul": 4,
+        "Reshape": 2
+      },
+      "macs": 55465600,
+      "dot_product_flops_convention": 110931200,
+      "logical_output_bytes_sum": 1049600,
+      "largest_single_node_output_bytes": 102400,
+      "non_dot_output_elements_by_operator": {
+        "Sigmoid": 65600,
+        "Mul": 65600,
+        "Reshape": 32800
+      }
+    },
+    "coarse_10": {
+      "nodes": 16,
+      "operators": {
+        "Conv": 6,
+        "Sigmoid": 4,
+        "Mul": 4,
+        "Reshape": 2
+      },
+      "macs": 23312800,
+      "dot_product_flops_convention": 46625600,
+      "logical_output_bytes_sum": 262400,
+      "largest_single_node_output_bytes": 25600,
+      "non_dot_output_elements_by_operator": {
+        "Sigmoid": 16400,
+        "Mul": 16400,
+        "Reshape": 8200
+      }
+    },
+    "positive_decode": {
+      "nodes": 26,
+      "operators": {
+        "Concat": 5,
+        "Reshape": 4,
+        "Transpose": 1,
+        "Slice": 4,
+        "Softmax": 1,
+        "Mul": 3,
+        "Sigmoid": 1,
+        "Conv": 1,
+        "Add": 3,
+        "Sub": 2,
+        "Div": 1
+      },
+      "macs": 134400,
+      "dot_product_flops_convention": 268800,
+      "logical_output_bytes_sum": 3704400,
+      "largest_single_node_output_bytes": 537600,
+      "non_dot_output_elements_by_operator": {
+        "Concat": 266700,
+        "Reshape": 218400,
+        "Transpose": 134400,
+        "Slice": 46200,
+        "Softmax": 134400,
+        "Mul": 58800,
+        "Sigmoid": 12600,
+        "Add": 33600,
+        "Sub": 8400,
+        "Div": 4200
+      }
+    }
+  },
+  "pose_call_macs_by_scale_bits": {
+    "000": 601369600,
+    "001": 624816800,
+    "010": 656969600,
+    "011": 680282400,
+    "100": 747795200,
+    "101": 771108000,
+    "110": 803260800,
+    "111": 826573600
+  },
+  "one_track_examples": {
+    "tracking_only": 71664896,
+    "full_frame_and_tracking_middle_scale": 728634496,
+    "candidate_tracking_precise_verify_mirror_middle_scale": 2042573696,
+    "candidate_plus_full_frame_and_second_precise_middle_scale": 3356512896,
+    "five_full_heads_and_one_tracker": 4204532896
+  },
+  "pixel_work_units": [
+    {
+      "side": 128,
+      "bgr_u8_payload_bytes": 49152,
+      "nchw_fp32_payload_bytes": 196608,
+      "pack_input_plus_output_payload_bytes": 245760,
+      "bilinear_max_sample_contributions": 196608,
+      "normalization_scalar_multiplies": 49152
+    },
+    {
+      "side": 320,
+      "bgr_u8_payload_bytes": 307200,
+      "nchw_fp32_payload_bytes": 1228800,
+      "pack_input_plus_output_payload_bytes": 1536000,
+      "bilinear_max_sample_contributions": 1228800,
+      "normalization_scalar_multiplies": 307200
+    },
+    {
+      "side": 416,
+      "bgr_u8_payload_bytes": 519168,
+      "nchw_fp32_payload_bytes": 2076672,
+      "pack_input_plus_output_payload_bytes": 2595840,
+      "bilinear_max_sample_contributions": 2076672,
+      "normalization_scalar_multiplies": 0
+    }
+  ],
+  "pixel_work_assumptions": "Archived face/landmark inputs multiply RGB by 1/255; archived YOLOX uses raw BGR float values.",
+  "sources": [
+    "https://onnx.ai/onnx/operators/onnx__Conv.html",
+    "https://onnx.ai/onnx/operators/onnx__MatMul.html",
+    "https://onnx.ai/onnx/operators/onnx__Gemm.html",
+    "https://onnx.ai/onnx/repo-docs/ShapeInference.html"
+  ],
+  "existing_audit_sha256": "c3f69067094cfbbdc70ee48c97bb7011b59b92fac86d94383e64c4a7cf9a2fb0",
+  "existing_video_call_costs": [
+    {
+      "video": "2611101816341481",
+      "frames": 1314,
+      "calls": {
+        "face": 628,
+        "body": 125,
+        "landmarks": 1178
+      },
+      "face_stages": {
+        "mirror": {
+          "calls": 2,
+          "whole_image_gate_macs": 1653147200,
+          "per_scale_gate_macs": 1305099200,
+          "saved_macs": 348048000,
+          "active_scale_histogram": {
+            "001": 1,
+            "011": 1
+          }
+        },
+        "other": {
+          "calls": 541,
+          "whole_image_gate_macs": 348536965600,
+          "per_scale_gate_macs": 330342712000,
+          "saved_macs": 18194253600,
+          "active_scale_histogram": {
+            "000": 438,
+            "010": 59,
+            "011": 7,
+            "001": 35,
+            "110": 1,
+            "100": 1
+          }
+        },
+        "precise": {
+          "calls": 37,
+          "whole_image_gate_macs": 27430367200,
+          "per_scale_gate_macs": 23824483200,
+          "saved_macs": 3605884000,
+          "active_scale_histogram": {
+            "010": 9,
+            "011": 8,
+            "001": 4,
+            "000": 14,
+            "110": 1,
+            "100": 1
+          }
+        },
+        "verify": {
+          "calls": 48,
+          "whole_image_gate_macs": 34045432800,
+          "per_scale_gate_macs": 30334250400,
+          "saved_macs": 3711182400,
+          "active_scale_histogram": {
+            "010": 13,
+            "011": 6,
+            "000": 25,
+            "001": 3,
+            "110": 1
+          }
+        }
+      },
+      "other_network_macs": {
+        "body": 65319176000,
+        "landmarks": 84421247488
+      },
+      "all_networks_before_macs": 561406336288,
+      "all_networks_after_macs": 535546968288,
+      "saved_network_mac_fraction": 0.046061767259310396,
+      "after_network_macs_per_frame": 407569991.086758
+    },
+    {
+      "video": "wolfhound_panting",
+      "frames": 1212,
+      "calls": {
+        "face": 286,
+        "body": 1,
+        "landmarks": 1233
+      },
+      "face_stages": {
+        "mirror": {
+          "calls": 29,
+          "whole_image_gate_macs": 23970634400,
+          "per_scale_gate_macs": 19052118400,
+          "saved_macs": 4918516000,
+          "active_scale_histogram": {
+            "010": 29
+          }
+        },
+        "other": {
+          "calls": 152,
+          "whole_image_gate_macs": 125639187200,
+          "per_scale_gate_macs": 100369053600,
+          "saved_macs": 25270133600,
+          "active_scale_histogram": {
+            "010": 123,
+            "011": 26,
+            "001": 3
+          }
+        },
+        "precise": {
+          "calls": 71,
+          "whole_image_gate_macs": 58461521600,
+          "per_scale_gate_macs": 47069970400,
+          "saved_macs": 11391551200,
+          "active_scale_histogram": {
+            "010": 47,
+            "011": 22,
+            "001": 1,
+            "000": 1
+          }
+        },
+        "verify": {
+          "calls": 34,
+          "whole_image_gate_macs": 28103502400,
+          "per_scale_gate_macs": 22328126400,
+          "saved_macs": 5775376000,
+          "active_scale_histogram": {
+            "010": 32,
+            "001": 1,
+            "011": 1
+          }
+        }
+      },
+      "other_network_macs": {
+        "body": 522553408,
+        "landmarks": 88362816768
+      },
+      "all_networks_before_macs": 325060215776,
+      "all_networks_after_macs": 277704638976,
+      "saved_network_mac_fraction": 0.14568247512834015,
+      "after_network_macs_per_frame": 229129240.07920793
+    }
+  ],
+  "archived_frame_232": {
+    "source": "data/dog_capture/public/wolfhound_panting.ogv",
+    "frame_index": 232,
+    "face_calls": [
+      {
+        "reason": "other",
+        "scale_bits": "010",
+        "macs": 656969600
+      },
+      {
+        "reason": "precise",
+        "scale_bits": "010",
+        "macs": 656969600
+      },
+      {
+        "reason": "precise",
+        "scale_bits": "010",
+        "macs": 656969600
+      },
+      {
+        "reason": "verify",
+        "scale_bits": "010",
+        "macs": 656969600
+      },
+      {
+        "reason": "mirror",
+        "scale_bits": "010",
+        "macs": 656969600
+      }
+    ],
+    "network_call_counts": {
+      "network.face": 5,
+      "network.landmarks": 1
+    },
+    "logical_network_macs": 3356512896,
+    "times_one_tracker_call": 46.83622084653552,
+    "evidence": "artifacts/runs/dog_capture/candidate_optimization_20261113/wolfhound_panting",
+    "calls_file_sha256": "ba2de33798c21330e7abcc6c3cc2892d7f1d24f5056501d280ceee1982da5370",
+    "note": "Call paths and scale activation reused from the full parity-checked audit; no new video replay."
+  },
+  "source_sha256": {
+    "src\\Pet-ReID-IMAG\\tools\\analyze_dog_capture_compute.py": "24ff08768f6d4faace185b92606a2e1bc9631c532c5f9f0bbd7e7d93bb11eadb",
+    "src\\Pet-ReID-IMAG\\tests\\test_dog_capture_compute.py": "f547a4f148e5836d3068eb20a20ed7f8590b7a094f87457a266fa2b9fa93a1d4"
+  },
+  "tests": {
+    "passed": 14,
+    "scope": "Arithmetic and fail-closed accounting only; production runtime unchanged."
+  },
+  "full_node_ledger": "artifacts/runs/dog_capture/static_compute_20261114/nodes.json",
+  "node_ledger_sha256": "b337e4094cc2a181b5021a068d6ab11072af83ba0843776cfe14fcd83f6404d0"
+}
