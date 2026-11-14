@@ -2,7 +2,8 @@
 
 Keep the original checkpoint. Run this on the deployment CPU with its ORT build;
 the resulting graph is a CPU artifact, not a portable/mobile/GPU checkpoint.
-Only compilation needs the onnx package. Inference still uses NumPy and ORT.
+Compilation needs onnx; landmark shape recovery also needs sympy. Inference
+still uses NumPy and ORT, with no new dependencies.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import onnx
 from onnx import helper, numpy_helper, TensorProto
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # This decoder's DFL/keypoint operations never mix anchor positions. The scale
 # rewrite relies on that property, not merely on a YOLO-looking output shape.
@@ -179,10 +181,14 @@ def conditional_scale_heads(base):
     return model, {**detail, 'conditional_scales': levels, 'raw_output_contract': SCALE_OUTPUT_CONTRACT}
 
 
-def compile_config(config, output, *, per_scale=False):
+def compile_config(config, output, *, per_scale=False, preserve_layout=False, scale_decode=False):
     import onnxruntime as ort
     from dog_capture.engine.runtime import _session_options, cpu_model_target
-    from dog_capture.engine.zoo import find_face_model, sha256, verify_model
+    from dog_capture.engine.zoo import find_face_model, find_landmarks, sha256, verify_model
+    from dog_capture_cpu_graph import (conditional_scale_decode, cpu_channel_block,
+                                       preserve_blocked_layout, restore_original_shapes)
+    if scale_decode and not per_scale:
+        raise ValueError('--scale-decode requires --per-scale')
     kind, source = find_face_model(config)
     if kind != 'yolo_pose':
         raise ValueError('CPU conditional compilation currently supports YOLO pose only')
@@ -192,22 +198,48 @@ def compile_config(config, output, *, per_scale=False):
     if per_scale and original_sha != SCALE_CHECKPOINT_SHA256:
         raise ValueError('Per-scale compilation supports only the archived dog_face_pose checkpoint; '
                          'other models can use whole-image conditional compilation')
+    landmark_source = find_landmarks(config) if preserve_layout else None
+    if landmark_source is not None:
+        landmark_sha, landmark_sidecar = verify_model(landmark_source)
+        if landmark_sidecar.get('cpu_compiled'):
+            raise ValueError('Compile landmarks from the original checkpoint, not an already compiled graph')
+    block = cpu_channel_block() if preserve_layout else None
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=False)
     base = output / 'base_cpu.onnx'
     r = config.runtime
-    settings = _session_options(ort, r.threads, r.thread_spinning, r.spin_duration_us, r.spin_backoff_max)
-    settings.optimized_model_filepath = str(base)
-    optimizer = ort.InferenceSession(str(source), settings, providers=['CPUExecutionProvider'])
-    del optimizer
-    compiled, detail = (conditional_scale_heads if per_scale else conditional_heads)(onnx.load(base))
+    def optimize(source_path, destination):
+        settings = _session_options(ort, r.threads, r.thread_spinning, r.spin_duration_us, r.spin_backoff_max)
+        settings.optimized_model_filepath = str(destination)
+        optimizer = ort.InferenceSession(str(source_path), settings, providers=['CPUExecutionProvider'])
+        del optimizer
+        return onnx.load(destination)
+
+    frozen = optimize(source, base)
+    extra = {}
+    if preserve_layout:
+        frozen, extra['layout'] = preserve_blocked_layout(frozen, block)
+    compiled, detail = (conditional_scale_heads if per_scale else conditional_heads)(frozen)
+    if scale_decode:
+        compiled, extra['scale_decode'] = conditional_scale_decode(compiled)
     path = output / 'dog_face_pose_cpu.onnx'
     onnx.save(compiled, path)
-    profile = {'version': 1, 'target': cpu_model_target(), 'source_sha256': original_sha, **detail}
+    profile = {'version': 1, 'target': cpu_model_target(), 'source_sha256': original_sha, **detail, **extra}
     metadata = {**sidecar, 'kind': 'yolo_pose', 'sha256': sha256(path), 'cpu_compiled': profile}
     path.with_suffix('.json').write_text(json.dumps(metadata, indent=2), encoding='utf8')
     optimized = config.merged({'detector': {'model': str(path)},
                                'runtime': {'providers': 'cpu', 'cuda_graph': False}})
+    if landmark_source is not None:
+        landmark_base = optimize(landmark_source, output / 'landmarks_base_cpu.onnx')
+        landmark_base = restore_original_shapes(landmark_base, onnx.load(landmark_source))
+        landmark_model, landmark_detail = preserve_blocked_layout(landmark_base, block)
+        landmark_path = output / 'dog_face_landmarks_cpu.onnx'
+        onnx.save(landmark_model, landmark_path)
+        landmark_profile = {'version': 1, 'target': cpu_model_target(), 'source_sha256': landmark_sha,
+                            'layout': landmark_detail}
+        landmark_metadata = {**landmark_sidecar, 'sha256': sha256(landmark_path), 'cpu_compiled': landmark_profile}
+        landmark_path.with_suffix('.json').write_text(json.dumps(landmark_metadata, indent=2), encoding='utf8')
+        optimized = optimized.merged({'refine': {'landmarks': str(landmark_path)}})
     config_path = output / 'capture.json'
     config_path.write_text(json.dumps(optimized.to_dict(), indent=2), encoding='utf8')
     return config_path, profile
@@ -220,8 +252,13 @@ def main():
     parser.add_argument('--output', type=Path, required=True, help='New local model directory')
     parser.add_argument('--per-scale', action='store_true',
                         help='Also skip rejected scales of the archived 320 px pose checkpoint')
+    parser.add_argument('--preserve-layout', action='store_true',
+                        help='Remove aligned CPU layout round trips in the face and configured landmark models')
+    parser.add_argument('--scale-decode', action='store_true',
+                        help='Decode DFL boxes only on active scales (requires --per-scale)')
     args = parser.parse_args()
-    path, profile = compile_config(CaptureConfig.load(args.config), args.output, per_scale=args.per_scale)
+    path, profile = compile_config(CaptureConfig.load(args.config), args.output, per_scale=args.per_scale,
+                                   preserve_layout=args.preserve_layout, scale_decode=args.scale_decode)
     print(json.dumps({'config': str(path), 'cpu_compiled': profile}, indent=2))
 
 

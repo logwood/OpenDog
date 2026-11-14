@@ -628,3 +628,100 @@ python src/Pet-ReID-IMAG/tools/benchmark_dog_capture_v1.py --config NEW_CPU_MODE
 ## 13. 优化前先计算结构预算（2026-11-14）
 
 新增无推理、无视频回放的 [静态计算量分析](DOG_CAPTURE_COMPUTE_BUDGET_CN.md)：完整脸部网络 826.574 MMAC，小跟踪网 71.665 MMAC；当前常见中尺度脸部路径 656.970 MMAC，其中共享网络与分数已占 91.54%。先按节点、分支、调用次数、图像数据规模和串行依赖筛选改动，再对入围方案验收精度与实时效果。完整预算见 [static_compute_budget.json](../assets/dog_capture/static_compute_budget.json)，逐节点账本可用 `tools/analyze_dog_capture_compute.py --nodes-output ...` 静态生成。
+
+## 14. 将成本预算落实到共享网络与解码优化（2026-11-15）
+
+本轮基于 `ae77f9379d2f23d272ae0c12ef69fe96fd969541`，实现了两项编译期结构改写，覆盖脸部网络共享部分、跟踪网和有效候选解码。仍使用 i9-13980HX 的 CPUExecutionProvider、FP32、4 个 ORT 线程、1000 μs spin/backoff 8、OpenCV 1 线程及 HighQoS。权重、输入分辨率、图像采样、检测/精定位/复检调用与选图规则保持一致。
+
+### 先计算可省的工作，再实现
+
+1. **让对齐的特征一直保持 CPU 分块布局。** ORT 原来的 CPU 图在部分通道 Split/Concat/Add 前后反复执行 NCHWc ↔ NCHW 转换。当通道数和所有拆分边界均为 CPU 块大小 B 的倍数时，这些通道块仍占据相同的连续内存区间；同形状的逐元素 Add 与相同排列可交换。因此可以保持分块布局，消除转换，而不修改卷积、激活或浮点求和顺序。本机 B=8，由目标 CPU 的实际 ReorderInput 内核探测；不从 CPU 型号猜测。
+2. **只给有效尺度做 DFL 框解码。** 上一版已跳过无效尺度的框/关键点头，但随后仍对全部 2,100 个位置执行 DFL Softmax 与加权求和。现在把原来的 7 个 CPU 算子原样放入尺度分支，按 1,600 / 400 / 100 个位置执行；之后接回原始几何和关键点解码。Softmax 沿 16 个分布通道进行，各锚点互不依赖。无效尺度输出仅影响本来就会被分数筛掉的位置。
+
+| 静态预算 | 改动前 → 后 / 省去工作 |
+|---|---|
+| 脸部网络布局转换 | 每次删除 19 个 ReorderInput + 19 个 ReorderOutput；编译基础图 319 → 281 节点 |
+| 脸部转换输出有效载荷 | 每次省去 **9,011,200 bytes**；依赖检查确认全部在每次必经的共享/分数祖先中 |
+| 跟踪网布局转换 | 每次删除 8 + 8 个转换；163 → 147 节点；省去 **860,160 bytes** 输出 |
+| 两视频 DFL 锚点位置 | **915,600 → 174,300（-80.96%）** |
+| 两视频 DFL Softmax 元素 | **58,598,400 → 11,155,200**，每个锚点有 4×16 个元素 |
+
+字节数是取消节点的逻辑输出量，不是实测 DRAM 带宽。布局改写不减少卷积 MAC。旧调用账本中的 914 次脸部推理与 2,411 次跟踪推理分别省去约 8.236 GB / 2.074 GB 累计转换输出；这些数值不能直接换算为毫秒。DFL 的卷积 MAC 很少，但 Softmax 和转换耗时不小，是之前只看 MAC 会漏掉的部分。CPU 布局约定与算子实现依据为 [ORT 1.26 NCHWc 内核](https://raw.githubusercontent.com/microsoft/onnxruntime/v1.26.0/onnxruntime/contrib_ops/cpu/nchwc_ops.cc) 和 [布局优化器](https://raw.githubusercontent.com/microsoft/onnxruntime/v1.26.0/onnxruntime/core/optimizer/nchwc_transformer.cc)。
+
+构建器只改写固定 FP32 四维、通道对齐的通道拆分/拼接与完全同形状 Add；遇到广播、不对齐、未知形状、channels-last 或已改写图会跳过或明确拒绝。DFL 改写还要求原 pose checkpoint SHA、尺度输出合同、固定 reshape、沿通道 Softmax、逐点卷积与封闭的内部依赖。保留原始卷积融合并在部署时关闭二次图优化。跟踪网原始形状使用符号形状推导补回，未增加运行时推理步骤。身体检测器没有匹配的布局冗余，沿用原模型。
+
+### 数值与选图验收
+
+完整 Python 回归 **249 项通过、2 项跳过**；跳过仍是旧 TFLite fixture 和可选 Brotli 缺失。新增 24 项检查覆盖批量/空间尺寸变化、签名零、未对齐拆分/广播/动态形状/公开中间输出，以及全部 8 种尺度激活组合、阈值边界、全分支预热和不兼容 DFL 依赖。
+
+生产模型另外核对 88 个真实脸部输入 × 7 个阈值，即 **616 次**分数与保留锚点的逐位比较，及 24 个跟踪网完整输出。准备输入的四轮交错微测中，脸部布局改写约省 6%，加上按尺度解码合计约省 14%；跟踪网约省 6%–9%。这些是网络微测，完整视频速度单独列出。
+
+独立加载原提交的整个采集包，完整对照 **2,526 帧，零差异**：网络输入、全部分数与保留输出、未舍入的几何/姿态/质量、逐帧决定及最终原图/对齐图像素相同。436 次非空脸部调用仅改变已被分数拒绝的 raw 框值，比较器显式检查允许范围。
+
+| 视频 | 帧数 | 两版脸 / 身体 / 跟踪网调用 | 最终选图 |
+|---|---:|---:|---|
+| 用户 | 1,314 | 628 / 125 / 1,178 | 无合格图 |
+| Wolfhound | 1,212 | 286 / 1 / 1,233 | 正面第 20 帧、左侧第 278 帧 |
+
+这项验收证明本轮优化保持既有行为；用户视频原有的拒绝问题与更广泛数据上的模型准确率没有因此改善。
+
+### 完整实时结果
+
+按原视频 PTS、容量 1 队列、每模型 15 次预热运行，顺序为原 A → 优化 A → 优化 B → 原 B，B 反转两个视频的先后顺序。A 轮出现丢帧后，预先确定补充原 C → 优化 C 各一次，未反复重测到满意为止。所有轮次保留；没有 profiler 插桩，也没有锁定外部负载或 CPU 频率。
+
+| 视频 / 轮次 | FPS | 平均处理 | P95 | P99 | 丢帧 |
+|---|---:|---:|---:|---:|---:|
+| 用户 / 原 A | 29.48 | 11.40 ms | 25.61 ms | 38.48 ms | 23 |
+| 用户 / 优化 A | 29.78 | 10.93 ms | 24.54 ms | 37.08 ms | 10 |
+| 用户 / 优化 B | 30.01 | 10.23 ms | 24.40 ms | 30.53 ms | 0 |
+| 用户 / 原 B | 30.00 | 11.34 ms | 26.36 ms | 33.92 ms | 0 |
+| 用户 / 原 C | 30.01 | 11.12 ms | 26.10 ms | 32.97 ms | 0 |
+| 用户 / 优化 C | 30.01 | 11.49 ms | 27.00 ms | 34.23 ms | 0 |
+| Wolfhound / 原 A | 24.01 | 8.53 ms | 21.69 ms | 37.99 ms | 0 |
+| Wolfhound / 优化 A | 24.01 | 11.31 ms | 24.00 ms | 36.45 ms | 0 |
+| Wolfhound / 优化 B | 24.01 | 8.90 ms | 20.61 ms | 36.21 ms | 0 |
+| Wolfhound / 原 B | 23.99 | 9.10 ms | 24.03 ms | 35.71 ms | 1 |
+| Wolfhound / 原 C | 24.01 | 9.44 ms | 25.90 ms | 39.75 ms | 0 |
+| Wolfhound / 优化 C | 24.01 | 9.60 ms | 24.83 ms | 36.73 ms | 0 |
+
+全部三轮逐帧计时拼接后的现场表现如下，分位数不取单轮分位数的平均。由于部分轮次丢帧后调用量发生变化，这张表不能直接视为等量工作的加速比：
+
+| 视频 | 平均：原 → 优化 | P95 | P99 | 丢帧：原 → 优化 |
+|---|---:|---:|---:|---:|
+| 用户 | **11.29 → 10.88 ms** | 26.16 → 25.30 ms | 34.04 → 33.34 ms | 23 → 10 / 3,942 |
+| Wolfhound | **9.02 → 9.94 ms** | 24.19 → 23.46 ms | 37.92 → 36.52 ms | 1 → 0 / 3,636 |
+
+**网络微测收益已确认，但不能宣称两个视频的整流程平均耗时都降低。** 补充 C 轮两版均零丢帧、调用次数一致，优化版用户均值仍上升 0.38 ms，Wolfhound 上升 0.16 ms；Wolfhound 的 P95/P99 改善，用户的 P95/P99 变慢。三轮 Wolfhound 优化均值也更慢。新开关保持按需启用，完整旧配置仍可复现对照。
+
+阶段数据说明差异分布在多处：C 轮 Wolfhound 整帧摊销的检测器时间 1.658 → 1.520 ms，精定位与候选检查均值 12.581 → 12.032 / 12.122 → 11.401 ms；但逐帧 refine 4.352 → 4.523 ms、analysis 3.007 → 3.107 ms。A 轮的优化版 refine/analysis/关联等多项同时变慢。这里未把整个 refine 等同于跟踪网推理，也不能仅据此判定停顿来自哪个软件或硬件环节。剩余波动尚未定位，不能称为已消除。
+
+原 A 用户视频在第 92 帧达到 260.02 ms，主要落在候选检查；优化 A 最慢第 630 帧为 124.89 ms，主要落在检测器。三轮优化组共处理 **7,568 / 7,578 帧**，对照 **7,554 / 7,578 帧**。优化 B/C 都跑满 30 / 24 fps 且零丢帧。计划输入时刻到结果的 C 轮优化 P95 为 27.93 / 26.04 ms，P99 为 35.09 / 37.72 ms；这也不是最坏延迟保证。计时包含检测、跟踪、姿态、质量和选图，不包含摄像头驱动、UI、网络、ReID 和最终保存。
+
+丢帧还影响后续选图状态：原 B 的 Wolfhound 丢掉第 21 帧后，脸部调用变为 240 次，最终选择正面 20 / 左侧 234 / 右侧 144；其余 Wolfhound 轮次均为正面 20 / 左侧 278。该轮工作量与状态轨迹已不同，不能将更少调用当作模型加速。前面的 2,526 帧相同输入精度验证与实时丢帧测试是两个不同结论，均完整保留。
+
+原生 CLI 使用默认 auto QoS、每模型 2 次预热的短验收通过：**91 / 91 帧、零丢帧、处理 P95 23.53 ms**，原有无合格照片返回 2 的语义保持。
+
+### 使用与交付
+
+本机已保存完整模型、sidecar 与采集配置到 `models/pretrained/dog_capture_cpu_layout_v1/`，原始 checkpoint 和前两版 CPU 图均保留。模型哈希、编译目标、原始模型来源见 [cpu_layout_checkpoint.json](../assets/dog_capture/cpu_layout_checkpoint.json)。用原始完整配置构建新目录：
+
+```bash
+python src/Pet-ReID-IMAG/tools/compile_dog_capture_cpu.py --config ORIGINAL_FULL_CAPTURE_CONFIG --output NEW_CPU_MODEL_DIR --per-scale --preserve-layout --scale-decode
+```
+
+构建需要 `onnx` 和 `sympy`，推理没有新依赖。`--scale-decode` 必须同时指定 `--per-scale`；`--preserve-layout` 也会处理配置中启用的跟踪网。完整配置继承所有采集规则，仅替换两套模型并限定 CPU 执行器。不同 CPU/ORT 目标必须从原始 checkpoint 重新编译，手机/GPU 继续使用 portable 模型。
+
+在 `src/Pet-ReID-IMAG` 下运行：
+
+```bash
+python -m dog_capture run VIDEO --config ABSOLUTE_CPU_LAYOUT_DIR/capture.json --realtime --output NEW_CAPTURE_DIR
+```
+
+完整验收入口：
+
+```bash
+python src/Pet-ReID-IMAG/tools/compare_dog_capture_runtime.py --reference-root CHECKOUT_AE77F93 --isolated-reference --config OLD_CPU_SCALES_DIR/capture.json --optimized-config NEW_CPU_LAYOUT_DIR/capture.json --reference-cpu-qos high --optimized-cpu-qos high --source USER_VIDEO --source WOLFHOUND_VIDEO --output NEW_COMPARISON_DIR
+python src/Pet-ReID-IMAG/tools/benchmark_dog_capture_v1.py --config NEW_CPU_LAYOUT_DIR/capture.json --source USER_VIDEO --source WOLFHOUND_VIDEO --providers cpu --threads 4 --cv-threads 1 --cpu-qos high --stage video --playback realtime --warmup 15 --repeats 1 --samples 4 --output NEW_BENCHMARK_DIR
+```
+
+所有实时轮次、慢帧、结构减算、微测和完整视频精度证据汇总在 [layout_optimization_benchmark.json](../assets/dog_capture/layout_optimization_benchmark.json)。本机原始日志、逐帧计时、输出图片、输入张量和复现脚本存于 `artifacts/runs/dog_capture/layout_optimization_20261114/`。剩余最大项仍为共享卷积计算；本轮消除了其中能低成本证明冗余的布局工作。继续减少检测次数或换轻量验证器会改变精度边界，应另立训练/验证任务，不能借本轮等价结论直接删掉检查。

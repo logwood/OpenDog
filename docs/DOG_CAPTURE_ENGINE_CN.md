@@ -199,6 +199,12 @@ Ultralytics 还能直接导出 TFLite / CoreML / NCNN / RKNN / OpenVINO / Tensor
 不将此改写套用到未验证的其他模型。调用依赖、完整视频回归和四轮实时结果见
 [`DOG_CAPTURE_LANDMARK_TRACKER_CN.md` 第 12 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#12-有效候选的精定位复检依赖与分尺度省算2026-11-13)。
 
+**共享网络与框解码的继续优化（2026-11-15）**：构建命令增加
+`--per-scale --preserve-layout --scale-decode`，在脸部网和配置中的跟踪网内部保持对齐的 CPU 分块布局，
+同时只对有效尺度解码框。本机完整配置为 `models/pretrained/dog_capture_cpu_layout_v1/capture.json`。
+构建需要 `onnx`、`sympy`；推理没有新增依赖。原 checkpoint、阈值、采样和复检次数保留。
+静态减算证明、完整视频精度与实时验收见 [跟踪网络文档第 14 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#14-将成本预算落实到共享网络与解码优化2026-11-15)。
+
 `python -m dog_capture config --write my.yaml` 会导出全部参数。常改的几项：
 
 ```yaml

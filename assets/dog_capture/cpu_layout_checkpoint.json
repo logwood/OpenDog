@@ -1,0 +1,146 @@
+{
+  "schema": "dog_capture_cpu_layout_v1",
+  "original_checkpoints_retained": true,
+  "models": [
+    {
+      "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_pose_cpu.onnx",
+      "size_bytes": 11086416,
+      "metadata": {
+        "kind": "yolo_pose",
+        "schema": "dogface6",
+        "kpt_shape": [
+          6,
+          3
+        ],
+        "input_size": 320,
+        "source_weights": "/tmp/claude-0/-home-user-OpenDog/e43a0a33-2b4a-5e73-809a-6ec999a35337/scratchpad/models/dogface6_e12_best.pt",
+        "sha256": "ec31809d70204d6b6761625df7371704d0ef90614dc4846bc084be14c7c0ed4a",
+        "license": "Trained with Ultralytics (AGPL-3.0) on StanfordExtra/Stanford Dogs (research use)",
+        "cpu_compiled": {
+          "version": 1,
+          "target": {
+            "ort_version": "1.26.0",
+            "ort_build": "ORT Build Info: git-branch=HEAD, git-commit-id=8c546c37b4, fp8-kv-cache=1, build type=Release",
+            "machine": "AMD64",
+            "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+            "system": "Windows",
+            "cpu_features": "SSE SSE2 SSE3 *SSE4.1 *SSE4.2 *AVX *FP16 *AVX2 *AVX512-SKX?"
+          },
+          "source_sha256": "48c2b9f580a6b29f6ec92f81d58bffcb06c609b4da4d77e4c85f259dc1b8d74c",
+          "conditional_score_input": "capture_gate_threshold",
+          "head_nodes": 68,
+          "score_and_shared_nodes": 213,
+          "output_width": 23,
+          "conditional_scales": [
+            {
+              "anchors": [
+                0,
+                1600
+              ],
+              "head_nodes": 14
+            },
+            {
+              "anchors": [
+                1600,
+                2000
+              ],
+              "head_nodes": 14
+            },
+            {
+              "anchors": [
+                2000,
+                2100
+              ],
+              "head_nodes": 14
+            }
+          ],
+          "raw_output_contract": "scores_and_eligible_anchors_exact",
+          "layout": {
+            "block": 8,
+            "old_nodes": 319,
+            "new_nodes": 281,
+            "removed_reorders": {
+              "ReorderOutput": 19,
+              "ReorderInput": 19
+            },
+            "removed_reorder_output_payload_bytes": 9011200,
+            "cloned_operations": {
+              "Split": 9,
+              "Add": 7,
+              "Concat": 9
+            }
+          },
+          "scale_decode": {
+            "per_scale_decode_nodes": 7,
+            "decoded_anchors_per_active_scale": [
+              1600,
+              400,
+              100
+            ]
+          }
+        }
+      }
+    },
+    {
+      "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_landmarks_cpu.onnx",
+      "size_bytes": 5051858,
+      "metadata": {
+        "kind": "crop_landmarks",
+        "schema": "dogface6",
+        "input_size": 128,
+        "share": 0.35,
+        "kpt_names": [
+          "left_eye",
+          "right_eye",
+          "nose",
+          "chin",
+          "left_ear_base",
+          "right_ear_base"
+        ],
+        "outputs": "x,y * 6, box cx, cy, long side (crop px), presence logit, visibility logit * 6, cos, sin roll",
+        "keypoint_max_roll": 55.0,
+        "sha256": "7df6c9311ced20677abfda26caeea1c4954582692c23c78bd9e8f7e66a80b9f6",
+        "source_weights": "/tmp/claude-0/-home-user-OpenDog/e43a0a33-2b4a-5e73-809a-6ec999a35337/scratchpad/lm/run4/best.pt",
+        "license": "YOLO11n backbone (Ultralytics, AGPL-3.0) trained on StanfordExtra/Stanford Dogs (research use)",
+        "cpu_compiled": {
+          "version": 1,
+          "target": {
+            "ort_version": "1.26.0",
+            "ort_build": "ORT Build Info: git-branch=HEAD, git-commit-id=8c546c37b4, fp8-kv-cache=1, build type=Release",
+            "machine": "AMD64",
+            "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+            "system": "Windows",
+            "cpu_features": "SSE SSE2 SSE3 *SSE4.1 *SSE4.2 *AVX *FP16 *AVX2 *AVX512-SKX?"
+          },
+          "source_sha256": "1fb6ad2185d0e4d65addf62c1d5fd79f32f84e61e62ae0dd9694609ca7cc1171",
+          "layout": {
+            "block": 8,
+            "old_nodes": 163,
+            "new_nodes": 147,
+            "removed_reorders": {
+              "ReorderOutput": 8,
+              "ReorderInput": 8
+            },
+            "removed_reorder_output_payload_bytes": 860160,
+            "cloned_operations": {
+              "Split": 4,
+              "Add": 2,
+              "Concat": 4
+            }
+          }
+        }
+      }
+    }
+  ],
+  "local_directory": "models/pretrained/dog_capture_cpu_layout_v1",
+  "configuration": "models/pretrained/dog_capture_cpu_layout_v1/capture.json",
+  "compiler": "src/Pet-ReID-IMAG/tools/compile_dog_capture_cpu.py",
+  "build": "python src/Pet-ReID-IMAG/tools/compile_dog_capture_cpu.py --config ORIGINAL_FULL_CAPTURE_CONFIG --output NEW_CPU_MODEL_DIR --per-scale --preserve-layout --scale-decode",
+  "contract": "Face: all scores and eligible anchors exact. Tracker: full output exact. No thresholds, weights, precision, sampling or call frequency changes.",
+  "deployment": "Device-local CPU/ORT artifact. Use generated capture.json; rebuild from portable checkpoints when CPU/ORT target changes.",
+  "compile_dependencies": [
+    "onnx",
+    "sympy"
+  ],
+  "new_inference_dependencies": []
+}

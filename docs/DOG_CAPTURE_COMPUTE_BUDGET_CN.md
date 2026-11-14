@@ -147,3 +147,9 @@ python src/Pet-ReID-IMAG/tools/analyze_dog_capture_compute.py --face ORIGINAL_PO
 `--audit` 可省略；模型结构与路径示例仍可计算。`--nodes-output` 保存完整逐节点的名称、算子、输出形状、逻辑字节数和 MAC；脸部节点另标记所属执行分组。本机完整账本在 `artifacts/runs/dog_capture/static_compute_20261114/nodes.json`，摘要与第 232 帧证据在 `summary.json`。
 
 分析器遇到未知算子、未解析形状、CPU 融合图或不支持的条件图会明确报错，不把它们记成零；条件分组限定到已归档 pose checkpoint。**14 项算术检查通过**，覆盖分组/深度卷积、Gemm 转置、MatMul 广播/向量、未知形状、错误收缩维度、条件分支和不支持算子。本次仅增加分析工具、证据和文档，生产采集实现未改动，因此没有重复运行实时视频基准。
+
+## 9. 预算之后的实际优化（2026-11-15）
+
+上面的 MAC 预算对应 `ae77f93` 的运行路径，后续已经据此实施两项结构优化：每次脸部网络消除 38 个布局转换、每次跟踪网消除 16 个布局转换；DFL 解码按有效尺度执行。前者覆盖共享网络，不减少逻辑 MAC，但减少中间数据写出和算子调度；后者还减少 Softmax 等未包含在卷积 MAC 指标里的工作。两段视频原有调用账本中，DFL 位置从 915,600 降至 174,300。说明只按卷积 FLOPs 排序会漏掉有效机会。
+
+实现、数值等价条件、全部实时轮次和局限见 [跟踪网络文档第 14 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#14-将成本预算落实到共享网络与解码优化2026-11-15)，新账本见 [layout_optimization_benchmark.json](../assets/dog_capture/layout_optimization_benchmark.json)。静态计算筛选方案，真实测试负责验证数值、选图与运行延迟。
