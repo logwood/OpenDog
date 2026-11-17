@@ -61,7 +61,15 @@ def load_isolated_reference(root):
     factory = importlib.import_module(namespace + '.engine.zoo').build_engine
     config_class = importlib.import_module(namespace + '.engine.config').CaptureConfig
     hashes = {path.name: digest(path.read_bytes()) for path in (directory / 'engine').glob('*.py')}
-    return lambda config: factory(config_class().merged(config.to_dict())), hashes
+    def build(config):
+        values = config.to_dict()
+        # Old releases implicitly rank by quality. Omit only this equivalent
+        # default when their strict schema predates the optional ranking field.
+        if ('ranking' not in config_class().to_dict()['selection']
+                and values['selection'].get('ranking') == 'quality'):
+            values['selection'].pop('ranking')
+        return factory(config_class().merged(values))
+    return build, hashes
 
 
 def trace_models(engine, trace, counts):

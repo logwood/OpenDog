@@ -222,6 +222,7 @@ pose:
   min_dwell_obs: 3               # ……并且至少这么多次观测
 selection:
   mode: hybrid                   # fast=首张达标即锁定；best=整条轨迹最好；hybrid=达标后再优化 2 s
+  ranking: quality               # quality=综合质量；clarity=合格候选按清晰度/眼部细节排序（试验选项）
   good_enough: 0.65
   top_k: 1
 ```
@@ -231,6 +232,13 @@ hybrid 还会继续优化 `improve_window_s`，这期间狗狗如果仍朝着这
 不会提前让它转头，以免丢掉更好的一张；必选视角排在可选视角前面。另外，拍满后始终没有达到 `good_enough`
 的视角，会在拍满 `2 × improve_window_s` 后自动定稿（`SETTLE_FACTOR`），否则流程会一直等到超时。
 Python 参考实现与 TS SDK 的这部分行为由 `selection.json` / `guidance.json` 一致性向量约束。
+
+**清晰度优先排序试验（2026-11-17）**：在现有完整配置中将 `selection.ranking` 改为 `clarity`，
+同一轨迹、同一视角内按已有的 `sharpness` 与 `eye_detail` 以 3:2 加权几何平均排序。
+曝光、分辨率、姿态、关键点复检、时间稳定性、最低综合质量等级继续作为入选条件；
+`good_enough` 和输出中的 `score` 仍表示原综合质量分，防止更换排序后意外提前锁定。
+默认 `quality` 保持原行为。两端实现、前后选图与实际速度见
+[跟踪网络文档第 16 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#16-合格候选的清晰度优先排序试验2026-11-17)。
 
 ```yaml
 quality:

@@ -539,7 +539,7 @@ class CaptureEngine:
         landmarked = self.refiner is not None and self.refiner.landmarker is not None and not still
         if landmarked and timestamp < context.retry_at:
             eligible = False   # this track's last candidate failed a moment ago (refine.candidate_retry_s)
-        if eligible and context.shots.wants(state.view, quality.score):
+        if eligible and context.shots.wants(state.view, context.shots.score_for(quality)):
             # With a crop landmarker the per-frame keypoints are the tracker's; a shot candidate
             # gets the precise detector's (same view rule as the server's re-check), and those
             # are what is judged and kept.
@@ -549,7 +549,7 @@ class CaptureEngine:
                 eligible = quality.passed and context.shots.eligible_level(quality.level)
             # Landmarks first, sharpness second: a confident but hallucinated face (the model on a
             # dog lying sideways with closed eyes) must not win on texture or exposure.
-            if problem is None and eligible and context.shots.wants(state.view, quality.score):
+            if problem is None and eligible and context.shots.wants(state.view, context.shots.score_for(quality)):
                 problem, gate_status = self._trusted(context, frame, det, target, still=still)
             elif problem is not None:
                 gate_status = 'fail'
@@ -561,7 +561,7 @@ class CaptureEngine:
                 if quality is not face.quality:
                     quality.reasons.append(problem)
                 face.quality.passed, eligible = False, False
-        if eligible and context.shots.wants(state.view, quality.score):
+        if eligible and context.shots.wants(state.view, context.shots.score_for(quality)):
             size = self.config.output.aligned_size
             crop = aligned.image if size == aligned.image.shape[0] else align_face(
                 frame, geometry.points, self.template[0], self.template[1], size).image

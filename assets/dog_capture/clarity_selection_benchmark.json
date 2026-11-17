@@ -1,0 +1,2772 @@
+{
+  "schema": "dog_capture_clarity_selection_v1",
+  "date": "2026-11-17",
+  "reference_commit": "272aa75aa543899bdfd818a2e720128f2700084b",
+  "decision": "Keep quality as default. Clarity is opt-in: full-input coverage improved on one video, but existing selected views did not become sharper and real-time stability/identity accuracy are not established.",
+  "policy": {
+    "field": "selection.ranking",
+    "values": [
+      "quality",
+      "clarity"
+    ],
+    "default": "quality",
+    "clarity_formula": "exp((3*log(max(sharpness,.02))+2*log(max(eye_detail,.02)))/5)",
+    "unchanged": [
+      "all image/model/pose/reliability/temporal gates",
+      "minimum composite quality level",
+      "good_enough and lock windows use composite quality",
+      "output score remains composite quality"
+    ],
+    "added_pixel_or_network_operations": 0,
+    "warning": "Candidate ordering changes which precise/verification calls are attempted and can interact with failure backoff; total call counts need measurement."
+  },
+  "method": {
+    "hardware": "Intel Core i9-13980HX, Windows CPUExecutionProvider; RTX 4060 unused.",
+    "versions": {
+      "numpy": "2.4.4",
+      "opencv": "5.0.0",
+      "onnxruntime": "1.26.0"
+    },
+    "cv_threads": 1,
+    "config": {
+      "detector": {
+        "kind": "auto",
+        "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_pose_cpu.onnx",
+        "input_size": 0,
+        "score_threshold": 0.35,
+        "nms_iou": 0.45,
+        "max_faces": 8,
+        "schema": "",
+        "roi_zoom": true,
+        "roi_min_zoom": 1.5,
+        "roi_period_s": 0.1
+      },
+      "refine": {
+        "enabled": true,
+        "landmarks": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_landmarks_cpu.onnx",
+        "share": 0.35,
+        "crop_size": 0,
+        "antialias": "tracker",
+        "candidate_retry_s": 0.25,
+        "search_period_s": 0.5,
+        "confident_score": 1.0,
+        "max_search_period_s": 2.0,
+        "switch_margin": 0.05,
+        "fine_min_deg": 8.0,
+        "research_below": 0.4,
+        "carry_frames": 3,
+        "match_iou": 0.3,
+        "full_detect_period_s": 0.3,
+        "min_shot_score": 0.5,
+        "max_mirror_disagreement": 0.2,
+        "min_front_eye_conf": 0.7,
+        "max_agreement": 0.3,
+        "min_side_eye_conf": 0.5,
+        "max_side_mirror_disagreement": 0.3,
+        "max_side_agreement": 0.5,
+        "min_eye_contrast": 0.2,
+        "gate_window_s": 0.5,
+        "gate_min_frames": 8,
+        "gate_min_ratio": 0.35,
+        "gate_min_passes": 3,
+        "full_detect_min_frames": 3,
+        "search_min_frames": 6,
+        "backoff_margin": 0.1,
+        "max_backoff": 4,
+        "empty_search_period_s": 0.25,
+        "empty_search_min_frames": 2
+      },
+      "body_gate": {
+        "enabled": "auto",
+        "model": "models/pretrained/dog_capture_v1/yolox_nano.onnx",
+        "input_size": 416,
+        "score_threshold": 0.3,
+        "class_id": 16,
+        "period_s": 0.25,
+        "hold_s": 0.75,
+        "margin": 0.15,
+        "head_score_threshold": 0.5
+      },
+      "tracker": {
+        "high_score": 0.5,
+        "low_score": 0.2,
+        "new_track_score": 0.55,
+        "match_iou": 0.2,
+        "low_match_iou": 0.5,
+        "unconfirmed_match_iou": 0.3,
+        "max_lost_s": 1.0,
+        "max_tracks": 16,
+        "nominal_fps": 30.0
+      },
+      "pose": {
+        "views": [
+          {
+            "name": "front",
+            "center": 0.0,
+            "lower": -0.13,
+            "upper": 0.13,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "left",
+            "center": -0.45,
+            "lower": -0.75,
+            "upper": -0.25,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "right",
+            "center": 0.45,
+            "lower": 0.25,
+            "upper": 0.75,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          }
+        ],
+        "exit_margin": 0.05,
+        "min_dwell_s": 0.12,
+        "min_dwell_obs": 3,
+        "max_gap_s": 0.3,
+        "smooth_min_cutoff": 1.5,
+        "smooth_beta": 0.5,
+        "snout_factor": 0.8,
+        "min_iod_box_ratio": 0.12,
+        "max_iod_box_ratio": 1.1,
+        "pitch_range": [
+          0.05,
+          2.2
+        ],
+        "max_abs_yaw": 1.2
+      },
+      "quality": {
+        "min_iod_px": 18.0,
+        "good_iod_px": 64.0,
+        "min_sharpness": 0.15,
+        "min_brightness": 30.0,
+        "max_brightness": 230.0,
+        "max_clipped": 0.3,
+        "min_contrast": 16.0,
+        "border_margin": 0.005,
+        "min_kp_score": 0.35,
+        "max_alignment_residual": 0.45,
+        "motion_ref_iod_per_s": 3.0,
+        "weights": {
+          "sharpness": 3.0,
+          "eye_detail": 2.0,
+          "exposure": 1.0,
+          "resolution": 1.5,
+          "confidence": 1.0,
+          "motion": 1.0,
+          "pose_fit": 0.75,
+          "alignment": 0.5
+        },
+        "high_level": 0.7,
+        "medium_level": 0.5
+      },
+      "selection": {
+        "mode": "hybrid",
+        "ranking": "quality",
+        "good_enough": 0.65,
+        "improve_window_s": 2.0,
+        "top_k": 1,
+        "min_gap_s": 0.3,
+        "min_level": "medium"
+      },
+      "output": {
+        "aligned_size": 224,
+        "template": "petface_dog",
+        "face_margin": 0.2,
+        "keep_frames": true,
+        "image_format": "png"
+      },
+      "runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "cache_dir": "",
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": true,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8
+      }
+    },
+    "cpu_policy": {
+      "requested": "high",
+      "effective": "high",
+      "applied": true,
+      "platform": "win32",
+      "previous": {
+        "version": 1,
+        "control_mask": 0,
+        "state_mask": 0
+      },
+      "active": {
+        "version": 1,
+        "control_mask": 1,
+        "state_mask": 0
+      }
+    },
+    "warmup_per_model": 15,
+    "realtime": "Original PTS; capacity-1 latest queue; serial quality A / clarity A / clarity B / quality B; reverse video order in B; no profiler.",
+    "pooling": "Individual frame timings pooled, never an average of percentiles.",
+    "limitations": [
+      "All eight real-time videos dropped frames; none is an equal-work comparison.",
+      "Both strategies were substantially slower than the 2026-11-15 session. CPU frequency and external load were not locked; the slowdown is not attributed to this policy.",
+      "Real-time drops changed selected frames; clarity did not consistently retain the new right-view capture.",
+      "Two videos have no identity-match labels; no ReID accuracy or broad clarity superiority claim.",
+      "No new phone throughput/energy or real-model browser benchmark."
+    ]
+  },
+  "default_equivalence": {
+    "frames": 2526,
+    "mismatches": 0,
+    "selected_pixels_identical": true,
+    "model_calls_identical": true,
+    "evidence": "artifacts/runs/dog_capture/clarity_selection_20261117/default_equivalence/result.json"
+  },
+  "selection_comparison": [
+    {
+      "source": "data/dog_capture/user/2611101816341481.mp4",
+      "sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06",
+      "frames": 1314,
+      "output": "artifacts/runs/dog_capture/clarity_selection_20261117/selection_comparison/2611101816341481",
+      "model_calls": {
+        "quality": {
+          "face": 628,
+          "body": 125,
+          "landmarks": 1178
+        },
+        "clarity": {
+          "face": 628,
+          "body": 125,
+          "landmarks": 1178
+        }
+      },
+      "trusted_checks": {
+        "quality": {
+          "landmarks_unreliable": 47,
+          "eyes_not_visible": 56,
+          "landmarks_unstable": 2
+        },
+        "clarity": {
+          "landmarks_unreliable": 47,
+          "eyes_not_visible": 56,
+          "landmarks_unstable": 2
+        }
+      },
+      "selection": {
+        "quality": {},
+        "clarity": {}
+      },
+      "assessment": {
+        "quality": [],
+        "clarity": []
+      }
+    },
+    {
+      "source": "data/dog_capture/public/wolfhound_panting.ogv",
+      "sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893",
+      "frames": 1212,
+      "output": "artifacts/runs/dog_capture/clarity_selection_20261117/selection_comparison/wolfhound_panting",
+      "model_calls": {
+        "quality": {
+          "face": 286,
+          "body": 1,
+          "landmarks": 1233
+        },
+        "clarity": {
+          "face": 258,
+          "body": 1,
+          "landmarks": 1233
+        }
+      },
+      "trusted_checks": {
+        "quality": {
+          "landmarks_unstable": 14,
+          "landmarks_unreliable": 9,
+          "passed": 15,
+          "eyes_not_visible": 1
+        },
+        "clarity": {
+          "landmarks_unstable": 11,
+          "landmarks_unreliable": 4,
+          "passed": 15
+        }
+      },
+      "selection": {
+        "quality": {
+          "front": [
+            {
+              "aligned": "views/front_aligned.png",
+              "frame": "views/front_frame.png",
+              "face": "views/front_face.png",
+              "view": "front",
+              "track_id": 1,
+              "frame_index": 20,
+              "time_s": 0.8333,
+              "score": 0.7838,
+              "level": "high",
+              "basis": "stable_view",
+              "confirmed_at_s": 0.875,
+              "rotation_deg": 0,
+              "detection": {
+                "box": [
+                  397.73,
+                  53.25,
+                  940.34,
+                  616.91
+                ],
+                "score": 0.6152,
+                "schema": "dogface6",
+                "keypoints": [
+                  [
+                    579.04,
+                    223.99
+                  ],
+                  [
+                    746.8,
+                    226.13
+                  ],
+                  [
+                    642.81,
+                    375.21
+                  ],
+                  [
+                    663.99,
+                    513.23
+                  ],
+                  [
+                    512.28,
+                    164.82
+                  ],
+                  [
+                    831.25,
+                    163.32
+                  ]
+                ],
+                "kp_scores": [
+                  0.8963,
+                  0.8847,
+                  0.9998,
+                  0.9958,
+                  0.9378,
+                  0.9564
+                ],
+                "source": "yolo_pose+refined",
+                "upright_k": 0,
+                "upright_angle": -0.7318,
+                "refined": true,
+                "eye_contrast": [
+                  0.6121,
+                  0.8375
+                ],
+                "verify": {
+                  "score": 0.6359,
+                  "eyes": [
+                    0.9526,
+                    0.931
+                  ],
+                  "mirror": 0.1429,
+                  "agreement": 0.1296
+                }
+              },
+              "pose": {
+                "points": {
+                  "left_eye": [
+                    579.04,
+                    223.99
+                  ],
+                  "right_eye": [
+                    746.8,
+                    226.13
+                  ],
+                  "nose": [
+                    642.81,
+                    375.21
+                  ],
+                  "chin": [
+                    663.99,
+                    513.23
+                  ],
+                  "left_ear_base": [
+                    512.28,
+                    164.82
+                  ],
+                  "right_ear_base": [
+                    831.25,
+                    163.32
+                  ]
+                },
+                "scores": {
+                  "left_eye": 0.8963,
+                  "right_eye": 0.8847,
+                  "nose": 0.9998,
+                  "chin": 0.9958,
+                  "left_ear_base": 0.9378,
+                  "right_ear_base": 0.9564
+                },
+                "iod": 167.768,
+                "roll_deg": 0.7318,
+                "yaw": -0.1033,
+                "pitch": 0.8965,
+                "lower_yaw": 0.0269,
+                "approx_deg": -7.3552,
+                "swapped": false,
+                "upright_k": 0,
+                "valid": true,
+                "reason": "ok"
+              },
+              "quality": {
+                "score": 0.7838,
+                "level": "high",
+                "passed": true,
+                "reasons": [],
+                "factors": {
+                  "sharpness": 0.8532,
+                  "eye_detail": 0.5187,
+                  "exposure": 0.9999,
+                  "resolution": 1.0,
+                  "confidence": 0.8075,
+                  "motion": 0.911,
+                  "pose_fit": 0.5984,
+                  "alignment": 0.7601
+                },
+                "metrics": {
+                  "iod_px": 167.768,
+                  "detector_score": 0.6152,
+                  "eye_visibility": 0.8847,
+                  "nose_visibility": 0.9998,
+                  "alignment_residual": 0.1349,
+                  "brightness": 84.74,
+                  "contrast": 143.0,
+                  "clipped": 0.0001,
+                  "laplacian": 122.9249,
+                  "blur_effect": 0.3314,
+                  "eye_laplacian": [
+                    272.5998840332031,
+                    73.12477111816406
+                  ],
+                  "warp_scale": 0.5105,
+                  "speed_iod_per_s": 0.9375
+                }
+              }
+            }
+          ],
+          "left": [
+            {
+              "aligned": "views/left_aligned.png",
+              "frame": "views/left_frame.png",
+              "face": "views/left_face.png",
+              "view": "left",
+              "track_id": 1,
+              "frame_index": 278,
+              "time_s": 11.5833,
+              "score": 0.8614,
+              "level": "high",
+              "basis": "stable_view",
+              "confirmed_at_s": 11.5833,
+              "rotation_deg": 0,
+              "detection": {
+                "box": [
+                  314.76,
+                  -14.14,
+                  827.96,
+                  603.32
+                ],
+                "score": 0.5917,
+                "schema": "dogface6",
+                "keypoints": [
+                  [
+                    471.43,
+                    173.73
+                  ],
+                  [
+                    618.61,
+                    192.07
+                  ],
+                  [
+                    466.84,
+                    303.46
+                  ],
+                  [
+                    498.67,
+                    445.91
+                  ],
+                  [
+                    459.72,
+                    90.71
+                  ],
+                  [
+                    718.21,
+                    141.15
+                  ]
+                ],
+                "kp_scores": [
+                  0.7261,
+                  0.7215,
+                  0.9996,
+                  0.9945,
+                  0.8361,
+                  0.9499
+                ],
+                "source": "yolo_pose+refined",
+                "upright_k": 0,
+                "upright_angle": -7.1017,
+                "refined": true,
+                "eye_contrast": [
+                  0.3935,
+                  0.6264
+                ],
+                "verify": {
+                  "score": 0.6025,
+                  "eyes": [
+                    0.5817,
+                    0.6497
+                  ],
+                  "mirror": 0.1039,
+                  "agreement": 0.1125
+                }
+              },
+              "pose": {
+                "points": {
+                  "left_eye": [
+                    471.43,
+                    173.73
+                  ],
+                  "right_eye": [
+                    618.61,
+                    192.07
+                  ],
+                  "nose": [
+                    466.84,
+                    303.46
+                  ],
+                  "chin": [
+                    498.67,
+                    445.91
+                  ],
+                  "left_ear_base": [
+                    459.72,
+                    90.71
+                  ],
+                  "right_ear_base": [
+                    718.21,
+                    141.15
+                  ]
+                },
+                "scores": {
+                  "left_eye": 0.7261,
+                  "right_eye": 0.7215,
+                  "nose": 0.9996,
+                  "chin": 0.9945,
+                  "left_ear_base": 0.8361,
+                  "right_ear_base": 0.9499
+                },
+                "iod": 148.3221,
+                "roll_deg": 7.1017,
+                "yaw": -0.4025,
+                "pitch": 0.8717,
+                "lower_yaw": -0.0866,
+                "approx_deg": -26.707,
+                "swapped": false,
+                "upright_k": 0,
+                "valid": true,
+                "reason": "ok"
+              },
+              "quality": {
+                "score": 0.8614,
+                "level": "high",
+                "passed": true,
+                "reasons": [],
+                "factors": {
+                  "sharpness": 0.8274,
+                  "eye_detail": 0.8025,
+                  "exposure": 0.9995,
+                  "resolution": 1.0,
+                  "confidence": 0.7506,
+                  "motion": 0.9963,
+                  "pose_fit": 0.8554,
+                  "alignment": 0.688
+                },
+                "metrics": {
+                  "iod_px": 148.3221,
+                  "detector_score": 0.5917,
+                  "eye_visibility": 0.7261,
+                  "nose_visibility": 0.9996,
+                  "alignment_residual": 0.1755,
+                  "brightness": 114.5702,
+                  "contrast": 161.0,
+                  "clipped": 0.0003,
+                  "laplacian": 108.0233,
+                  "blur_effect": 0.3344,
+                  "eye_laplacian": [
+                    162.22457885742188,
+                    134.7105712890625
+                  ],
+                  "warp_scale": 0.5374,
+                  "speed_iod_per_s": 0.182
+                }
+              }
+            }
+          ]
+        },
+        "clarity": {
+          "front": [
+            {
+              "aligned": "views/front_aligned.png",
+              "frame": "views/front_frame.png",
+              "face": "views/front_face.png",
+              "view": "front",
+              "track_id": 1,
+              "frame_index": 20,
+              "time_s": 0.8333,
+              "score": 0.7838,
+              "level": "high",
+              "basis": "stable_view",
+              "confirmed_at_s": 0.875,
+              "rotation_deg": 0,
+              "detection": {
+                "box": [
+                  397.73,
+                  53.25,
+                  940.34,
+                  616.91
+                ],
+                "score": 0.6152,
+                "schema": "dogface6",
+                "keypoints": [
+                  [
+                    579.04,
+                    223.99
+                  ],
+                  [
+                    746.8,
+                    226.13
+                  ],
+                  [
+                    642.81,
+                    375.21
+                  ],
+                  [
+                    663.99,
+                    513.23
+                  ],
+                  [
+                    512.28,
+                    164.82
+                  ],
+                  [
+                    831.25,
+                    163.32
+                  ]
+                ],
+                "kp_scores": [
+                  0.8963,
+                  0.8847,
+                  0.9998,
+                  0.9958,
+                  0.9378,
+                  0.9564
+                ],
+                "source": "yolo_pose+refined",
+                "upright_k": 0,
+                "upright_angle": -0.7318,
+                "refined": true,
+                "eye_contrast": [
+                  0.6121,
+                  0.8375
+                ],
+                "verify": {
+                  "score": 0.6359,
+                  "eyes": [
+                    0.9526,
+                    0.931
+                  ],
+                  "mirror": 0.1429,
+                  "agreement": 0.1296
+                }
+              },
+              "pose": {
+                "points": {
+                  "left_eye": [
+                    579.04,
+                    223.99
+                  ],
+                  "right_eye": [
+                    746.8,
+                    226.13
+                  ],
+                  "nose": [
+                    642.81,
+                    375.21
+                  ],
+                  "chin": [
+                    663.99,
+                    513.23
+                  ],
+                  "left_ear_base": [
+                    512.28,
+                    164.82
+                  ],
+                  "right_ear_base": [
+                    831.25,
+                    163.32
+                  ]
+                },
+                "scores": {
+                  "left_eye": 0.8963,
+                  "right_eye": 0.8847,
+                  "nose": 0.9998,
+                  "chin": 0.9958,
+                  "left_ear_base": 0.9378,
+                  "right_ear_base": 0.9564
+                },
+                "iod": 167.768,
+                "roll_deg": 0.7318,
+                "yaw": -0.1033,
+                "pitch": 0.8965,
+                "lower_yaw": 0.0269,
+                "approx_deg": -7.3552,
+                "swapped": false,
+                "upright_k": 0,
+                "valid": true,
+                "reason": "ok"
+              },
+              "quality": {
+                "score": 0.7838,
+                "level": "high",
+                "passed": true,
+                "reasons": [],
+                "factors": {
+                  "sharpness": 0.8532,
+                  "eye_detail": 0.5187,
+                  "exposure": 0.9999,
+                  "resolution": 1.0,
+                  "confidence": 0.8075,
+                  "motion": 0.911,
+                  "pose_fit": 0.5984,
+                  "alignment": 0.7601
+                },
+                "metrics": {
+                  "iod_px": 167.768,
+                  "detector_score": 0.6152,
+                  "eye_visibility": 0.8847,
+                  "nose_visibility": 0.9998,
+                  "alignment_residual": 0.1349,
+                  "brightness": 84.74,
+                  "contrast": 143.0,
+                  "clipped": 0.0001,
+                  "laplacian": 122.9249,
+                  "blur_effect": 0.3314,
+                  "eye_laplacian": [
+                    272.5998840332031,
+                    73.12477111816406
+                  ],
+                  "warp_scale": 0.5105,
+                  "speed_iod_per_s": 0.9375
+                }
+              }
+            }
+          ],
+          "left": [
+            {
+              "aligned": "views/left_aligned.png",
+              "frame": "views/left_frame.png",
+              "face": "views/left_face.png",
+              "view": "left",
+              "track_id": 1,
+              "frame_index": 278,
+              "time_s": 11.5833,
+              "score": 0.8614,
+              "level": "high",
+              "basis": "stable_view",
+              "confirmed_at_s": 11.5833,
+              "rotation_deg": 0,
+              "detection": {
+                "box": [
+                  314.76,
+                  -14.14,
+                  827.96,
+                  603.32
+                ],
+                "score": 0.5917,
+                "schema": "dogface6",
+                "keypoints": [
+                  [
+                    471.43,
+                    173.73
+                  ],
+                  [
+                    618.61,
+                    192.07
+                  ],
+                  [
+                    466.84,
+                    303.46
+                  ],
+                  [
+                    498.67,
+                    445.91
+                  ],
+                  [
+                    459.72,
+                    90.71
+                  ],
+                  [
+                    718.21,
+                    141.15
+                  ]
+                ],
+                "kp_scores": [
+                  0.7261,
+                  0.7215,
+                  0.9996,
+                  0.9945,
+                  0.8361,
+                  0.9499
+                ],
+                "source": "yolo_pose+refined",
+                "upright_k": 0,
+                "upright_angle": -7.1017,
+                "refined": true,
+                "eye_contrast": [
+                  0.3935,
+                  0.6264
+                ],
+                "verify": {
+                  "score": 0.6025,
+                  "eyes": [
+                    0.5817,
+                    0.6497
+                  ],
+                  "mirror": 0.1039,
+                  "agreement": 0.1125
+                }
+              },
+              "pose": {
+                "points": {
+                  "left_eye": [
+                    471.43,
+                    173.73
+                  ],
+                  "right_eye": [
+                    618.61,
+                    192.07
+                  ],
+                  "nose": [
+                    466.84,
+                    303.46
+                  ],
+                  "chin": [
+                    498.67,
+                    445.91
+                  ],
+                  "left_ear_base": [
+                    459.72,
+                    90.71
+                  ],
+                  "right_ear_base": [
+                    718.21,
+                    141.15
+                  ]
+                },
+                "scores": {
+                  "left_eye": 0.7261,
+                  "right_eye": 0.7215,
+                  "nose": 0.9996,
+                  "chin": 0.9945,
+                  "left_ear_base": 0.8361,
+                  "right_ear_base": 0.9499
+                },
+                "iod": 148.3221,
+                "roll_deg": 7.1017,
+                "yaw": -0.4025,
+                "pitch": 0.8717,
+                "lower_yaw": -0.0866,
+                "approx_deg": -26.707,
+                "swapped": false,
+                "upright_k": 0,
+                "valid": true,
+                "reason": "ok"
+              },
+              "quality": {
+                "score": 0.8614,
+                "level": "high",
+                "passed": true,
+                "reasons": [],
+                "factors": {
+                  "sharpness": 0.8274,
+                  "eye_detail": 0.8025,
+                  "exposure": 0.9995,
+                  "resolution": 1.0,
+                  "confidence": 0.7506,
+                  "motion": 0.9963,
+                  "pose_fit": 0.8554,
+                  "alignment": 0.688
+                },
+                "metrics": {
+                  "iod_px": 148.3221,
+                  "detector_score": 0.5917,
+                  "eye_visibility": 0.7261,
+                  "nose_visibility": 0.9996,
+                  "alignment_residual": 0.1755,
+                  "brightness": 114.5702,
+                  "contrast": 161.0,
+                  "clipped": 0.0003,
+                  "laplacian": 108.0233,
+                  "blur_effect": 0.3344,
+                  "eye_laplacian": [
+                    162.22457885742188,
+                    134.7105712890625
+                  ],
+                  "warp_scale": 0.5374,
+                  "speed_iod_per_s": 0.182
+                }
+              }
+            }
+          ],
+          "right": [
+            {
+              "aligned": "views/right_aligned.png",
+              "frame": "views/right_frame.png",
+              "face": "views/right_face.png",
+              "view": "right",
+              "track_id": 1,
+              "frame_index": 148,
+              "time_s": 6.1667,
+              "score": 0.8278,
+              "level": "high",
+              "basis": "stable_view",
+              "confirmed_at_s": 6.2917,
+              "rotation_deg": 0,
+              "detection": {
+                "box": [
+                  380.82,
+                  17.97,
+                  1034.06,
+                  698.18
+                ],
+                "score": 0.53,
+                "schema": "dogface6",
+                "keypoints": [
+                  [
+                    655.4,
+                    225.14
+                  ],
+                  [
+                    857.35,
+                    196.08
+                  ],
+                  [
+                    874.53,
+                    349.78
+                  ],
+                  [
+                    830.9,
+                    539.55
+                  ],
+                  [
+                    496.56,
+                    170.35
+                  ],
+                  [
+                    826.58,
+                    85.77
+                  ]
+                ],
+                "kp_scores": [
+                  0.7205,
+                  0.6184,
+                  0.9992,
+                  0.9934,
+                  0.975,
+                  0.7501
+                ],
+                "source": "yolo_pose+refined",
+                "upright_k": 0,
+                "upright_angle": 8.1887,
+                "refined": true,
+                "eye_contrast": [
+                  0.6581,
+                  0.4815
+                ],
+                "verify": {
+                  "score": 0.6002,
+                  "eyes": [
+                    0.7693,
+                    0.6965
+                  ],
+                  "mirror": 0.1102,
+                  "agreement": 0.0712
+                }
+              },
+              "pose": {
+                "points": {
+                  "left_eye": [
+                    655.4,
+                    225.14
+                  ],
+                  "right_eye": [
+                    857.35,
+                    196.08
+                  ],
+                  "nose": [
+                    874.53,
+                    349.78
+                  ],
+                  "chin": [
+                    830.9,
+                    539.55
+                  ],
+                  "left_ear_base": [
+                    496.56,
+                    170.35
+                  ],
+                  "right_ear_base": [
+                    826.58,
+                    85.77
+                  ]
+                },
+                "scores": {
+                  "left_eye": 0.7205,
+                  "right_eye": 0.6184,
+                  "nose": 0.9992,
+                  "chin": 0.9934,
+                  "left_ear_base": 0.975,
+                  "right_ear_base": 0.7501
+                },
+                "iod": 204.0313,
+                "roll_deg": -8.1887,
+                "yaw": 0.4533,
+                "pitch": 0.7576,
+                "lower_yaw": 0.1256,
+                "approx_deg": 29.539,
+                "swapped": false,
+                "upright_k": 0,
+                "valid": true,
+                "reason": "ok"
+              },
+              "quality": {
+                "score": 0.8278,
+                "level": "high",
+                "passed": true,
+                "reasons": [],
+                "factors": {
+                  "sharpness": 0.752,
+                  "eye_detail": 0.7721,
+                  "exposure": 1.0,
+                  "resolution": 1.0,
+                  "confidence": 0.6877,
+                  "motion": 0.969,
+                  "pose_fit": 0.913,
+                  "alignment": 0.6902
+                },
+                "metrics": {
+                  "iod_px": 204.0313,
+                  "detector_score": 0.53,
+                  "eye_visibility": 0.7205,
+                  "nose_visibility": 0.9992,
+                  "alignment_residual": 0.1743,
+                  "brightness": 81.9963,
+                  "contrast": 127.0,
+                  "clipped": 0.0,
+                  "laplacian": 83.9865,
+                  "blur_effect": 0.3584,
+                  "eye_laplacian": [
+                    147.90045166015625,
+                    74.6031265258789
+                  ],
+                  "warp_scale": 0.4077,
+                  "speed_iod_per_s": 0.5362
+                }
+              }
+            }
+          ]
+        }
+      },
+      "assessment": {
+        "quality": [
+          {
+            "view": "front",
+            "frame_index": 20,
+            "quality_score": 0.7838148515290972,
+            "clarity_score": 0.6991868821684161,
+            "factors": {
+              "sharpness": 0.8531966311062542,
+              "eye_detail": 0.5186919181873209,
+              "exposure": 0.9998844918797791,
+              "resolution": 1.0,
+              "confidence": 0.807524263488351,
+              "motion": 0.9110237318594078,
+              "pose_fit": 0.5984146054829552,
+              "alignment": 0.7601228610453505
+            },
+            "metrics": {
+              "iod_px": 167.76801595808985,
+              "detector_score": 0.6152374148368835,
+              "eye_visibility": 0.8846913576126099,
+              "nose_visibility": 0.9998077154159546,
+              "alignment_residual": 0.13493089066199032,
+              "brightness": 84.73996811975881,
+              "contrast": 143.0,
+              "clipped": 6.930487213251092e-05,
+              "laplacian": 122.92485809326172,
+              "blur_effect": 0.33139482067134884,
+              "eye_laplacian": [
+                272.5998840332031,
+                73.12477111816406
+              ],
+              "warp_scale": 0.5104531145601561,
+              "speed_iod_per_s": 0.9375479807996726
+            },
+            "yaw": -0.103265282036776,
+            "hard_gates_pass": true,
+            "aligned_sha256": "b209816d6ae7add66840627e4e7d7d2a6135fb73581694368f28cf8122268563"
+          },
+          {
+            "view": "left",
+            "frame_index": 278,
+            "quality_score": 0.8614378312008796,
+            "clarity_score": 0.8173858868515383,
+            "factors": {
+              "sharpness": 0.8274318021857828,
+              "eye_detail": 0.8025452408694163,
+              "exposure": 0.9995379675191166,
+              "resolution": 1.0,
+              "confidence": 0.7505799718445997,
+              "motion": 0.9963328678219132,
+              "pose_fit": 0.8554087617192774,
+              "alignment": 0.6879888205976367
+            },
+            "metrics": {
+              "iod_px": 148.3221431735396,
+              "detector_score": 0.591738224029541,
+              "eye_visibility": 0.7261362671852112,
+              "nose_visibility": 0.9996191263198853,
+              "alignment_residual": 0.17550628841382937,
+              "brightness": 114.5702404879063,
+              "contrast": 161.0,
+              "clipped": 0.00027721948853004367,
+              "laplacian": 108.0233383178711,
+              "blur_effect": 0.33438870073891624,
+              "eye_laplacian": [
+                162.22457885742188,
+                134.7105712890625
+              ],
+              "warp_scale": 0.537417960092318,
+              "speed_iod_per_s": 0.18200457630990535
+            },
+            "yaw": -0.4024806106152266,
+            "hard_gates_pass": true,
+            "aligned_sha256": "0d2f9bbd5dba2f06fb175a9bb36c0fb50e1284f32f66bfa93dc33b5f4953b783"
+          }
+        ],
+        "clarity": [
+          {
+            "view": "front",
+            "frame_index": 20,
+            "quality_score": 0.7838148515290972,
+            "clarity_score": 0.6991868821684161,
+            "factors": {
+              "sharpness": 0.8531966311062542,
+              "eye_detail": 0.5186919181873209,
+              "exposure": 0.9998844918797791,
+              "resolution": 1.0,
+              "confidence": 0.807524263488351,
+              "motion": 0.9110237318594078,
+              "pose_fit": 0.5984146054829552,
+              "alignment": 0.7601228610453505
+            },
+            "metrics": {
+              "iod_px": 167.76801595808985,
+              "detector_score": 0.6152374148368835,
+              "eye_visibility": 0.8846913576126099,
+              "nose_visibility": 0.9998077154159546,
+              "alignment_residual": 0.13493089066199032,
+              "brightness": 84.73996811975881,
+              "contrast": 143.0,
+              "clipped": 6.930487213251092e-05,
+              "laplacian": 122.92485809326172,
+              "blur_effect": 0.33139482067134884,
+              "eye_laplacian": [
+                272.5998840332031,
+                73.12477111816406
+              ],
+              "warp_scale": 0.5104531145601561,
+              "speed_iod_per_s": 0.9375479807996726
+            },
+            "yaw": -0.103265282036776,
+            "hard_gates_pass": true,
+            "aligned_sha256": "b209816d6ae7add66840627e4e7d7d2a6135fb73581694368f28cf8122268563"
+          },
+          {
+            "view": "left",
+            "frame_index": 278,
+            "quality_score": 0.8614378312008796,
+            "clarity_score": 0.8173858868515383,
+            "factors": {
+              "sharpness": 0.8274318021857828,
+              "eye_detail": 0.8025452408694163,
+              "exposure": 0.9995379675191166,
+              "resolution": 1.0,
+              "confidence": 0.7505799718445997,
+              "motion": 0.9963328678219132,
+              "pose_fit": 0.8554087617192774,
+              "alignment": 0.6879888205976367
+            },
+            "metrics": {
+              "iod_px": 148.3221431735396,
+              "detector_score": 0.591738224029541,
+              "eye_visibility": 0.7261362671852112,
+              "nose_visibility": 0.9996191263198853,
+              "alignment_residual": 0.17550628841382937,
+              "brightness": 114.5702404879063,
+              "contrast": 161.0,
+              "clipped": 0.00027721948853004367,
+              "laplacian": 108.0233383178711,
+              "blur_effect": 0.33438870073891624,
+              "eye_laplacian": [
+                162.22457885742188,
+                134.7105712890625
+              ],
+              "warp_scale": 0.537417960092318,
+              "speed_iod_per_s": 0.18200457630990535
+            },
+            "yaw": -0.4024806106152266,
+            "hard_gates_pass": true,
+            "aligned_sha256": "0d2f9bbd5dba2f06fb175a9bb36c0fb50e1284f32f66bfa93dc33b5f4953b783"
+          },
+          {
+            "view": "right",
+            "frame_index": 148,
+            "quality_score": 0.827803329359928,
+            "clarity_score": 0.7600126191011638,
+            "factors": {
+              "sharpness": 0.7520365675364438,
+              "eye_detail": 0.7721355892460879,
+              "exposure": 1.0,
+              "resolution": 1.0,
+              "confidence": 0.6877423438153702,
+              "motion": 0.9690424846892242,
+              "pose_fit": 0.9130064439434872,
+              "alignment": 0.6902051050868295
+            },
+            "metrics": {
+              "iod_px": 204.031282095351,
+              "detector_score": 0.5300395488739014,
+              "eye_visibility": 0.7205060720443726,
+              "nose_visibility": 0.9992497563362122,
+              "alignment_residual": 0.17425962838865838,
+              "brightness": 81.99625753690485,
+              "contrast": 127.0,
+              "clipped": 0.0,
+              "laplacian": 83.98653411865234,
+              "blur_effect": 0.35837208324228487,
+              "eye_laplacian": [
+                147.90045166015625,
+                74.6031265258789
+              ],
+              "warp_scale": 0.40772435032875737,
+              "speed_iod_per_s": 0.5362075121072817
+            },
+            "yaw": 0.45333722081868805,
+            "hard_gates_pass": true,
+            "aligned_sha256": "642785027bf2812fd3c7e081d7fa0c330255268a627673cfbf8f38693ef64e55"
+          }
+        ]
+      }
+    }
+  ],
+  "right_capture_explanation": {
+    "evidence": "artifacts/runs/dog_capture/clarity_selection_20261117/right_candidate_trace.json",
+    "trace_frames": [
+      {
+        "strategy": "quality",
+        "frame": 144,
+        "retry_before": {
+          "1": 4.541666666666666
+        },
+        "quality": [
+          {
+            "composite": 0.8115434142376394,
+            "clarity": 0.711486864866587,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          },
+          {
+            "composite": 0.8523130414182352,
+            "clarity": 0.8509135521076995,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          }
+        ],
+        "wants": [
+          {
+            "view": "right",
+            "score": 0.8115434142376394,
+            "answer": true,
+            "pending": [],
+            "stored": []
+          },
+          {
+            "view": "right",
+            "score": 0.8523130414182352,
+            "answer": true,
+            "pending": [],
+            "stored": []
+          },
+          {
+            "view": "right",
+            "score": 0.8523130414182352,
+            "answer": true,
+            "pending": [],
+            "stored": []
+          }
+        ],
+        "trusted": [
+          {
+            "reason": null,
+            "status": "pass",
+            "history": [
+              [
+                132,
+                "present"
+              ],
+              [
+                133,
+                "present"
+              ],
+              [
+                134,
+                "present"
+              ],
+              [
+                135,
+                "present"
+              ],
+              [
+                136,
+                "present"
+              ],
+              [
+                137,
+                "pass"
+              ],
+              [
+                138,
+                "present"
+              ],
+              [
+                139,
+                "pass"
+              ],
+              [
+                140,
+                "present"
+              ],
+              [
+                141,
+                "present"
+              ],
+              [
+                142,
+                "pass"
+              ],
+              [
+                143,
+                "present"
+              ]
+            ],
+            "processed_window": 13
+          }
+        ],
+        "faces": [
+          {
+            "track": 1,
+            "yaw": 0.355752335529185,
+            "state": {
+              "raw": "right",
+              "view": "right",
+              "stable": false,
+              "smoothed_yaw": 0.3558,
+              "dwell_s": 0.0,
+              "observations": 1,
+              "changed": true
+            },
+            "accepted": true,
+            "reasons": []
+          }
+        ],
+        "retry_after": {
+          "1": 4.541666666666666
+        },
+        "events": []
+      },
+      {
+        "strategy": "quality",
+        "frame": 145,
+        "retry_before": {
+          "1": 4.541666666666666
+        },
+        "quality": [
+          {
+            "composite": 0.8668722379787203,
+            "clarity": 0.8172037773410183,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          }
+        ],
+        "wants": [
+          {
+            "view": "right",
+            "score": 0.8668722379787203,
+            "answer": true,
+            "pending": [
+              [
+                144,
+                0.8523130414182352,
+                0.8509135521076995
+              ]
+            ],
+            "stored": []
+          }
+        ],
+        "faces": [
+          {
+            "track": 1,
+            "yaw": 0.5739939414410712,
+            "state": {
+              "raw": "right",
+              "view": "right",
+              "stable": false,
+              "smoothed_yaw": 0.4318,
+              "dwell_s": 0.0417,
+              "observations": 2,
+              "changed": false
+            },
+            "accepted": false,
+            "reasons": [
+              "view_unconfirmed"
+            ]
+          }
+        ],
+        "retry_after": {
+          "1": 6.291666666666666
+        },
+        "events": []
+      },
+      {
+        "strategy": "quality",
+        "frame": 148,
+        "retry_before": {
+          "1": 6.291666666666666
+        },
+        "quality": [
+          {
+            "composite": 0.7924062041603133,
+            "clarity": 0.6547183021638627,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          }
+        ],
+        "faces": [
+          {
+            "track": 1,
+            "yaw": 0.5001031922978798,
+            "state": {
+              "raw": "right",
+              "view": "right",
+              "stable": false,
+              "smoothed_yaw": 0.5001,
+              "dwell_s": 0.0,
+              "observations": 1,
+              "changed": true
+            },
+            "accepted": false,
+            "reasons": []
+          }
+        ],
+        "retry_after": {
+          "1": 6.291666666666666
+        },
+        "events": []
+      },
+      {
+        "strategy": "quality",
+        "frame": 151,
+        "retry_before": {
+          "1": 6.291666666666666
+        },
+        "quality": [
+          {
+            "composite": 0.8707200446360593,
+            "clarity": 0.7947461883070336,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          }
+        ],
+        "wants": [
+          {
+            "view": "right",
+            "score": 0.8707200446360593,
+            "answer": true,
+            "pending": [],
+            "stored": []
+          }
+        ],
+        "faces": [
+          {
+            "track": 1,
+            "yaw": 0.46788880064173755,
+            "state": {
+              "raw": "right",
+              "view": "right",
+              "stable": true,
+              "smoothed_yaw": 0.4084,
+              "dwell_s": 0.125,
+              "observations": 4,
+              "changed": false
+            },
+            "accepted": false,
+            "reasons": [
+              "view_unconfirmed"
+            ]
+          }
+        ],
+        "retry_after": {
+          "1": 6.541666666666666
+        },
+        "events": []
+      },
+      {
+        "strategy": "clarity",
+        "frame": 144,
+        "retry_before": {
+          "1": 4.541666666666666
+        },
+        "quality": [
+          {
+            "composite": 0.8115434142376394,
+            "clarity": 0.711486864866587,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          },
+          {
+            "composite": 0.8523130414182352,
+            "clarity": 0.8509135521076995,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          }
+        ],
+        "wants": [
+          {
+            "view": "right",
+            "score": 0.711486864866587,
+            "answer": true,
+            "pending": [],
+            "stored": []
+          },
+          {
+            "view": "right",
+            "score": 0.8509135521076995,
+            "answer": true,
+            "pending": [],
+            "stored": []
+          },
+          {
+            "view": "right",
+            "score": 0.8509135521076995,
+            "answer": true,
+            "pending": [],
+            "stored": []
+          }
+        ],
+        "trusted": [
+          {
+            "reason": null,
+            "status": "pass",
+            "history": [
+              [
+                132,
+                "present"
+              ],
+              [
+                133,
+                "present"
+              ],
+              [
+                134,
+                "present"
+              ],
+              [
+                135,
+                "present"
+              ],
+              [
+                136,
+                "present"
+              ],
+              [
+                137,
+                "pass"
+              ],
+              [
+                138,
+                "present"
+              ],
+              [
+                139,
+                "pass"
+              ],
+              [
+                140,
+                "present"
+              ],
+              [
+                141,
+                "present"
+              ],
+              [
+                142,
+                "pass"
+              ],
+              [
+                143,
+                "present"
+              ]
+            ],
+            "processed_window": 13
+          }
+        ],
+        "faces": [
+          {
+            "track": 1,
+            "yaw": 0.355752335529185,
+            "state": {
+              "raw": "right",
+              "view": "right",
+              "stable": false,
+              "smoothed_yaw": 0.3558,
+              "dwell_s": 0.0,
+              "observations": 1,
+              "changed": true
+            },
+            "accepted": true,
+            "reasons": []
+          }
+        ],
+        "retry_after": {
+          "1": 4.541666666666666
+        },
+        "events": []
+      },
+      {
+        "strategy": "clarity",
+        "frame": 145,
+        "retry_before": {
+          "1": 4.541666666666666
+        },
+        "quality": [
+          {
+            "composite": 0.8668722379787203,
+            "clarity": 0.8172037773410183,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          }
+        ],
+        "wants": [
+          {
+            "view": "right",
+            "score": 0.8172037773410183,
+            "answer": false,
+            "pending": [
+              [
+                144,
+                0.8523130414182352,
+                0.8509135521076995
+              ]
+            ],
+            "stored": []
+          },
+          {
+            "view": "right",
+            "score": 0.8172037773410183,
+            "answer": false,
+            "pending": [
+              [
+                144,
+                0.8523130414182352,
+                0.8509135521076995
+              ]
+            ],
+            "stored": []
+          }
+        ],
+        "faces": [
+          {
+            "track": 1,
+            "yaw": 0.5739939414410712,
+            "state": {
+              "raw": "right",
+              "view": "right",
+              "stable": false,
+              "smoothed_yaw": 0.4318,
+              "dwell_s": 0.0417,
+              "observations": 2,
+              "changed": false
+            },
+            "accepted": false,
+            "reasons": []
+          }
+        ],
+        "retry_after": {
+          "1": 4.541666666666666
+        },
+        "events": []
+      },
+      {
+        "strategy": "clarity",
+        "frame": 148,
+        "retry_before": {
+          "1": 4.541666666666666
+        },
+        "quality": [
+          {
+            "composite": 0.7924062041603133,
+            "clarity": 0.6547183021638627,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          },
+          {
+            "composite": 0.827803329359928,
+            "clarity": 0.7600126191011638,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          }
+        ],
+        "wants": [
+          {
+            "view": "right",
+            "score": 0.6547183021638627,
+            "answer": true,
+            "pending": [],
+            "stored": []
+          },
+          {
+            "view": "right",
+            "score": 0.7600126191011638,
+            "answer": true,
+            "pending": [],
+            "stored": []
+          },
+          {
+            "view": "right",
+            "score": 0.7600126191011638,
+            "answer": true,
+            "pending": [],
+            "stored": []
+          }
+        ],
+        "trusted": [
+          {
+            "reason": null,
+            "status": "pass",
+            "history": [
+              [
+                136,
+                "present"
+              ],
+              [
+                137,
+                "pass"
+              ],
+              [
+                138,
+                "present"
+              ],
+              [
+                139,
+                "pass"
+              ],
+              [
+                140,
+                "present"
+              ],
+              [
+                141,
+                "present"
+              ],
+              [
+                142,
+                "pass"
+              ],
+              [
+                143,
+                "present"
+              ],
+              [
+                144,
+                "pass"
+              ],
+              [
+                145,
+                "present"
+              ],
+              [
+                146,
+                "present"
+              ],
+              [
+                147,
+                "present"
+              ]
+            ],
+            "processed_window": 13
+          }
+        ],
+        "faces": [
+          {
+            "track": 1,
+            "yaw": 0.5001031922978798,
+            "state": {
+              "raw": "right",
+              "view": "right",
+              "stable": false,
+              "smoothed_yaw": 0.5001,
+              "dwell_s": 0.0,
+              "observations": 1,
+              "changed": true
+            },
+            "accepted": true,
+            "reasons": []
+          }
+        ],
+        "retry_after": {
+          "1": 4.541666666666666
+        },
+        "events": []
+      },
+      {
+        "strategy": "clarity",
+        "frame": 151,
+        "retry_before": {
+          "1": 4.541666666666666
+        },
+        "quality": [
+          {
+            "composite": 0.8707200446360593,
+            "clarity": 0.7947461883070336,
+            "passed": true,
+            "level": "high",
+            "reasons": []
+          }
+        ],
+        "wants": [
+          {
+            "view": "right",
+            "score": 0.7947461883070336,
+            "answer": true,
+            "pending": [],
+            "stored": [
+              [
+                148,
+                0.827803329359928,
+                0.7600126191011638
+              ]
+            ]
+          }
+        ],
+        "faces": [
+          {
+            "track": 1,
+            "yaw": 0.46788880064173755,
+            "state": {
+              "raw": "right",
+              "view": "right",
+              "stable": true,
+              "smoothed_yaw": 0.4084,
+              "dwell_s": 0.125,
+              "observations": 4,
+              "changed": false
+            },
+            "accepted": false,
+            "reasons": [
+              "view_unconfirmed"
+            ]
+          }
+        ],
+        "retry_after": {
+          "1": 6.541666666666666
+        },
+        "events": [
+          {
+            "event": "view_captured",
+            "view": "right",
+            "track_id": 1,
+            "frame_index": 148,
+            "time_s": 6.166666666666666,
+            "score": 0.827803329359928
+          }
+        ]
+      }
+    ],
+    "chain": [
+      "Both policies accepted frame 144 into the unconfirmed right-view buffer.",
+      "At 145 quality ranked the coarse .866872 above pending .852313, ran precise localization, failed view_unconfirmed, then set a .25 s retry delay.",
+      "Clarity ranked the coarse .817204 below pending .850914 and skipped that attempted replacement, so no failed-candidate retry delay was created.",
+      "After the unconfirmed visit ended, frame 148 passed all original gates under clarity and was confirmed at 151; quality was still in retry backoff at 148."
+    ],
+    "interpretation": "A scheduling/backoff consequence of ranking, not evidence of looser thresholds or uniformly sharper photos."
+  },
+  "realtime_trials": [
+    {
+      "trial": "quality_a",
+      "video": "2611101816341481",
+      "evidence": "artifacts/runs/dog_capture/clarity_selection_20261117/quality_a/summary.json",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1114,
+      "frames_dropped": 200,
+      "processed_fps": 25.436074555183758,
+      "model_calls": {
+        "face": 557,
+        "body": 125,
+        "landmarks": 1027
+      },
+      "timings_ms": {
+        "total": {
+          "count": 1114,
+          "mean": 21.626784022229923,
+          "p50": 11.537899990798905,
+          "p95": 79.93201501667497,
+          "p99": 182.9154409770852,
+          "max": 294.3947999738157
+        },
+        "capture_to_result": {
+          "count": 1114,
+          "mean": 24.359554309062275,
+          "p50": 12.376099999528378,
+          "p95": 93.00448500143808,
+          "p99": 192.30643101618608,
+          "max": 300.9785999893211
+        },
+        "scheduled_to_result": {
+          "count": 1114,
+          "mean": 25.198876419962087,
+          "p50": 12.7938499907021,
+          "p95": 95.74551500845618,
+          "p99": 193.21764402545446,
+          "max": 389.9706000229344
+        }
+      },
+      "selected_frames": {},
+      "slowest_frames": [
+        {
+          "frame_index": 985,
+          "time_s": 32.833333333333336,
+          "timings_ms": {
+            "refine": 13.29890004126355,
+            "tracking": 0.8657000144012272,
+            "body_gate": 199.25969996256754,
+            "head_gate": 80.00830002129078,
+            "analysis": 0.000700005330145359,
+            "total": 294.3947999738157,
+            "queue_wait": 6.54420000500977,
+            "capture_to_result": 300.9785999893211
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "not_dog"
+        },
+        {
+          "frame_index": 961,
+          "time_s": 32.03333333333334,
+          "timings_ms": {
+            "refine": 9.696300025098026,
+            "tracking": 0.8727000094950199,
+            "body_gate": 164.0862000058405,
+            "head_gate": 93.84019998833537,
+            "analysis": 0.00200001522898674,
+            "total": 269.71209998009726,
+            "queue_wait": 0.47479994827881455,
+            "capture_to_result": 270.25329996831715
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "not_dog"
+        }
+      ]
+    },
+    {
+      "trial": "quality_a",
+      "video": "wolfhound_panting",
+      "evidence": "artifacts/runs/dog_capture/clarity_selection_20261117/quality_a/summary.json",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1144,
+      "frames_dropped": 68,
+      "processed_fps": 22.662320794216416,
+      "model_calls": {
+        "face": 316,
+        "body": 2,
+        "landmarks": 1192
+      },
+      "timings_ms": {
+        "total": {
+          "count": 1144,
+          "mean": 16.992576222177238,
+          "p50": 8.49614999606274,
+          "p95": 56.32184998830776,
+          "p99": 117.27345499559277,
+          "max": 262.4297000002116
+        },
+        "capture_to_result": {
+          "count": 1144,
+          "mean": 19.66829143355273,
+          "p50": 9.166499978164211,
+          "p95": 69.86952496226867,
+          "p99": 134.0021550271193,
+          "max": 263.02579999901354
+        },
+        "scheduled_to_result": {
+          "count": 1144,
+          "mean": 20.22118751554874,
+          "p50": 9.58250000258154,
+          "p95": 72.45023837507283,
+          "p99": 134.95653767294192,
+          "max": 263.6620333263036
+        }
+      },
+      "selected_frames": {
+        "front": [
+          20
+        ],
+        "left": [
+          269
+        ],
+        "right": [
+          146
+        ]
+      },
+      "slowest_frames": [
+        {
+          "frame_index": 151,
+          "time_s": 6.291666666666666,
+          "timings_ms": {
+            "refine": 8.81259999005124,
+            "tracking": 0.47889997949823737,
+            "precise": 227.31709998333827,
+            "analysis": 252.4081000010483,
+            "total": 262.4297000002116,
+            "queue_wait": 0.49589999252930284,
+            "capture_to_result": 263.02579999901354
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 990,
+          "time_s": 41.25,
+          "timings_ms": {
+            "detector": 17.589900002349168,
+            "refine": 7.796999998390675,
+            "tracking": 0.37570000858977437,
+            "precise": 190.97519997740164,
+            "analysis": 195.17209997866303,
+            "total": 221.43350000260398,
+            "queue_wait": 0.3321000258438289,
+            "capture_to_result": 221.81870002532378
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        }
+      ]
+    },
+    {
+      "trial": "clarity_a",
+      "video": "2611101816341481",
+      "evidence": "artifacts/runs/dog_capture/clarity_selection_20261117/clarity_a/summary.json",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1111,
+      "frames_dropped": 203,
+      "processed_fps": 25.364036014186343,
+      "model_calls": {
+        "face": 540,
+        "body": 127,
+        "landmarks": 1019
+      },
+      "timings_ms": {
+        "total": {
+          "count": 1111,
+          "mean": 22.095790638883443,
+          "p50": 11.457699991296977,
+          "p95": 83.39065001928248,
+          "p99": 171.57529002288365,
+          "max": 297.83920000772923
+        },
+        "capture_to_result": {
+          "count": 1111,
+          "mean": 25.31367497738496,
+          "p50": 13.049500004854053,
+          "p95": 99.05409999191761,
+          "p99": 183.34594005136756,
+          "max": 298.3117999974638
+        },
+        "scheduled_to_result": {
+          "count": 1111,
+          "mean": 25.91536365092458,
+          "p50": 13.272199977652832,
+          "p95": 99.8247833185204,
+          "p99": 190.81334000802488,
+          "max": 298.67316662954477
+        }
+      },
+      "selected_frames": {},
+      "slowest_frames": [
+        {
+          "frame_index": 694,
+          "time_s": 23.133333333333336,
+          "timings_ms": {
+            "detector": 20.173099997919053,
+            "refine": 16.700299980584532,
+            "tracking": 1.416300015989691,
+            "body_gate": 68.32270004088059,
+            "head_gate": 176.0509999585338,
+            "analysis": 13.9628000324592,
+            "total": 297.83920000772923,
+            "queue_wait": 0.415499962400645,
+            "capture_to_result": 298.3117999974638
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "blurred"
+        },
+        {
+          "frame_index": 718,
+          "time_s": 23.933333333333334,
+          "timings_ms": {
+            "detector": 16.972400015220046,
+            "refine": 8.78299999749288,
+            "tracking": 0.7985999691300094,
+            "body_gate": 147.33100001467392,
+            "head_gate": 116.44539999542758,
+            "analysis": 0.0014999532140791416,
+            "total": 291.5307999937795,
+            "queue_wait": 0.45779999345541,
+            "capture_to_result": 292.0422999886796
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "not_dog"
+        }
+      ]
+    },
+    {
+      "trial": "clarity_a",
+      "video": "wolfhound_panting",
+      "evidence": "artifacts/runs/dog_capture/clarity_selection_20261117/clarity_a/summary.json",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1143,
+      "frames_dropped": 69,
+      "processed_fps": 22.622972511096652,
+      "model_calls": {
+        "face": 239,
+        "body": 1,
+        "landmarks": 1166
+      },
+      "timings_ms": {
+        "total": {
+          "count": 1143,
+          "mean": 16.704874280084425,
+          "p50": 8.761500008404255,
+          "p95": 55.40887997485694,
+          "p99": 129.71468200907017,
+          "max": 255.70509996032342
+        },
+        "capture_to_result": {
+          "count": 1143,
+          "mean": 19.367793612919538,
+          "p50": 9.458900021854788,
+          "p95": 71.94393998943268,
+          "p99": 148.63305999082496,
+          "max": 256.7868000478484
+        },
+        "scheduled_to_result": {
+          "count": 1143,
+          "mean": 19.97691950083001,
+          "p50": 9.970566645885803,
+          "p95": 74.47448999155515,
+          "p99": 149.30643132499847,
+          "max": 257.6342666676901
+        }
+      },
+      "selected_frames": {
+        "front": [
+          20
+        ],
+        "left": [
+          276
+        ],
+        "right": [
+          145
+        ]
+      },
+      "slowest_frames": [
+        {
+          "frame_index": 305,
+          "time_s": 12.708333333333332,
+          "timings_ms": {
+            "detector": 158.74220000114292,
+            "refine": 20.75129997683689,
+            "tracking": 1.137099985498935,
+            "precise": 57.612899981904775,
+            "analysis": 74.11669997964054,
+            "total": 255.70509996032342,
+            "queue_wait": 0.9936999995261431,
+            "capture_to_result": 256.7868000478484
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 570,
+          "time_s": 23.75,
+          "timings_ms": {
+            "detector": 157.5073999701999,
+            "refine": 26.617900002747774,
+            "tracking": 1.770899980328977,
+            "analysis": 6.9608999765478075,
+            "total": 194.50460001826286,
+            "queue_wait": 3.490899980533868,
+            "capture_to_result": 198.097400018014
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "done"
+        }
+      ]
+    },
+    {
+      "trial": "clarity_b",
+      "video": "wolfhound_panting",
+      "evidence": "artifacts/runs/dog_capture/clarity_selection_20261117/clarity_b/summary.json",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1086,
+      "frames_dropped": 126,
+      "processed_fps": 21.515960190585773,
+      "model_calls": {
+        "face": 308,
+        "body": 2,
+        "landmarks": 1118
+      },
+      "timings_ms": {
+        "total": {
+          "count": 1086,
+          "mean": 20.477988766626375,
+          "p50": 8.549450023565441,
+          "p95": 83.71417500893585,
+          "p99": 178.4602900006577,
+          "max": 276.2086000293493
+        },
+        "capture_to_result": {
+          "count": 1086,
+          "mean": 23.816872744874182,
+          "p50": 9.285499982070178,
+          "p95": 104.89452500769403,
+          "p99": 183.81837496417577,
+          "max": 276.83769998839125
+        },
+        "scheduled_to_result": {
+          "count": 1086,
+          "mean": 24.370578893236154,
+          "p50": 9.575483321291323,
+          "p95": 105.77373333702278,
+          "p99": 184.94544664960915,
+          "max": 277.23710000282153
+        }
+      },
+      "selected_frames": {
+        "front": [
+          19
+        ],
+        "left": [
+          271
+        ]
+      },
+      "slowest_frames": [
+        {
+          "frame_index": 1041,
+          "time_s": 43.375,
+          "timings_ms": {
+            "refine": 13.205100025516003,
+            "tracking": 0.742000003810972,
+            "precise": 234.59060001187027,
+            "analysis": 261.50279998546466,
+            "total": 276.2086000293493,
+            "queue_wait": 0.5851999740116298,
+            "capture_to_result": 276.83769998839125
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        },
+        {
+          "frame_index": 890,
+          "time_s": 37.08333333333333,
+          "timings_ms": {
+            "refine": 71.38079998549074,
+            "tracking": 11.512800003401935,
+            "shot_check": 135.7364000286907,
+            "analysis": 189.54069999745116,
+            "total": 274.89879995118827,
+            "queue_wait": 0.7630999898537993,
+            "capture_to_result": 275.7131999824196
+          },
+          "faces": 2,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        }
+      ]
+    },
+    {
+      "trial": "clarity_b",
+      "video": "2611101816341481",
+      "evidence": "artifacts/runs/dog_capture/clarity_selection_20261117/clarity_b/summary.json",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1113,
+      "frames_dropped": 201,
+      "processed_fps": 25.411729668558184,
+      "model_calls": {
+        "face": 555,
+        "body": 152,
+        "landmarks": 996
+      },
+      "timings_ms": {
+        "total": {
+          "count": 1113,
+          "mean": 21.91924501299567,
+          "p50": 11.552400013897568,
+          "p95": 82.63119998155149,
+          "p99": 172.7720920019781,
+          "max": 315.35629997961223
+        },
+        "capture_to_result": {
+          "count": 1113,
+          "mean": 25.032739534625584,
+          "p50": 12.859400012530386,
+          "p95": 99.78760000085445,
+          "p99": 178.36389199364874,
+          "max": 316.34499999927357
+        },
+        "scheduled_to_result": {
+          "count": 1113,
+          "mean": 25.6513453958263,
+          "p50": 13.269733307726739,
+          "p95": 102.19155334246574,
+          "p99": 184.56481868416242,
+          "max": 316.93623329822884
+        }
+      },
+      "selected_frames": {},
+      "slowest_frames": [
+        {
+          "frame_index": 722,
+          "time_s": 24.06666666666667,
+          "timings_ms": {
+            "detector": 31.145600019954145,
+            "refine": 123.79520002286881,
+            "tracking": 4.331400035880506,
+            "head_gate": 153.85079995030537,
+            "analysis": 0.01109996810555458,
+            "total": 315.35629997961223,
+            "queue_wait": 0.8809000137262046,
+            "capture_to_result": 316.34499999927357
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "not_dog"
+        },
+        {
+          "frame_index": 1243,
+          "time_s": 41.43333333333334,
+          "timings_ms": {
+            "refine": 11.626699997577816,
+            "tracking": 0.9285000269301236,
+            "body_gate": 142.36779999919236,
+            "head_gate": 84.96860001469031,
+            "analysis": 0.0025999615900218487,
+            "total": 241.1024000030011,
+            "queue_wait": 10.13109995983541,
+            "capture_to_result": 251.27409998094663
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "no_face"
+        }
+      ]
+    },
+    {
+      "trial": "quality_b",
+      "video": "wolfhound_panting",
+      "evidence": "artifacts/runs/dog_capture/clarity_selection_20261117/quality_b/summary.json",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1148,
+      "frames_dropped": 64,
+      "processed_fps": 22.744544072743448,
+      "model_calls": {
+        "face": 232,
+        "body": 1,
+        "landmarks": 1174
+      },
+      "timings_ms": {
+        "total": {
+          "count": 1148,
+          "mean": 15.153387108556473,
+          "p50": 8.056499995291233,
+          "p95": 53.63691498350815,
+          "p99": 102.50149096245877,
+          "max": 322.4486999679357
+        },
+        "capture_to_result": {
+          "count": 1148,
+          "mean": 17.58368945945637,
+          "p50": 8.679750026203692,
+          "p95": 73.1768550176639,
+          "p99": 123.7122190085938,
+          "max": 322.95519998297095
+        },
+        "scheduled_to_result": {
+          "count": 1148,
+          "mean": 18.090800162178738,
+          "p50": 9.033333354942386,
+          "p95": 74.12262001307874,
+          "p99": 124.85599068498047,
+          "max": 323.2685000402853
+        }
+      },
+      "selected_frames": {
+        "front": [
+          21
+        ],
+        "left": [
+          250
+        ],
+        "right": [
+          146
+        ]
+      },
+      "slowest_frames": [
+        {
+          "frame_index": 228,
+          "time_s": 9.5,
+          "timings_ms": {
+            "refine": 8.045399968978018,
+            "tracking": 0.5495999939739704,
+            "precise": 215.7040999736637,
+            "shot_check": 85.807700001169,
+            "analysis": 313.37569997413084,
+            "total": 322.4486999679357,
+            "queue_wait": 0.4886999959126115,
+            "capture_to_result": 322.95519998297095
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "capture_view"
+        },
+        {
+          "frame_index": 129,
+          "time_s": 5.375,
+          "timings_ms": {
+            "refine": 39.9870999972336,
+            "tracking": 2.8512999997474253,
+            "precise": 73.97229998605326,
+            "shot_check": 71.59469998441637,
+            "analysis": 234.9635999999009,
+            "total": 279.0534000378102,
+            "queue_wait": 13.524400012101978,
+            "capture_to_result": 292.5965000176802
+          },
+          "faces": 1,
+          "rotation_deg": 0,
+          "guidance": "hold_still"
+        }
+      ]
+    },
+    {
+      "trial": "quality_b",
+      "video": "2611101816341481",
+      "evidence": "artifacts/runs/dog_capture/clarity_selection_20261117/quality_b/summary.json",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1050,
+      "frames_dropped": 264,
+      "processed_fps": 23.960864377920355,
+      "model_calls": {
+        "face": 548,
+        "body": 117,
+        "landmarks": 1021
+      },
+      "timings_ms": {
+        "total": {
+          "count": 1050,
+          "mean": 26.383530762756155,
+          "p50": 13.485250005032867,
+          "p95": 107.56164001359132,
+          "p99": 188.81869396660477,
+          "max": 311.017100000754
+        },
+        "capture_to_result": {
+          "count": 1050,
+          "mean": 30.79307152351941,
+          "p50": 15.16280000214465,
+          "p95": 118.27026998216742,
+          "p99": 204.92470099939962,
+          "max": 326.5170999802649
+        },
+        "scheduled_to_result": {
+          "count": 1050,
+          "mean": 32.12953466185721,
+          "p50": 15.591550001407661,
+          "p95": 123.96299997402672,
+          "p99": 209.0686623389669,
+          "max": 327.272566644627
+        }
+      },
+      "selected_frames": {},
+      "slowest_frames": [
+        {
+          "frame_index": 754,
+          "time_s": 25.133333333333336,
+          "timings_ms": {
+            "refine": 22.78559998376295,
+            "tracking": 2.4338000221177936,
+            "body_gate": 271.06240001739934,
+            "shot_check": 2.9775999719277024,
+            "analysis": 13.843499997165054,
+            "total": 311.017100000754,
+            "queue_wait": 15.47990000108257,
+            "capture_to_result": 326.5170999802649
+          },
+          "faces": 2,
+          "rotation_deg": 0,
+          "guidance": "dog_far"
+        },
+        {
+          "frame_index": 614,
+          "time_s": 20.46666666666667,
+          "timings_ms": {
+            "detector": 29.991100018378347,
+            "body_gate": 226.17380000883713,
+            "refine": 0.06710004527121782,
+            "tracking": 1.2615000014193356,
+            "analysis": 0.000800006091594696,
+            "total": 258.13009997364134,
+            "queue_wait": 0.7451000274159014,
+            "capture_to_result": 258.9299000101164
+          },
+          "faces": 0,
+          "rotation_deg": 0,
+          "guidance": "no_face"
+        }
+      ]
+    }
+  ],
+  "pooled_realtime": [
+    {
+      "group": "quality",
+      "video": "2611101816341481",
+      "frames_read": 2628,
+      "frames_processed": 2164,
+      "frames_dropped": 464,
+      "elapsed_s": 87.61752349999733,
+      "processed_fps": 24.698255709088443,
+      "timings_ms": {
+        "total": {
+          "count": 2164,
+          "mean": 23.93481732978655,
+          "p50": 12.35425000777468,
+          "p95": 91.07849000429265,
+          "p99": 188.81037796847522,
+          "max": 311.017100000754
+        },
+        "capture_to_result": {
+          "count": 2164,
+          "mean": 27.48117772642826,
+          "p50": 13.40175000950694,
+          "p95": 105.52717998216394,
+          "p99": 196.32904398720706,
+          "max": 326.5170999802649
+        },
+        "scheduled_to_result": {
+          "count": 0,
+          "mean": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "max": 0.0
+        }
+      }
+    },
+    {
+      "group": "quality",
+      "video": "wolfhound_panting",
+      "frames_read": 2424,
+      "frames_processed": 2292,
+      "frames_dropped": 132,
+      "elapsed_s": 100.95390990003943,
+      "processed_fps": 22.703429736098855,
+      "timings_ms": {
+        "total": {
+          "count": 2292,
+          "mean": 16.07137678830436,
+          "p50": 8.238350012106821,
+          "p95": 55.49233999627176,
+          "p99": 111.81396797881489,
+          "max": 322.4486999679357
+        },
+        "capture_to_result": {
+          "count": 2292,
+          "mean": 18.624171422094346,
+          "p50": 8.804950019111857,
+          "p95": 71.76105002290566,
+          "p99": 129.59294403670376,
+          "max": 322.95519998297095
+        },
+        "scheduled_to_result": {
+          "count": 0,
+          "mean": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "max": 0.0
+        }
+      }
+    },
+    {
+      "group": "clarity",
+      "video": "2611101816341481",
+      "frames_read": 2628,
+      "frames_processed": 2224,
+      "frames_dropped": 404,
+      "elapsed_s": 87.60084869997809,
+      "processed_fps": 25.387881887045648,
+      "timings_ms": {
+        "total": {
+          "count": 2224,
+          "mean": 22.007438443913525,
+          "p50": 11.505000002216548,
+          "p95": 83.06530000409106,
+          "p99": 172.67227600968906,
+          "max": 315.35629997961223
+        },
+        "capture_to_result": {
+          "count": 2224,
+          "mean": 25.173080936111944,
+          "p50": 12.962649983819574,
+          "p95": 99.74399000348053,
+          "p99": 183.28242204443086,
+          "max": 316.34499999927357
+        },
+        "scheduled_to_result": {
+          "count": 0,
+          "mean": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "max": 0.0
+        }
+      }
+    },
+    {
+      "group": "clarity",
+      "video": "wolfhound_panting",
+      "frames_read": 2424,
+      "frames_processed": 2229,
+      "frames_dropped": 195,
+      "elapsed_s": 100.99802379996981,
+      "processed_fps": 22.069738754637555,
+      "timings_ms": {
+        "total": {
+          "count": 2229,
+          "mean": 18.543188471374044,
+          "p50": 8.67790001211688,
+          "p95": 72.18364002183075,
+          "p99": 153.71329999063113,
+          "max": 276.2086000293493
+        },
+        "capture_to_result": {
+          "count": 2229,
+          "mean": 21.5354472411397,
+          "p50": 9.394599997904152,
+          "p95": 88.20201997878029,
+          "p99": 164.77802401874212,
+          "max": 276.83769998839125
+        },
+        "scheduled_to_result": {
+          "count": 0,
+          "mean": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "max": 0.0
+        }
+      }
+    }
+  ],
+  "checks": {
+    "python": {
+      "passed": 274,
+      "skipped": 2
+    },
+    "sdk": {
+      "passed": 62,
+      "skipped": 2
+    },
+    "typecheck": "passed",
+    "h5_build": "passed"
+  },
+  "installed_clarity_config": {
+    "path": "models/pretrained/dog_capture_cpu_layout_v1/capture_clarity.json",
+    "sha256": "a40e5c309876afafd77cdd0c725b136942e16c0b291f9f94601d2f1541ad1be5"
+  },
+  "source_sha256": {
+    "src/Pet-ReID-IMAG/dog_capture/engine/config.py": "e65668583fa983a16e778602591b569763c40efdada1114956845f97d1cef5f2",
+    "src/Pet-ReID-IMAG/dog_capture/engine/engine.py": "f1a91938913197e1a18e0f0897b64dc5529cc4a8776e7a1ed5901568f39dbfdb",
+    "src/Pet-ReID-IMAG/dog_capture/engine/selection.py": "b79b43e8ac9212d86cf82a104b8002cd259c15adaa3ce6c7c7360a17276aadb8",
+    "src/Pet-ReID-IMAG/tests/test_dog_capture_clarity.py": "eff9fa55278769a1074a2110d9e7fc53cc721b94f65d50c5f1b565c01cde1500",
+    "src/Pet-ReID-IMAG/tools/compare_dog_capture_runtime.py": "566f74261aeefe0026fb5dbbfd841ae4561e8bb37a1a749d19a6aaad5fbbb190",
+    "src/Pet-ReID-IMAG/tools/compare_dog_capture_selection.py": "e577adc72ec3252c4fb7c2051a12e449582203f9243dbb6104d90269d809553b",
+    "src/Pet-ReID-IMAG/frontend/dog-capture/packages/sdk/src/config.ts": "9cc339e181e412d3f25d5e684439e00d39bd41b7cbe2e344641c13981d8b504f",
+    "src/Pet-ReID-IMAG/frontend/dog-capture/packages/sdk/src/engine.ts": "43441a7d216022748f9020115f29ad48a12616619827e2729b2bcd7084da1b96",
+    "src/Pet-ReID-IMAG/frontend/dog-capture/packages/sdk/src/selection.ts": "6bcec8e509613d6f82f95ceec55b6f7a5ec730dacd68bdf88a301b0f06f6375a",
+    "src/Pet-ReID-IMAG/frontend/dog-capture/packages/sdk/test/clarity.test.ts": "33c9a8b5206206ee6a8a595815cd0908e16e8cebc5b6e4bddea5101f16764215",
+    "src/Pet-ReID-IMAG/frontend/dog-capture/packages/sdk/test/engine.test.ts": "5d92d2992200fd9a46bf333a15c23e49eae6f1583b1a5cbf9b2897731d609548"
+  },
+  "evidence_root": "artifacts/runs/dog_capture/clarity_selection_20261117"
+}

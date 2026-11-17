@@ -22,11 +22,25 @@ one track = one dog.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 
 import numpy as np
 
 LEVEL_ORDER = {'reject': 0, 'low': 1, 'medium': 2, 'high': 3}
 SETTLE_FACTOR = 2.0
+
+
+def clarity_score(factors):
+    """Rank already-qualified candidates by sharpness/eye detail at fixed 3:2.
+
+    Reuse measured factors; no new image processing or inference. The 0.02
+    floor follows the quality score. This is NOT a replacement for quality
+    eligibility, good_enough, or cross-track identity/bundle selection.
+    """
+    values = [factors.get(key) for key in ('sharpness', 'eye_detail')]
+    if any(v is None or not math.isfinite(v) or not 0 <= v <= 1 for v in values):
+        return 0.0
+    return math.exp((3 * math.log(max(values[0], .02)) + 2 * math.log(max(values[1], .02))) / 5)
 
 
 @dataclass
@@ -78,13 +92,22 @@ class TrackShots:
     def eligible_level(self, level):
         return self.level_ok(level, self.config.min_level)
 
+    def score_for(self, quality):
+        """Candidate ordering score; keep QualityReport.score's original meaning."""
+        return clarity_score(quality.factors) if self.config.ranking == 'clarity' else quality.score
+
+    def _score(self, shot):
+        if self.config.ranking == 'quality':
+            return shot.score
+        return self.score_for(shot.quality) if shot.quality is not None else 0.0
+
     def wants(self, view, score):
-        """Cheap pre-check so a full-frame copy is only made when it can matter."""
+        """Cheap pre-check using score_for(), in the same units as stored shots."""
         if view not in self.slots or view in self.locked:
             return False
         k = self.k[view]
         for bucket in (self.slots[view], self.pending[view]):
-            if len(bucket) >= k and score <= min(s.score for s in bucket):
+            if len(bucket) >= k and score <= min(self._score(s) for s in bucket):
                 return False  # could never enter the slot (or the pending buffer)
         return True
 
@@ -138,7 +161,7 @@ class TrackShots:
         if not view_state.stable:
             bucket = self.pending[shot.view]
             bucket.append(shot)
-            bucket.sort(key=lambda s: -s.score)
+            bucket.sort(key=lambda s: -self._score(s))
             del bucket[self.k[shot.view]:]
             return [], shot in bucket
         shot.confirmed_at = timestamp
@@ -152,17 +175,17 @@ class TrackShots:
             return []
         slot = self.slots[shot.view]
         was_empty = not slot
-        previous_best = slot[0].score if slot else None
+        previous_best = self._score(slot[0]) if slot else None
         k = self.k[shot.view]
         if k > 1:
             near = [s for s in slot if abs(s.time_s - shot.time_s) < c.min_gap_s]
             if near:
-                if shot.score <= max(s.score for s in near):
+                if self._score(shot) <= max(self._score(s) for s in near):
                     return []
                 for s in near:
                     slot.remove(s)
         slot.append(shot)
-        slot.sort(key=lambda s: -s.score)
+        slot.sort(key=lambda s: -self._score(s))
         del slot[k:]
         if shot not in slot:
             return []
@@ -175,7 +198,7 @@ class TrackShots:
         if was_empty:
             events.append({'event': 'view_captured', 'view': shot.view, 'track_id': self.track_id,
                            'frame_index': shot.frame_index, 'time_s': shot.time_s, 'score': shot.score})
-        elif previous_best is not None and shot.score > previous_best + 0.01:
+        elif previous_best is not None and self._score(shot) > previous_best + 0.01:
             events.append({'event': 'view_improved', 'view': shot.view, 'track_id': self.track_id,
                            'frame_index': shot.frame_index, 'time_s': shot.time_s, 'score': shot.score})
         if c.mode == 'fast' and len(slot) >= k and min(s.score for s in slot) >= c.good_enough:

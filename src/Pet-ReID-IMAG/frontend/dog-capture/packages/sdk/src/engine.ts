@@ -407,12 +407,12 @@ export class CaptureEngine {
     const landmarked = !!this.refiner?.landmarker;
     // this track's last candidate failed a moment ago (refine.candidate_retry_s)
     if (landmarked && t < (ctx.retryAt ?? -Infinity)) eligible = false;
-    if (eligible && aligned && ctx.shots.wants(state.view!, report.score)) {
+    if (eligible && aligned && ctx.shots.wants(state.view!, ctx.shots.scoreFor(report))) {
       const [sharp, early] = await this.sharpen(frame, det, state.view!, target, speed);
       let problem = early;
       if (sharp) { pick = sharp; eligible = sharp.report.passed && ctx.shots.eligibleLevel(sharp.report.level); }
       // Landmarks first, sharpness second: a confident hallucination must not win on texture.
-      if (problem === null && eligible && pick.aligned && ctx.shots.wants(state.view!, pick.report.score)) {
+      if (problem === null && eligible && pick.aligned && ctx.shots.wants(state.view!, ctx.shots.scoreFor(pick.report))) {
         const check = await this.trusted(ctx, frame, pick.det, target);
         problem = check.problem; gateStatus = check.status;
       } else if (problem !== null) gateStatus = 'fail';
@@ -424,7 +424,7 @@ export class CaptureEngine {
         report.passed = false; eligible = false;
       }
     }
-    if (eligible && pick.aligned && ctx.shots.wants(state.view!, pick.report.score)) {
+    if (eligible && pick.aligned && ctx.shots.wants(state.view!, ctx.shots.scoreFor(pick.report))) {
       // The kept frame is turned (losslessly) so the face is upright for the recognizer.
       const { det: chosen, geometry: chosenGeometry, report: chosenReport } = pick;
       const k = chosenGeometry.upright_k;

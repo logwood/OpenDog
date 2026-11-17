@@ -9,6 +9,14 @@ export const LEVEL_ORDER = { reject: 0, low: 1, medium: 2, high: 3 } as const;
 /** A full view that never reaches good_enough locks this many improve windows after it filled. */
 export const SETTLE_FACTOR = 2;
 
+/** Rank qualified candidates by existing sharpness/eye detail at fixed 3:2.
+ * Quality gates, good_enough, and cross-track bundle ranking keep their original scores. */
+export function clarityScore(factors: Record<string, number>): number {
+  const values = [factors.sharpness, factors.eye_detail];
+  if (values.some((v) => !Number.isFinite(v) || v < 0 || v > 1)) return 0;
+  return Math.exp((3 * Math.log(Math.max(values[0], .02)) + 2 * Math.log(Math.max(values[1], .02))) / 5);
+}
+
 export interface Shot {
   view: string;
   trackId: number;
@@ -53,10 +61,20 @@ export class TrackShots {
 
   eligibleLevel(level: QualityReport['level']) { return TrackShots.levelOk(level, this.config.min_level); }
 
+  /** Candidate ordering score; QualityReport.score remains the composite quality score. */
+  scoreFor(quality: QualityReport) {
+    return this.config.ranking === 'clarity' ? clarityScore(quality.factors) : quality.score;
+  }
+
+  private shotScore(shot: Shot) {
+    return this.config.ranking === 'clarity' ? (shot.quality ? this.scoreFor(shot.quality) : 0) : shot.score;
+  }
+
+  /** score must come from scoreFor(), in the same units as the stored candidates. */
   wants(view: string, score: number) {
     if (!(view in this.slots) || this.locked.has(view)) return false;
     for (const bucket of [this.slots[view], this.pending[view]]) {
-      if (bucket.length >= this.k[view] && score <= Math.min(...bucket.map((s) => s.score))) return false;
+      if (bucket.length >= this.k[view] && score <= Math.min(...bucket.map((s) => this.shotScore(s)))) return false;
     }
     return true;
   }
@@ -101,7 +119,7 @@ export class TrackShots {
     if (!state.stable) {
       const bucket = this.pending[shot.view];
       bucket.push(shot);
-      bucket.sort((a, b) => b.score - a.score);
+      bucket.sort((a, b) => this.shotScore(b) - this.shotScore(a));
       bucket.length = Math.min(bucket.length, this.k[shot.view]);
       return [[], bucket.includes(shot)];
     }
@@ -116,17 +134,17 @@ export class TrackShots {
     if (this.locked.has(shot.view)) return [];
     const slot = this.slots[shot.view];
     const wasEmpty = slot.length === 0;
-    const previousBest = slot.length ? slot[0].score : null;
+    const previousBest = slot.length ? this.shotScore(slot[0]) : null;
     const k = this.k[shot.view];
     if (k > 1) {
       const near = slot.filter((s) => Math.abs(s.timeS - shot.timeS) < c.min_gap_s);
       if (near.length) {
-        if (shot.score <= Math.max(...near.map((s) => s.score))) return [];
+        if (this.shotScore(shot) <= Math.max(...near.map((s) => this.shotScore(s)))) return [];
         for (const s of near) slot.splice(slot.indexOf(s), 1);
       }
     }
     slot.push(shot);
-    slot.sort((a, b) => b.score - a.score);
+    slot.sort((a, b) => this.shotScore(b) - this.shotScore(a));
     slot.length = Math.min(slot.length, k);
     if (!slot.includes(shot)) return [];
     if (slot.length >= k && this.firstFull[shot.view] === null) this.firstFull[shot.view] = t;
@@ -135,7 +153,7 @@ export class TrackShots {
     if (good && this.firstGood[shot.view] === null) this.firstGood[shot.view] = t;
     const base = { view: shot.view, track_id: this.trackId, frame_index: shot.frameIndex, time_s: shot.timeS, score: shot.score };
     if (wasEmpty) events.push({ event: 'view_captured', ...base });
-    else if (previousBest !== null && shot.score > previousBest + 0.01) events.push({ event: 'view_improved', ...base });
+    else if (previousBest !== null && this.shotScore(shot) > previousBest + 0.01) events.push({ event: 'view_improved', ...base });
     if (c.mode === 'fast' && slot.length >= k && Math.min(...slot.map((s) => s.score)) >= c.good_enough) {
       this.locked.add(shot.view);
       events.push({ event: 'view_locked', view: shot.view, track_id: this.trackId, time_s: t });

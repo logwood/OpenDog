@@ -29,6 +29,30 @@ function evidenceEngine() {
   return { engine, internal };
 }
 
+it.each(['low', 'exposure', 'verification', 'qualified'])('clarity ordering preserves %s checks', async (kind) => {
+  const { engine, internal } = evidenceEngine();
+  engine.config.selection.ranking = 'clarity';
+  engine.config.refine.gate_min_passes = 1;
+  const { frame, det } = frames.sharp;
+  const track = new Track(1, det, 0, engine.tracker.kalman);
+  const assessed = (score: number, detail: number) => ({ report: {
+    score, level: 'medium' as const, passed: true, reasons: [] as string[],
+    factors: { sharpness: detail, eye_detail: detail }, metrics: {},
+  }, aligned: {} as any });
+  vi.mocked(engine.assessor.assess).mockReturnValue(assessed(.8, .5));
+  internal.frameTimes.push(0);
+  expect((await internal.analyse(frame, track, 0, 0, 0))[0].accepted).toBe(true);
+  const next = assessed(.6, .95);
+  if (kind === 'low') { next.report.score = .49; (next.report as any).level = 'low'; }
+  if (kind === 'exposure') { next.report.passed = false; next.report.reasons.push('too_dark'); }
+  if (kind === 'verification') vi.mocked(internal.unreliable).mockResolvedValue('eyes_not_visible');
+  vi.mocked(engine.assessor.assess).mockReturnValue(next);
+  internal.frameTimes.push(1 / 30);
+  const [result] = await internal.analyse(frame, track, 1 / 30, 1, 0);
+  expect(result.accepted).toBe(kind === 'qualified');
+  expect(engine.bestBundle()!.best('front')!.frameIndex).toBe(kind === 'qualified' ? 1 : 0);
+});
+
 it.each([false, true])('does not count nearby dogs as repeated frames (reverse=%s)', async (reverse) => {
   const { engine, internal } = evidenceEngine();
   const { frame, det } = frames.sharp;

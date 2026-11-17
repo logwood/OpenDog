@@ -44,6 +44,7 @@ export interface CaptureConfig {
     high_level: number; medium_level: number;
   };
   selection: {
+    ranking: 'quality' | 'clarity';
     mode: 'best' | 'fast' | 'hybrid'; good_enough: number; improve_window_s: number; top_k: number;
     min_gap_s: number; min_level: 'low' | 'medium' | 'high';
   };
@@ -84,7 +85,7 @@ export function defaultConfig(): CaptureConfig {
       weights: { sharpness: 3, eye_detail: 2, exposure: 1, resolution: 1.5, confidence: 1, motion: 1, pose_fit: 0.75,
         alignment: 0.5 },
       high_level: 0.7, medium_level: 0.5 },
-    selection: { mode: 'hybrid', good_enough: 0.65, improve_window_s: 2.0, top_k: 1, min_gap_s: 0.3, min_level: 'medium' },
+    selection: { mode: 'hybrid', ranking: 'quality', good_enough: 0.65, improve_window_s: 2.0, top_k: 1, min_gap_s: 0.3, min_level: 'medium' },
     output: { aligned_size: 224, template: 'petface_dog', face_margin: 0.2, keep_frames: true, image_format: 'png' },
     runtime: { providers: 'auto', threads: 0, cache_dir: '', timestamps: 'drop', rotate: 'auto', mirror: false,
       still_images: false, cuda_graph: false, thread_spinning: true, spin_duration_us: -1, spin_backoff_max: 1 },
@@ -122,6 +123,7 @@ export function validateConfig(c: CaptureConfig): void {
   const ordered = [...c.pose.views].sort((a, b) => a.lower - b.lower);
   for (let i = 1; i < ordered.length; i++) check(ordered[i - 1].upper < ordered[i].lower, 'view bands must not overlap');
   check(['best', 'fast', 'hybrid'].includes(c.selection.mode), 'selection.mode');
+  check(['quality', 'clarity'].includes(c.selection.ranking), 'selection.ranking');
   const crop = c.refine.crop_size;
   check(crop === 0 || (crop >= 96 && crop <= 1024 && crop % 32 === 0), 'refine.crop_size must be 0 or a multiple of 32 in 96..1024');
 }
