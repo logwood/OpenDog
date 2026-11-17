@@ -76,7 +76,9 @@ class RefineConfig:
     antialias: str = 'tracker'
     # With a landmarker: after a shot candidate fails a per-frame check (precise pass, view,
     # landmarks, eyes; not the temporal gate still collecting passes), that track's next candidate
-    # waits this long (each check costs 1-3 detector runs, and a
+    # waits this long. After a failed replacement of a verified pending shot, a new
+    # pose visit may recover once; another failure keeps the wait
+    # (each check costs 1-3 detector runs, and a
     # failing face otherwise retries every frame: two-side clip, 80 of 134 ms per frame).
     candidate_retry_s: float = 0.25
     search_period_s: float = 0.5     # re-check the quarter turn this often, unless (edge option) the
@@ -107,7 +109,7 @@ class RefineConfig:
     min_eye_contrast: float = 0.20   # image evidence of an open eye (refine.eye_contrast)
     # Video: a real face passes these checks frame after frame, a hallucination on some
     # frames only (and between them is often not found at all).  So a shot also needs, at
-    # that place (by position, not track id) over the window, passes / (passes + failed
+    # that place within its own track over the window, passes / (passes + failed
     # checks + frames with no face there) >= gate_min_ratio; frames where the face was
     # there but not checkable (out of band, low quality) do not count either way.
     gate_window_s: float = 0.5

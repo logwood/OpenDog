@@ -12,6 +12,7 @@ import { guidance, type Guidance } from './guidance';
 import { crop, mirror, rotate, type Frame } from './image';
 import { faceGeometry, ViewClassifier, type FaceGeometry, type ViewState } from './pose';
 import { QualityAssessor, type QualityReport } from './quality';
+import { CandidateRetry } from './retry';
 import { eyeContrast, FaceRefiner, transformDetection, uprightFrame, type Landmarker } from './refine';
 import { detectionReason, height, iou, width, type Box, type Detection } from './schema';
 import { TrackShots, type CaptureEvent, type Shot } from './selection';
@@ -111,7 +112,7 @@ export interface FrameResult {
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-interface Context { classifier: ViewClassifier; shots: TrackShots; evidence: TemporalEvidence; retryAt?: number }
+interface Context { classifier: ViewClassifier; shots: TrackShots; evidence: TemporalEvidence; retry: CandidateRetry }
 /** The detection a shot is judged on and kept with, and what was measured from it. */
 interface Sharpened { det: Detection; geometry: FaceGeometry; report: QualityReport; aligned: ReturnType<QualityAssessor['assess']>['aligned'] }
 
@@ -172,6 +173,7 @@ export class CaptureEngine {
     let ctx = this.contexts.get(id);
     if (!ctx) {
       ctx = { classifier: new ViewClassifier(this.config.pose), evidence: new TemporalEvidence(),
+        retry: new CandidateRetry(this.config.refine.candidate_retry_s),
         shots: new TrackShots(id, this.viewNames, this.config.selection,
           Object.fromEntries(this.config.pose.views.map((v) => [v.name, v.shots]))) };
       this.contexts.set(id, ctx);
@@ -388,6 +390,7 @@ export class CaptureEngine {
     const det = track.detection;
     const geometry = faceGeometry(det, this.config.pose);
     const state = ctx.classifier.update(t, geometry);
+    ctx.retry.observe(state.view);
     const events = ctx.shots.observe(state, t);
     const target = state.raw ? this.views.get(state.raw) ?? null : null;
     const [vx, vy] = track.velocity(this.config.tracker.nominal_fps);
@@ -405,9 +408,9 @@ export class CaptureEngine {
     // precise detector's (same view rule as the server's re-check), and those are judged and kept.
     let pick: Sharpened = { det, geometry, report, aligned };
     const landmarked = !!this.refiner?.landmarker;
-    // this track's last candidate failed a moment ago (refine.candidate_retry_s)
-    if (landmarked && t < (ctx.retryAt ?? -Infinity)) eligible = false;
-    if (eligible && aligned && ctx.shots.wants(state.view!, ctx.shots.scoreFor(report))) {
+    let candidate = !!(eligible && aligned && ctx.shots.wants(state.view!, ctx.shots.scoreFor(report)));
+    if (candidate && landmarked && !ctx.retry.begin(t)) eligible = candidate = false;
+    if (candidate) {
       const [sharp, early] = await this.sharpen(frame, det, state.view!, target, speed);
       let problem = early;
       if (sharp) { pick = sharp; eligible = sharp.report.passed && ctx.shots.eligibleLevel(sharp.report.level); }
@@ -416,8 +419,7 @@ export class CaptureEngine {
         const check = await this.trusted(ctx, frame, pick.det, target);
         problem = check.problem; gateStatus = check.status;
       } else if (problem !== null) gateStatus = 'fail';
-      // (not while the temporal gate is still collecting its passes: those must be consecutive)
-      if (problem && landmarked && problem !== 'landmarks_unstable') ctx.retryAt = t + this.config.refine.candidate_retry_s;
+      if (landmarked) ctx.retry.finish(t, problem, gateStatus === 'pass', !!ctx.shots.pending[state.view!]?.length);
       if (problem) {
         report.reasons.push(problem);   // what the operator sees for this frame
         if (pick.report !== report) pick.report.reasons.push(problem);

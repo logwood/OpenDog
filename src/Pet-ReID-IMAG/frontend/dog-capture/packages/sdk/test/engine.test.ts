@@ -69,6 +69,33 @@ it.each([false, true])('does not count nearby dogs as repeated frames (reverse=%
   }
 });
 
+it('recovers from a failed pending-shot replacement and still verifies the new shot', async () => {
+  const { engine, internal } = evidenceEngine();
+  engine.config.refine.gate_min_passes = 1;
+  internal.refiner.landmarker = {};
+  const { frame, det } = frames.sharp;
+  const track = new Track(1, det, 0, engine.tracker.kalman);
+  const context = internal.context(1);
+  const valid = { raw: 'front', view: 'front', stable: false, smoothed_yaw: 0, dwell_s: 0, observations: 1, changed: true };
+  vi.spyOn(context.classifier, 'update').mockReturnValueOnce(valid).mockReturnValueOnce(valid)
+    .mockReturnValueOnce({ ...valid, raw: null, view: null }).mockReturnValueOnce(valid)
+    .mockReturnValueOnce({ ...valid, stable: true });
+  vi.mocked(engine.assessor.assess).mockReturnValueOnce({ report: {
+    score: .8, level: 'high', passed: true, reasons: [], factors: {}, metrics: {},
+  }, aligned: {} as any });
+  const precise = vi.spyOn(internal, 'sharpen').mockResolvedValueOnce([null, null])
+    .mockResolvedValueOnce([null, 'view_unconfirmed']).mockResolvedValueOnce([null, null]);
+  const accepted = [];
+  for (let i = 0; i < 5; i++) {
+    internal.frameTimes.push(i / 30);
+    accepted.push((await internal.analyse(frame, track, i / 30, i, 0))[0].accepted);
+  }
+  expect(accepted).toEqual([true, false, false, true, false]);
+  expect(precise).toHaveBeenCalledTimes(3);
+  expect(internal.unreliable).toHaveBeenCalledTimes(2);
+  expect(engine.bestBundle()!.best('front')!.frameIndex).toBe(3);
+});
+
 it('requires fresh temporal evidence for a new track at the same place', async () => {
   const { engine, internal } = evidenceEngine();
   const { frame, det } = frames.sharp;

@@ -210,14 +210,15 @@ def decoded_comparison(engine, config, frames):
     return reports
 
 
-def video_benchmark(config, detector, gate, path, realtime, output, repeat, expected_frames, *, landmarker=None):
+def video_benchmark(config, detector, gate, path, realtime, output, repeat, expected_frames, *, landmarker=None, engine_type=None):
     from dog_capture.engine.engine import CaptureEngine
     from dog_capture.engine.io import LatestFrameRunner, RunWriter, VideoSource
-    engine = CaptureEngine(config, detector, gate, landmarker)  # fresh tracking/selection state
+    engine = (engine_type or CaptureEngine)(config, detector, gate, landmarker)  # fresh tracking/selection state
     source = VideoSource(path)
     info = source.describe()
     rows, times, guidance = [], defaultdict(list), Counter()
     calls, originals = Counter(), []
+    first_complete = None
     def counted(name, original):
         def detect(*args, **kwargs):
             calls[name] += 1
@@ -230,6 +231,7 @@ def video_benchmark(config, detector, gate, path, realtime, output, repeat, expe
     started = time.perf_counter()
 
     def on_result(result, frame):
+        nonlocal first_complete
         for key, value in result.timings_ms.items():
             times[key].append(value)
         # End-to-end from scheduled video PTS, also catches a late producer.
@@ -239,6 +241,17 @@ def video_benchmark(config, detector, gate, path, realtime, output, repeat, expe
         rows.append({'frame_index': result.frame_index, 'time_s': result.time_s,
                      'timings_ms': result.timings_ms, 'faces': len(result.faces),
                      'rotation_deg': result.rotation_deg, 'guidance': result.guidance['code']})
+        # Count useful capture work before the camera/H5 would stop. Keep the
+        # full-video replay for jitter comparisons; these are different metrics.
+        # This callback runs on the inference thread after process(), so the
+        # counters and primary-track snapshot belong to this result, not a later frame.
+        if first_complete is None and engine.complete():
+            context = engine.contexts[engine.primary_id]
+            first_complete = {'frame_index': result.frame_index, 'video_time_s': result.time_s,
+                'elapsed_s': time.perf_counter() - started, 'frames_processed': len(rows),
+                'processing_ms': sum(times['total']), 'model_calls': dict(calls),
+                'track_id': engine.primary_id,
+                'selected_frames': {v: [s.frame_index for s in shots] for v, shots in context.shots.slots.items() if shots}}
 
     runner = LatestFrameRunner(engine, on_result) if realtime else None
     read = processed = 0
@@ -286,6 +299,7 @@ def video_benchmark(config, detector, gate, path, realtime, output, repeat, expe
     result = {'source': relative(path), 'models': engine.describe(),
               'landmarks': landmarker.describe() if landmarker is not None else None,
               'model_calls': dict(calls),
+              'first_complete': first_complete,
               'playback': 'realtime' if realtime else 'offline',
               'repeat': repeat, 'source_fps': info['fps'], 'frames_read': read,
               'frames_processed': processed, 'frames_dropped': dropped, 'drop_rate': dropped / max(read, 1),

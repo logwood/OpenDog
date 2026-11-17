@@ -29,6 +29,7 @@ from .evidence import TemporalEvidence
 from .guidance import guidance
 from .pose import ViewClassifier, face_geometry
 from .quality import QualityAssessor, QualityReport
+from .retry import CandidateRetry
 from .refine import FaceRefiner, eye_contrast, transform_detection, upright_frame
 from .schema import Detection, box_iou_matrix
 from .selection import Shot, TrackShots
@@ -183,7 +184,7 @@ class _TrackContext:
         selection = replace(engine.config.selection, mode='best') if still else engine.config.selection
         self.shots = TrackShots(track_id, engine.view_names, selection,
                                 {v.name: v.shots for v in engine.config.pose.views})
-        self.retry_at = -math.inf   # next shot candidate allowed (refine.candidate_retry_s)
+        self.retry = CandidateRetry(engine.config.refine.candidate_retry_s)
         self.evidence = TemporalEvidence()
 
 
@@ -523,6 +524,7 @@ class CaptureEngine:
         det = track.detection
         geometry = face_geometry(det, self.config.pose)
         state = context.classifier.update(timestamp, geometry)
+        context.retry.observe(state.view)
         events = context.shots.observe(state, timestamp)
         target = self.views.get(state.raw)
         speed = 0.0 if still else float(np.linalg.norm(track.velocity(self.config.tracker.nominal_fps)))
@@ -537,9 +539,10 @@ class CaptureEngine:
             gate_status = self._near_miss(context, frame, det, target, state.view, quality, track.id, index, timestamp, still)
         tracked = det
         landmarked = self.refiner is not None and self.refiner.landmarker is not None and not still
-        if landmarked and timestamp < context.retry_at:
-            eligible = False   # this track's last candidate failed a moment ago (refine.candidate_retry_s)
-        if eligible and context.shots.wants(state.view, context.shots.score_for(quality)):
+        candidate = eligible and context.shots.wants(state.view, context.shots.score_for(quality))
+        if candidate and landmarked and not context.retry.begin(timestamp):
+            eligible = candidate = False
+        if candidate:
             # With a crop landmarker the per-frame keypoints are the tracker's; a shot candidate
             # gets the precise detector's (same view rule as the server's re-check), and those
             # are what is judged and kept.
@@ -553,9 +556,9 @@ class CaptureEngine:
                 problem, gate_status = self._trusted(context, frame, det, target, still=still)
             elif problem is not None:
                 gate_status = 'fail'
-            if problem and landmarked and problem != 'landmarks_unstable':
-                # (not while the temporal gate is still collecting its passes: those must be consecutive)
-                context.retry_at = timestamp + self.config.refine.candidate_retry_s
+            if landmarked:
+                context.retry.finish(timestamp, problem, gate_status == 'pass',
+                                     bool(context.shots.pending.get(state.view)))
             if problem:
                 face.quality.reasons.append(problem)   # what the operator sees for this frame
                 if quality is not face.quality:
