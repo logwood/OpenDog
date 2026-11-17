@@ -1,0 +1,5714 @@
+{
+  "schema": "dog_capture_low_compute_v1",
+  "date": "2026-11-17",
+  "reference_commit": "3a5bb0581841284eca6af46f28490c90ba9e79f0",
+  "decision": "Expose stable-only candidate checks as an explicit lower-compute fallback. Keep early as default; do not claim unchanged photo quality or view coverage when the fallback is enabled.",
+  "policy": {
+    "field": "selection.candidate_timing",
+    "values": [
+      "early",
+      "stable"
+    ],
+    "default": "early",
+    "cli_flag": "--candidate-timing stable",
+    "automatic_switch": false,
+    "effect": "For video, only eligible candidates after existing pose dwell can run precise localization, reliability checks and enter selection; earlier raw candidates are not buffered.",
+    "unchanged": [
+      "models and input resolution",
+      "tracking and pose classification",
+      "all quality and reliability thresholds",
+      "temporal evidence requirements",
+      "near-miss diagnostics",
+      "quality/clarity ranking",
+      "fast/best/hybrid locking rules"
+    ],
+    "still_images": "Python still-image capture is unaffected by video dwell timing."
+  },
+  "method": {
+    "hardware": "Intel Core i9-13980HX; Windows CPUExecutionProvider FP32; RTX 4060 unused.",
+    "versions": {
+      "numpy": "2.4.4",
+      "opencv": "5.0.0",
+      "onnxruntime": "1.26.0"
+    },
+    "config": {
+      "detector": {
+        "kind": "auto",
+        "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_pose_cpu.onnx",
+        "input_size": 0,
+        "score_threshold": 0.35,
+        "nms_iou": 0.45,
+        "max_faces": 8,
+        "schema": "",
+        "roi_zoom": true,
+        "roi_min_zoom": 1.5,
+        "roi_period_s": 0.1
+      },
+      "refine": {
+        "enabled": true,
+        "landmarks": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_landmarks_cpu.onnx",
+        "share": 0.35,
+        "crop_size": 0,
+        "antialias": "tracker",
+        "candidate_retry_s": 0.25,
+        "search_period_s": 0.5,
+        "confident_score": 1.0,
+        "max_search_period_s": 2.0,
+        "switch_margin": 0.05,
+        "fine_min_deg": 8.0,
+        "research_below": 0.4,
+        "carry_frames": 3,
+        "match_iou": 0.3,
+        "full_detect_period_s": 0.3,
+        "min_shot_score": 0.5,
+        "max_mirror_disagreement": 0.2,
+        "min_front_eye_conf": 0.7,
+        "max_agreement": 0.3,
+        "min_side_eye_conf": 0.5,
+        "max_side_mirror_disagreement": 0.3,
+        "max_side_agreement": 0.5,
+        "min_eye_contrast": 0.2,
+        "gate_window_s": 0.5,
+        "gate_min_frames": 8,
+        "gate_min_ratio": 0.35,
+        "gate_min_passes": 3,
+        "full_detect_min_frames": 3,
+        "search_min_frames": 6,
+        "backoff_margin": 0.1,
+        "max_backoff": 4,
+        "empty_search_period_s": 0.25,
+        "empty_search_min_frames": 2
+      },
+      "body_gate": {
+        "enabled": "auto",
+        "model": "models/pretrained/dog_capture_v1/yolox_nano.onnx",
+        "input_size": 416,
+        "score_threshold": 0.3,
+        "class_id": 16,
+        "period_s": 0.25,
+        "hold_s": 0.75,
+        "margin": 0.15,
+        "head_score_threshold": 0.5
+      },
+      "tracker": {
+        "high_score": 0.5,
+        "low_score": 0.2,
+        "new_track_score": 0.55,
+        "match_iou": 0.2,
+        "low_match_iou": 0.5,
+        "unconfirmed_match_iou": 0.3,
+        "max_lost_s": 1.0,
+        "max_tracks": 16,
+        "nominal_fps": 30.0
+      },
+      "pose": {
+        "views": [
+          {
+            "name": "front",
+            "center": 0.0,
+            "lower": -0.13,
+            "upper": 0.13,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "left",
+            "center": -0.45,
+            "lower": -0.75,
+            "upper": -0.25,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "right",
+            "center": 0.45,
+            "lower": 0.25,
+            "upper": 0.75,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          }
+        ],
+        "exit_margin": 0.05,
+        "min_dwell_s": 0.12,
+        "min_dwell_obs": 3,
+        "max_gap_s": 0.3,
+        "smooth_min_cutoff": 1.5,
+        "smooth_beta": 0.5,
+        "snout_factor": 0.8,
+        "min_iod_box_ratio": 0.12,
+        "max_iod_box_ratio": 1.1,
+        "pitch_range": [
+          0.05,
+          2.2
+        ],
+        "max_abs_yaw": 1.2
+      },
+      "quality": {
+        "min_iod_px": 18.0,
+        "good_iod_px": 64.0,
+        "min_sharpness": 0.15,
+        "min_brightness": 30.0,
+        "max_brightness": 230.0,
+        "max_clipped": 0.3,
+        "min_contrast": 16.0,
+        "border_margin": 0.005,
+        "min_kp_score": 0.35,
+        "max_alignment_residual": 0.45,
+        "motion_ref_iod_per_s": 3.0,
+        "weights": {
+          "sharpness": 3.0,
+          "eye_detail": 2.0,
+          "exposure": 1.0,
+          "resolution": 1.5,
+          "confidence": 1.0,
+          "motion": 1.0,
+          "pose_fit": 0.75,
+          "alignment": 0.5
+        },
+        "high_level": 0.7,
+        "medium_level": 0.5
+      },
+      "selection": {
+        "mode": "hybrid",
+        "ranking": "quality",
+        "candidate_timing": "early",
+        "good_enough": 0.65,
+        "improve_window_s": 2.0,
+        "top_k": 1,
+        "min_gap_s": 0.3,
+        "min_level": "medium"
+      },
+      "output": {
+        "aligned_size": 224,
+        "template": "petface_dog",
+        "face_margin": 0.2,
+        "keep_frames": true,
+        "image_format": "png"
+      },
+      "runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "cache_dir": ".tmp/dog-capture-v1-ort-cache",
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": true,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8
+      }
+    },
+    "models": {
+      "detector": {
+        "kind": "yolo_pose",
+        "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_pose_cpu.onnx",
+        "sha256": "ec31809d70204d6b6761625df7371704d0ef90614dc4846bc084be14c7c0ed4a",
+        "input_size": 320,
+        "score_threshold": 0.35,
+        "runtime": {
+          "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_pose_cpu.onnx",
+          "requested": [
+            "CPUExecutionProvider"
+          ],
+          "used": [
+            "CPUExecutionProvider"
+          ],
+          "provider_options": {
+            "CPUExecutionProvider": {}
+          },
+          "fallback_errors": [],
+          "thread_spinning": true,
+          "intra_op_threads": 4,
+          "spin_duration_us": 1000,
+          "spin_backoff_max": 8,
+          "cpu_compiled": {
+            "version": 1,
+            "target": {
+              "ort_version": "1.26.0",
+              "ort_build": "ORT Build Info: git-branch=HEAD, git-commit-id=8c546c37b4, fp8-kv-cache=1, build type=Release",
+              "machine": "AMD64",
+              "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+              "system": "Windows",
+              "cpu_features": "SSE SSE2 SSE3 *SSE4.1 *SSE4.2 *AVX *FP16 *AVX2 *AVX512-SKX?"
+            },
+            "source_sha256": "48c2b9f580a6b29f6ec92f81d58bffcb06c609b4da4d77e4c85f259dc1b8d74c",
+            "conditional_score_input": "capture_gate_threshold",
+            "head_nodes": 68,
+            "score_and_shared_nodes": 213,
+            "output_width": 23,
+            "conditional_scales": [
+              {
+                "anchors": [
+                  0,
+                  1600
+                ],
+                "head_nodes": 14
+              },
+              {
+                "anchors": [
+                  1600,
+                  2000
+                ],
+                "head_nodes": 14
+              },
+              {
+                "anchors": [
+                  2000,
+                  2100
+                ],
+                "head_nodes": 14
+              }
+            ],
+            "raw_output_contract": "scores_and_eligible_anchors_exact",
+            "layout": {
+              "block": 8,
+              "old_nodes": 319,
+              "new_nodes": 281,
+              "removed_reorders": {
+                "ReorderOutput": 19,
+                "ReorderInput": 19
+              },
+              "removed_reorder_output_payload_bytes": 9011200,
+              "cloned_operations": {
+                "Split": 9,
+                "Add": 7,
+                "Concat": 9
+              }
+            },
+            "scale_decode": {
+              "per_scale_decode_nodes": 7,
+              "decoded_anchors_per_active_scale": [
+                1600,
+                400,
+                100
+              ]
+            }
+          },
+          "cuda_graph": {
+            "requested": false,
+            "active": false,
+            "fallback_reason": null
+          }
+        },
+        "license": "Trained with Ultralytics (AGPL-3.0) on StanfordExtra/Stanford Dogs (research use)"
+      },
+      "body_gate": {
+        "kind": "yolox",
+        "model": "models/pretrained/dog_capture_v1/yolox_nano.onnx",
+        "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+        "input_size": 416,
+        "score_threshold": 0.3,
+        "runtime": {
+          "model": "models/pretrained/dog_capture_v1/yolox_nano.onnx",
+          "requested": [
+            "CPUExecutionProvider"
+          ],
+          "used": [
+            "CPUExecutionProvider"
+          ],
+          "provider_options": {
+            "CPUExecutionProvider": {}
+          },
+          "fallback_errors": [],
+          "thread_spinning": true,
+          "intra_op_threads": 4,
+          "spin_duration_us": 1000,
+          "spin_backoff_max": 8,
+          "cuda_graph": {
+            "requested": false,
+            "active": false,
+            "fallback_reason": null
+          }
+        },
+        "license": null
+      },
+      "orientation": {
+        "mode": "auto",
+        "rotation_deg": 0,
+        "locked": false
+      },
+      "frames": 0,
+      "dropped": {
+        "non_increasing_timestamp": 0
+      }
+    },
+    "landmarks": {
+      "kind": "crop_landmarks",
+      "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_landmarks_cpu.onnx",
+      "sha256": "7df6c9311ced20677abfda26caeea1c4954582692c23c78bd9e8f7e66a80b9f6",
+      "input_size": 128,
+      "score_threshold": 0.05,
+      "runtime": {
+        "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_landmarks_cpu.onnx",
+        "requested": [
+          "CPUExecutionProvider"
+        ],
+        "used": [
+          "CPUExecutionProvider"
+        ],
+        "provider_options": {
+          "CPUExecutionProvider": {}
+        },
+        "fallback_errors": [],
+        "thread_spinning": true,
+        "intra_op_threads": 4,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8,
+        "cpu_compiled": {
+          "version": 1,
+          "target": {
+            "ort_version": "1.26.0",
+            "ort_build": "ORT Build Info: git-branch=HEAD, git-commit-id=8c546c37b4, fp8-kv-cache=1, build type=Release",
+            "machine": "AMD64",
+            "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+            "system": "Windows",
+            "cpu_features": "SSE SSE2 SSE3 *SSE4.1 *SSE4.2 *AVX *FP16 *AVX2 *AVX512-SKX?"
+          },
+          "source_sha256": "1fb6ad2185d0e4d65addf62c1d5fd79f32f84e61e62ae0dd9694609ca7cc1171",
+          "layout": {
+            "block": 8,
+            "old_nodes": 163,
+            "new_nodes": 147,
+            "removed_reorders": {
+              "ReorderOutput": 8,
+              "ReorderInput": 8
+            },
+            "removed_reorder_output_payload_bytes": 860160,
+            "cloned_operations": {
+              "Split": 4,
+              "Add": 2,
+              "Concat": 4
+            }
+          }
+        },
+        "cuda_graph": {
+          "requested": false,
+          "active": false,
+          "fallback_reason": null
+        }
+      },
+      "license": "YOLO11n backbone (Ultralytics, AGPL-3.0) trained on StanfordExtra/Stanford Dogs (research use)"
+    },
+    "default_parity": "Complete old 3a5bb05 package loaded in isolation. Omit only equivalent default candidate_timing=early from its older strict schema; all model inputs/outputs, frame decisions and selected pixels compared.",
+    "fallback_full_input": "All 2526 frames; instrumented logical model._run counts; every call a real cache miss. No timings from this run are used as speed evidence.",
+    "realtime": "Serial early A / stable A / stable B / early B; B reverses video order. Original PTS, queue capacity 1, ORT 4 threads, 1000 us spin/backoff 8, OpenCV 1 thread, HighQoS verified, 15 model warmups. External load/frequency not locked; all eight planned trials retained.",
+    "pooled": "Percentiles recomputed from concatenated individual frame timings; FPS = total processed / total elapsed.",
+    "counter_distinction": "Offline counts model._run forwards; existing real-time model_calls counts detect API calls, including any early return.",
+    "timing_scope": {
+      "warmup_calls_per_model": 15,
+      "micro_timed_calls_per_stage": 300,
+      "micro_sampling": "uniform across each whole video; sequential decode; interleaved videos",
+      "inference": "prepared CPU tensor to returned CPU outputs, including GPU transfers/synchronization",
+      "detect": "BGR frame preprocessing + inference + decode/NMS",
+      "total": "production CaptureEngine.process; all gates/rotation/tracking/quality/selection enabled",
+      "capture_to_result": "submission to result, including worker queue; excludes camera/driver",
+      "scheduled_to_result": "scheduled video PTS to result, including producer lateness",
+      "excluded": "preview/UI rendering, network, Re-ID, final image saving; models warm before replay",
+      "startup": "new model sessions in an existing Python process; OS file cache not flushed"
+    }
+  },
+  "config_files": {
+    "early": {
+      "path": "models/pretrained/dog_capture_cpu_layout_v1/capture.json",
+      "sha256": "5ecc05d267f66956e17e17e81fa1cd7bc9747825d241821e38310a5bbe79036c"
+    },
+    "stable": {
+      "path": "models/pretrained/dog_capture_cpu_layout_v1/capture_low_compute.json",
+      "sha256": "2bae41954f34b723e48a6881e05edfaff4a82cf50c12ba080ae6b5e0a081cba3"
+    }
+  },
+  "default_equivalence": {
+    "method": "Check capture decisions against an earlier engine/refiner on every video frame.\n\nThe default keeps current adapters for compatibility with old engine revisions.\n--isolated-reference loads the complete old package, including image sampling\nand model adapters. Conditional empty outputs are accepted only when the original\nscores prove no detection passes the same threshold. Scale-gated models must keep\nevery score and every eligible anchor bit-exact; only rejected heads may differ.\nThis checks numerical and decision parity, not throughput.\n",
+    "reference_source_sha256": {
+      "alignment.py": "05140df792fae9045510ad05a428da9cb91c341655ba2315cb6a7163df382791",
+      "cli.py": "d91a03248346ff2ea2643995a6c650975d3bcefcc18585b9b1c8a6e71ec25fb1",
+      "config.py": "ed0cc741810cf831d8c2f89e7f9aaa601cf01553628ba89d17a992dc331e8fbb",
+      "detectors.py": "d88cc916289f4e43a0c12f772a5a40064316ff6384c38b637bcf6b29819916b9",
+      "engine.py": "3c2674741ba1e2d38e4beaab2272e8e779823c7f1d9bfbce9be6170c2e53cc4a",
+      "evidence.py": "df4cbee1ff5f89381dc73078232e9d5abd0497aff985dcac823b6abeb59d2e56",
+      "guidance.py": "766d023d84a37bf93db8c9755accb763cc63e21522c890e33b280291505ae5de",
+      "io.py": "05dcff40cd77a77be24012e01c3325a3645753201b5093a254f2b3602eb13a6b",
+      "pose.py": "6dfb827881c6c349aab1ef7e0bb53d32561939c212e7ddd896de1cb53bf37b62",
+      "process_policy.py": "17acc998b54de0115499bfcd5c2bb41bab58fb240d89561ea649d77190e964ba",
+      "profiling.py": "5ec1c7c1cf31d5ddd79bd83e53d48049e220d84da0c7537c304bc58fd844c758",
+      "quality.py": "c9e949e6de6e39304c0890c1d3544e91bd2f76cfc16ed82b839c6a26759db017",
+      "refine.py": "7ec1ec7ae82005750532b09eaa429d3a3fef6db1b8a8942ceacb09b34e8bc98f",
+      "resampling.py": "df1295be814a8d5e287582a13a13da417d327731308eef8422ff36c59109eb25",
+      "retry.py": "4076684946c30f8276b98509e8a9014c0310b3aacf494689435fa29996a37963",
+      "runtime.py": "0b86d62eb0aa90346535cb1da1635b5e7402bbce5a9868f0df6ad1ef98c03310",
+      "schema.py": "3a28dcbb5809eb18f8a15ad2847c770d7c59e78b0cee90b7ee0ef2ad27d388af",
+      "selection.py": "b79b43e8ac9212d86cf82a104b8002cd259c15adaa3ce6c7c7360a17276aadb8",
+      "tracking.py": "60b5326e72bf44f66063ae21b9c12848e3fdce700dfb5f5f8d489d2e9e13dbae",
+      "zoo.py": "6a1fae9d7ce074ffaf94e5208272c7c594d925679fd03b69c007cce75e17ce38",
+      "__init__.py": "f46d5c254b146a41e18a7b09a9515659e53aa32b4b436e146ad9cff086df2fda"
+    },
+    "config": {
+      "detector": {
+        "kind": "auto",
+        "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_pose_cpu.onnx",
+        "input_size": 0,
+        "score_threshold": 0.35,
+        "nms_iou": 0.45,
+        "max_faces": 8,
+        "schema": "",
+        "roi_zoom": true,
+        "roi_min_zoom": 1.5,
+        "roi_period_s": 0.1
+      },
+      "refine": {
+        "enabled": true,
+        "landmarks": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_landmarks_cpu.onnx",
+        "share": 0.35,
+        "crop_size": 0,
+        "antialias": "tracker",
+        "candidate_retry_s": 0.25,
+        "search_period_s": 0.5,
+        "confident_score": 1.0,
+        "max_search_period_s": 2.0,
+        "switch_margin": 0.05,
+        "fine_min_deg": 8.0,
+        "research_below": 0.4,
+        "carry_frames": 3,
+        "match_iou": 0.3,
+        "full_detect_period_s": 0.3,
+        "min_shot_score": 0.5,
+        "max_mirror_disagreement": 0.2,
+        "min_front_eye_conf": 0.7,
+        "max_agreement": 0.3,
+        "min_side_eye_conf": 0.5,
+        "max_side_mirror_disagreement": 0.3,
+        "max_side_agreement": 0.5,
+        "min_eye_contrast": 0.2,
+        "gate_window_s": 0.5,
+        "gate_min_frames": 8,
+        "gate_min_ratio": 0.35,
+        "gate_min_passes": 3,
+        "full_detect_min_frames": 3,
+        "search_min_frames": 6,
+        "backoff_margin": 0.1,
+        "max_backoff": 4,
+        "empty_search_period_s": 0.25,
+        "empty_search_min_frames": 2
+      },
+      "body_gate": {
+        "enabled": "auto",
+        "model": "models/pretrained/dog_capture_v1/yolox_nano.onnx",
+        "input_size": 416,
+        "score_threshold": 0.3,
+        "class_id": 16,
+        "period_s": 0.25,
+        "hold_s": 0.75,
+        "margin": 0.15,
+        "head_score_threshold": 0.5
+      },
+      "tracker": {
+        "high_score": 0.5,
+        "low_score": 0.2,
+        "new_track_score": 0.55,
+        "match_iou": 0.2,
+        "low_match_iou": 0.5,
+        "unconfirmed_match_iou": 0.3,
+        "max_lost_s": 1.0,
+        "max_tracks": 16,
+        "nominal_fps": 30.0
+      },
+      "pose": {
+        "views": [
+          {
+            "name": "front",
+            "center": 0.0,
+            "lower": -0.13,
+            "upper": 0.13,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "left",
+            "center": -0.45,
+            "lower": -0.75,
+            "upper": -0.25,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "right",
+            "center": 0.45,
+            "lower": 0.25,
+            "upper": 0.75,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          }
+        ],
+        "exit_margin": 0.05,
+        "min_dwell_s": 0.12,
+        "min_dwell_obs": 3,
+        "max_gap_s": 0.3,
+        "smooth_min_cutoff": 1.5,
+        "smooth_beta": 0.5,
+        "snout_factor": 0.8,
+        "min_iod_box_ratio": 0.12,
+        "max_iod_box_ratio": 1.1,
+        "pitch_range": [
+          0.05,
+          2.2
+        ],
+        "max_abs_yaw": 1.2
+      },
+      "quality": {
+        "min_iod_px": 18.0,
+        "good_iod_px": 64.0,
+        "min_sharpness": 0.15,
+        "min_brightness": 30.0,
+        "max_brightness": 230.0,
+        "max_clipped": 0.3,
+        "min_contrast": 16.0,
+        "border_margin": 0.005,
+        "min_kp_score": 0.35,
+        "max_alignment_residual": 0.45,
+        "motion_ref_iod_per_s": 3.0,
+        "weights": {
+          "sharpness": 3.0,
+          "eye_detail": 2.0,
+          "exposure": 1.0,
+          "resolution": 1.5,
+          "confidence": 1.0,
+          "motion": 1.0,
+          "pose_fit": 0.75,
+          "alignment": 0.5
+        },
+        "high_level": 0.7,
+        "medium_level": 0.5
+      },
+      "selection": {
+        "mode": "hybrid",
+        "ranking": "quality",
+        "candidate_timing": "early",
+        "good_enough": 0.65,
+        "improve_window_s": 2.0,
+        "top_k": 1,
+        "min_gap_s": 0.3,
+        "min_level": "medium"
+      },
+      "output": {
+        "aligned_size": 224,
+        "template": "petface_dog",
+        "face_margin": 0.2,
+        "keep_frames": true,
+        "image_format": "png"
+      },
+      "runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "cache_dir": "",
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": true,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8
+      }
+    },
+    "optimized_config": {
+      "detector": {
+        "kind": "auto",
+        "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_pose_cpu.onnx",
+        "input_size": 0,
+        "score_threshold": 0.35,
+        "nms_iou": 0.45,
+        "max_faces": 8,
+        "schema": "",
+        "roi_zoom": true,
+        "roi_min_zoom": 1.5,
+        "roi_period_s": 0.1
+      },
+      "refine": {
+        "enabled": true,
+        "landmarks": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_landmarks_cpu.onnx",
+        "share": 0.35,
+        "crop_size": 0,
+        "antialias": "tracker",
+        "candidate_retry_s": 0.25,
+        "search_period_s": 0.5,
+        "confident_score": 1.0,
+        "max_search_period_s": 2.0,
+        "switch_margin": 0.05,
+        "fine_min_deg": 8.0,
+        "research_below": 0.4,
+        "carry_frames": 3,
+        "match_iou": 0.3,
+        "full_detect_period_s": 0.3,
+        "min_shot_score": 0.5,
+        "max_mirror_disagreement": 0.2,
+        "min_front_eye_conf": 0.7,
+        "max_agreement": 0.3,
+        "min_side_eye_conf": 0.5,
+        "max_side_mirror_disagreement": 0.3,
+        "max_side_agreement": 0.5,
+        "min_eye_contrast": 0.2,
+        "gate_window_s": 0.5,
+        "gate_min_frames": 8,
+        "gate_min_ratio": 0.35,
+        "gate_min_passes": 3,
+        "full_detect_min_frames": 3,
+        "search_min_frames": 6,
+        "backoff_margin": 0.1,
+        "max_backoff": 4,
+        "empty_search_period_s": 0.25,
+        "empty_search_min_frames": 2
+      },
+      "body_gate": {
+        "enabled": "auto",
+        "model": "models/pretrained/dog_capture_v1/yolox_nano.onnx",
+        "input_size": 416,
+        "score_threshold": 0.3,
+        "class_id": 16,
+        "period_s": 0.25,
+        "hold_s": 0.75,
+        "margin": 0.15,
+        "head_score_threshold": 0.5
+      },
+      "tracker": {
+        "high_score": 0.5,
+        "low_score": 0.2,
+        "new_track_score": 0.55,
+        "match_iou": 0.2,
+        "low_match_iou": 0.5,
+        "unconfirmed_match_iou": 0.3,
+        "max_lost_s": 1.0,
+        "max_tracks": 16,
+        "nominal_fps": 30.0
+      },
+      "pose": {
+        "views": [
+          {
+            "name": "front",
+            "center": 0.0,
+            "lower": -0.13,
+            "upper": 0.13,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "left",
+            "center": -0.45,
+            "lower": -0.75,
+            "upper": -0.25,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "right",
+            "center": 0.45,
+            "lower": 0.25,
+            "upper": 0.75,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          }
+        ],
+        "exit_margin": 0.05,
+        "min_dwell_s": 0.12,
+        "min_dwell_obs": 3,
+        "max_gap_s": 0.3,
+        "smooth_min_cutoff": 1.5,
+        "smooth_beta": 0.5,
+        "snout_factor": 0.8,
+        "min_iod_box_ratio": 0.12,
+        "max_iod_box_ratio": 1.1,
+        "pitch_range": [
+          0.05,
+          2.2
+        ],
+        "max_abs_yaw": 1.2
+      },
+      "quality": {
+        "min_iod_px": 18.0,
+        "good_iod_px": 64.0,
+        "min_sharpness": 0.15,
+        "min_brightness": 30.0,
+        "max_brightness": 230.0,
+        "max_clipped": 0.3,
+        "min_contrast": 16.0,
+        "border_margin": 0.005,
+        "min_kp_score": 0.35,
+        "max_alignment_residual": 0.45,
+        "motion_ref_iod_per_s": 3.0,
+        "weights": {
+          "sharpness": 3.0,
+          "eye_detail": 2.0,
+          "exposure": 1.0,
+          "resolution": 1.5,
+          "confidence": 1.0,
+          "motion": 1.0,
+          "pose_fit": 0.75,
+          "alignment": 0.5
+        },
+        "high_level": 0.7,
+        "medium_level": 0.5
+      },
+      "selection": {
+        "mode": "hybrid",
+        "ranking": "quality",
+        "candidate_timing": "early",
+        "good_enough": 0.65,
+        "improve_window_s": 2.0,
+        "top_k": 1,
+        "min_gap_s": 0.3,
+        "min_level": "medium"
+      },
+      "output": {
+        "aligned_size": 224,
+        "template": "petface_dog",
+        "face_margin": 0.2,
+        "keep_frames": true,
+        "image_format": "png"
+      },
+      "runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "cache_dir": "",
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": true,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8
+      }
+    },
+    "videos": [
+      {
+        "video": "data/dog_capture/user/2611101816341481.mp4",
+        "sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06",
+        "frames": 1314,
+        "model_calls": {
+          "reference": {
+            "face": 628,
+            "body": 125,
+            "landmarks": 1178
+          },
+          "optimized": {
+            "face": 628,
+            "body": 125,
+            "landmarks": 1178
+          }
+        },
+        "mirror_diagnostics_skipped": 0,
+        "mismatches": [],
+        "conditional_empty_heads_skipped": 0,
+        "inactive_scale_raw_output_changes": 0,
+        "selection_identical": true,
+        "selection": {
+          "reference": {},
+          "optimized": {}
+        }
+      },
+      {
+        "video": "data/dog_capture/public/wolfhound_panting.ogv",
+        "sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893",
+        "frames": 1212,
+        "model_calls": {
+          "reference": {
+            "face": 271,
+            "body": 1,
+            "landmarks": 1233
+          },
+          "optimized": {
+            "face": 271,
+            "body": 1,
+            "landmarks": 1233
+          }
+        },
+        "mirror_diagnostics_skipped": 0,
+        "mismatches": [],
+        "conditional_empty_heads_skipped": 0,
+        "inactive_scale_raw_output_changes": 0,
+        "selection_identical": true,
+        "selection": {
+          "reference": {
+            "front": [
+              {
+                "view": "front",
+                "track_id": 1,
+                "frame_index": 20,
+                "time_s": 0.8333,
+                "score": 0.7838,
+                "level": "high",
+                "basis": "stable_view",
+                "confirmed_at_s": 0.875,
+                "rotation_deg": 0,
+                "detection": {
+                  "box": [
+                    397.73,
+                    53.25,
+                    940.34,
+                    616.91
+                  ],
+                  "score": 0.6152,
+                  "schema": "dogface6",
+                  "keypoints": [
+                    [
+                      579.04,
+                      223.99
+                    ],
+                    [
+                      746.8,
+                      226.13
+                    ],
+                    [
+                      642.81,
+                      375.21
+                    ],
+                    [
+                      663.99,
+                      513.23
+                    ],
+                    [
+                      512.28,
+                      164.82
+                    ],
+                    [
+                      831.25,
+                      163.32
+                    ]
+                  ],
+                  "kp_scores": [
+                    0.8963,
+                    0.8847,
+                    0.9998,
+                    0.9958,
+                    0.9378,
+                    0.9564
+                  ],
+                  "source": "yolo_pose+refined",
+                  "upright_k": 0,
+                  "upright_angle": -0.7318,
+                  "refined": true,
+                  "eye_contrast": [
+                    0.6121,
+                    0.8375
+                  ],
+                  "verify": {
+                    "score": 0.6359,
+                    "eyes": [
+                      0.9526,
+                      0.931
+                    ],
+                    "mirror": 0.1429,
+                    "agreement": 0.1296
+                  }
+                },
+                "pose": {
+                  "points": {
+                    "left_eye": [
+                      579.04,
+                      223.99
+                    ],
+                    "right_eye": [
+                      746.8,
+                      226.13
+                    ],
+                    "nose": [
+                      642.81,
+                      375.21
+                    ],
+                    "chin": [
+                      663.99,
+                      513.23
+                    ],
+                    "left_ear_base": [
+                      512.28,
+                      164.82
+                    ],
+                    "right_ear_base": [
+                      831.25,
+                      163.32
+                    ]
+                  },
+                  "scores": {
+                    "left_eye": 0.8963,
+                    "right_eye": 0.8847,
+                    "nose": 0.9998,
+                    "chin": 0.9958,
+                    "left_ear_base": 0.9378,
+                    "right_ear_base": 0.9564
+                  },
+                  "iod": 167.768,
+                  "roll_deg": 0.7318,
+                  "yaw": -0.1033,
+                  "pitch": 0.8965,
+                  "lower_yaw": 0.0269,
+                  "approx_deg": -7.3552,
+                  "swapped": false,
+                  "upright_k": 0,
+                  "valid": true,
+                  "reason": "ok"
+                },
+                "quality": {
+                  "score": 0.7838,
+                  "level": "high",
+                  "passed": true,
+                  "reasons": [],
+                  "factors": {
+                    "sharpness": 0.8532,
+                    "eye_detail": 0.5187,
+                    "exposure": 0.9999,
+                    "resolution": 1.0,
+                    "confidence": 0.8075,
+                    "motion": 0.911,
+                    "pose_fit": 0.5984,
+                    "alignment": 0.7601
+                  },
+                  "metrics": {
+                    "iod_px": 167.768,
+                    "detector_score": 0.6152,
+                    "eye_visibility": 0.8847,
+                    "nose_visibility": 0.9998,
+                    "alignment_residual": 0.1349,
+                    "brightness": 84.74,
+                    "contrast": 143.0,
+                    "clipped": 0.0001,
+                    "laplacian": 122.9249,
+                    "blur_effect": 0.3314,
+                    "eye_laplacian": [
+                      272.5998840332031,
+                      73.12477111816406
+                    ],
+                    "warp_scale": 0.5105,
+                    "speed_iod_per_s": 0.9375
+                  }
+                },
+                "aligned_sha256": "b209816d6ae7add66840627e4e7d7d2a6135fb73581694368f28cf8122268563",
+                "frame_sha256": "3974b88612a7ff9ea0cb303d36b12551359d2b3cbafe6f0664e9656a5566483d"
+              }
+            ],
+            "left": [
+              {
+                "view": "left",
+                "track_id": 1,
+                "frame_index": 278,
+                "time_s": 11.5833,
+                "score": 0.8614,
+                "level": "high",
+                "basis": "stable_view",
+                "confirmed_at_s": 11.5833,
+                "rotation_deg": 0,
+                "detection": {
+                  "box": [
+                    314.76,
+                    -14.14,
+                    827.96,
+                    603.32
+                  ],
+                  "score": 0.5917,
+                  "schema": "dogface6",
+                  "keypoints": [
+                    [
+                      471.43,
+                      173.73
+                    ],
+                    [
+                      618.61,
+                      192.07
+                    ],
+                    [
+                      466.84,
+                      303.46
+                    ],
+                    [
+                      498.67,
+                      445.91
+                    ],
+                    [
+                      459.72,
+                      90.71
+                    ],
+                    [
+                      718.21,
+                      141.15
+                    ]
+                  ],
+                  "kp_scores": [
+                    0.7261,
+                    0.7215,
+                    0.9996,
+                    0.9945,
+                    0.8361,
+                    0.9499
+                  ],
+                  "source": "yolo_pose+refined",
+                  "upright_k": 0,
+                  "upright_angle": -7.1017,
+                  "refined": true,
+                  "eye_contrast": [
+                    0.3935,
+                    0.6264
+                  ],
+                  "verify": {
+                    "score": 0.6025,
+                    "eyes": [
+                      0.5817,
+                      0.6497
+                    ],
+                    "mirror": 0.1039,
+                    "agreement": 0.1125
+                  }
+                },
+                "pose": {
+                  "points": {
+                    "left_eye": [
+                      471.43,
+                      173.73
+                    ],
+                    "right_eye": [
+                      618.61,
+                      192.07
+                    ],
+                    "nose": [
+                      466.84,
+                      303.46
+                    ],
+                    "chin": [
+                      498.67,
+                      445.91
+                    ],
+                    "left_ear_base": [
+                      459.72,
+                      90.71
+                    ],
+                    "right_ear_base": [
+                      718.21,
+                      141.15
+                    ]
+                  },
+                  "scores": {
+                    "left_eye": 0.7261,
+                    "right_eye": 0.7215,
+                    "nose": 0.9996,
+                    "chin": 0.9945,
+                    "left_ear_base": 0.8361,
+                    "right_ear_base": 0.9499
+                  },
+                  "iod": 148.3221,
+                  "roll_deg": 7.1017,
+                  "yaw": -0.4025,
+                  "pitch": 0.8717,
+                  "lower_yaw": -0.0866,
+                  "approx_deg": -26.707,
+                  "swapped": false,
+                  "upright_k": 0,
+                  "valid": true,
+                  "reason": "ok"
+                },
+                "quality": {
+                  "score": 0.8614,
+                  "level": "high",
+                  "passed": true,
+                  "reasons": [],
+                  "factors": {
+                    "sharpness": 0.8274,
+                    "eye_detail": 0.8025,
+                    "exposure": 0.9995,
+                    "resolution": 1.0,
+                    "confidence": 0.7506,
+                    "motion": 0.9963,
+                    "pose_fit": 0.8554,
+                    "alignment": 0.688
+                  },
+                  "metrics": {
+                    "iod_px": 148.3221,
+                    "detector_score": 0.5917,
+                    "eye_visibility": 0.7261,
+                    "nose_visibility": 0.9996,
+                    "alignment_residual": 0.1755,
+                    "brightness": 114.5702,
+                    "contrast": 161.0,
+                    "clipped": 0.0003,
+                    "laplacian": 108.0233,
+                    "blur_effect": 0.3344,
+                    "eye_laplacian": [
+                      162.22457885742188,
+                      134.7105712890625
+                    ],
+                    "warp_scale": 0.5374,
+                    "speed_iod_per_s": 0.182
+                  }
+                },
+                "aligned_sha256": "0d2f9bbd5dba2f06fb175a9bb36c0fb50e1284f32f66bfa93dc33b5f4953b783",
+                "frame_sha256": "94741ebe69026a889f83719abb486bb1a0b799a7e455f8d25d109760e10c75b8"
+              }
+            ],
+            "right": [
+              {
+                "view": "right",
+                "track_id": 1,
+                "frame_index": 148,
+                "time_s": 6.1667,
+                "score": 0.8278,
+                "level": "high",
+                "basis": "stable_view",
+                "confirmed_at_s": 6.2917,
+                "rotation_deg": 0,
+                "detection": {
+                  "box": [
+                    380.82,
+                    17.97,
+                    1034.06,
+                    698.18
+                  ],
+                  "score": 0.53,
+                  "schema": "dogface6",
+                  "keypoints": [
+                    [
+                      655.4,
+                      225.14
+                    ],
+                    [
+                      857.35,
+                      196.08
+                    ],
+                    [
+                      874.53,
+                      349.78
+                    ],
+                    [
+                      830.9,
+                      539.55
+                    ],
+                    [
+                      496.56,
+                      170.35
+                    ],
+                    [
+                      826.58,
+                      85.77
+                    ]
+                  ],
+                  "kp_scores": [
+                    0.7205,
+                    0.6184,
+                    0.9992,
+                    0.9934,
+                    0.975,
+                    0.7501
+                  ],
+                  "source": "yolo_pose+refined",
+                  "upright_k": 0,
+                  "upright_angle": 8.1887,
+                  "refined": true,
+                  "eye_contrast": [
+                    0.6581,
+                    0.4815
+                  ],
+                  "verify": {
+                    "score": 0.6002,
+                    "eyes": [
+                      0.7693,
+                      0.6965
+                    ],
+                    "mirror": 0.1102,
+                    "agreement": 0.0712
+                  }
+                },
+                "pose": {
+                  "points": {
+                    "left_eye": [
+                      655.4,
+                      225.14
+                    ],
+                    "right_eye": [
+                      857.35,
+                      196.08
+                    ],
+                    "nose": [
+                      874.53,
+                      349.78
+                    ],
+                    "chin": [
+                      830.9,
+                      539.55
+                    ],
+                    "left_ear_base": [
+                      496.56,
+                      170.35
+                    ],
+                    "right_ear_base": [
+                      826.58,
+                      85.77
+                    ]
+                  },
+                  "scores": {
+                    "left_eye": 0.7205,
+                    "right_eye": 0.6184,
+                    "nose": 0.9992,
+                    "chin": 0.9934,
+                    "left_ear_base": 0.975,
+                    "right_ear_base": 0.7501
+                  },
+                  "iod": 204.0313,
+                  "roll_deg": -8.1887,
+                  "yaw": 0.4533,
+                  "pitch": 0.7576,
+                  "lower_yaw": 0.1256,
+                  "approx_deg": 29.539,
+                  "swapped": false,
+                  "upright_k": 0,
+                  "valid": true,
+                  "reason": "ok"
+                },
+                "quality": {
+                  "score": 0.8278,
+                  "level": "high",
+                  "passed": true,
+                  "reasons": [],
+                  "factors": {
+                    "sharpness": 0.752,
+                    "eye_detail": 0.7721,
+                    "exposure": 1.0,
+                    "resolution": 1.0,
+                    "confidence": 0.6877,
+                    "motion": 0.969,
+                    "pose_fit": 0.913,
+                    "alignment": 0.6902
+                  },
+                  "metrics": {
+                    "iod_px": 204.0313,
+                    "detector_score": 0.53,
+                    "eye_visibility": 0.7205,
+                    "nose_visibility": 0.9992,
+                    "alignment_residual": 0.1743,
+                    "brightness": 81.9963,
+                    "contrast": 127.0,
+                    "clipped": 0.0,
+                    "laplacian": 83.9865,
+                    "blur_effect": 0.3584,
+                    "eye_laplacian": [
+                      147.90045166015625,
+                      74.6031265258789
+                    ],
+                    "warp_scale": 0.4077,
+                    "speed_iod_per_s": 0.5362
+                  }
+                },
+                "aligned_sha256": "642785027bf2812fd3c7e081d7fa0c330255268a627673cfbf8f38693ef64e55",
+                "frame_sha256": "a33b170bd5b237a9dbf347d1bdc8f40165d9d61b45b0819feb17ee4621c947da"
+              }
+            ]
+          },
+          "optimized": {
+            "front": [
+              {
+                "view": "front",
+                "track_id": 1,
+                "frame_index": 20,
+                "time_s": 0.8333,
+                "score": 0.7838,
+                "level": "high",
+                "basis": "stable_view",
+                "confirmed_at_s": 0.875,
+                "rotation_deg": 0,
+                "detection": {
+                  "box": [
+                    397.73,
+                    53.25,
+                    940.34,
+                    616.91
+                  ],
+                  "score": 0.6152,
+                  "schema": "dogface6",
+                  "keypoints": [
+                    [
+                      579.04,
+                      223.99
+                    ],
+                    [
+                      746.8,
+                      226.13
+                    ],
+                    [
+                      642.81,
+                      375.21
+                    ],
+                    [
+                      663.99,
+                      513.23
+                    ],
+                    [
+                      512.28,
+                      164.82
+                    ],
+                    [
+                      831.25,
+                      163.32
+                    ]
+                  ],
+                  "kp_scores": [
+                    0.8963,
+                    0.8847,
+                    0.9998,
+                    0.9958,
+                    0.9378,
+                    0.9564
+                  ],
+                  "source": "yolo_pose+refined",
+                  "upright_k": 0,
+                  "upright_angle": -0.7318,
+                  "refined": true,
+                  "eye_contrast": [
+                    0.6121,
+                    0.8375
+                  ],
+                  "verify": {
+                    "score": 0.6359,
+                    "eyes": [
+                      0.9526,
+                      0.931
+                    ],
+                    "mirror": 0.1429,
+                    "agreement": 0.1296
+                  }
+                },
+                "pose": {
+                  "points": {
+                    "left_eye": [
+                      579.04,
+                      223.99
+                    ],
+                    "right_eye": [
+                      746.8,
+                      226.13
+                    ],
+                    "nose": [
+                      642.81,
+                      375.21
+                    ],
+                    "chin": [
+                      663.99,
+                      513.23
+                    ],
+                    "left_ear_base": [
+                      512.28,
+                      164.82
+                    ],
+                    "right_ear_base": [
+                      831.25,
+                      163.32
+                    ]
+                  },
+                  "scores": {
+                    "left_eye": 0.8963,
+                    "right_eye": 0.8847,
+                    "nose": 0.9998,
+                    "chin": 0.9958,
+                    "left_ear_base": 0.9378,
+                    "right_ear_base": 0.9564
+                  },
+                  "iod": 167.768,
+                  "roll_deg": 0.7318,
+                  "yaw": -0.1033,
+                  "pitch": 0.8965,
+                  "lower_yaw": 0.0269,
+                  "approx_deg": -7.3552,
+                  "swapped": false,
+                  "upright_k": 0,
+                  "valid": true,
+                  "reason": "ok"
+                },
+                "quality": {
+                  "score": 0.7838,
+                  "level": "high",
+                  "passed": true,
+                  "reasons": [],
+                  "factors": {
+                    "sharpness": 0.8532,
+                    "eye_detail": 0.5187,
+                    "exposure": 0.9999,
+                    "resolution": 1.0,
+                    "confidence": 0.8075,
+                    "motion": 0.911,
+                    "pose_fit": 0.5984,
+                    "alignment": 0.7601
+                  },
+                  "metrics": {
+                    "iod_px": 167.768,
+                    "detector_score": 0.6152,
+                    "eye_visibility": 0.8847,
+                    "nose_visibility": 0.9998,
+                    "alignment_residual": 0.1349,
+                    "brightness": 84.74,
+                    "contrast": 143.0,
+                    "clipped": 0.0001,
+                    "laplacian": 122.9249,
+                    "blur_effect": 0.3314,
+                    "eye_laplacian": [
+                      272.5998840332031,
+                      73.12477111816406
+                    ],
+                    "warp_scale": 0.5105,
+                    "speed_iod_per_s": 0.9375
+                  }
+                },
+                "aligned_sha256": "b209816d6ae7add66840627e4e7d7d2a6135fb73581694368f28cf8122268563",
+                "frame_sha256": "3974b88612a7ff9ea0cb303d36b12551359d2b3cbafe6f0664e9656a5566483d"
+              }
+            ],
+            "left": [
+              {
+                "view": "left",
+                "track_id": 1,
+                "frame_index": 278,
+                "time_s": 11.5833,
+                "score": 0.8614,
+                "level": "high",
+                "basis": "stable_view",
+                "confirmed_at_s": 11.5833,
+                "rotation_deg": 0,
+                "detection": {
+                  "box": [
+                    314.76,
+                    -14.14,
+                    827.96,
+                    603.32
+                  ],
+                  "score": 0.5917,
+                  "schema": "dogface6",
+                  "keypoints": [
+                    [
+                      471.43,
+                      173.73
+                    ],
+                    [
+                      618.61,
+                      192.07
+                    ],
+                    [
+                      466.84,
+                      303.46
+                    ],
+                    [
+                      498.67,
+                      445.91
+                    ],
+                    [
+                      459.72,
+                      90.71
+                    ],
+                    [
+                      718.21,
+                      141.15
+                    ]
+                  ],
+                  "kp_scores": [
+                    0.7261,
+                    0.7215,
+                    0.9996,
+                    0.9945,
+                    0.8361,
+                    0.9499
+                  ],
+                  "source": "yolo_pose+refined",
+                  "upright_k": 0,
+                  "upright_angle": -7.1017,
+                  "refined": true,
+                  "eye_contrast": [
+                    0.3935,
+                    0.6264
+                  ],
+                  "verify": {
+                    "score": 0.6025,
+                    "eyes": [
+                      0.5817,
+                      0.6497
+                    ],
+                    "mirror": 0.1039,
+                    "agreement": 0.1125
+                  }
+                },
+                "pose": {
+                  "points": {
+                    "left_eye": [
+                      471.43,
+                      173.73
+                    ],
+                    "right_eye": [
+                      618.61,
+                      192.07
+                    ],
+                    "nose": [
+                      466.84,
+                      303.46
+                    ],
+                    "chin": [
+                      498.67,
+                      445.91
+                    ],
+                    "left_ear_base": [
+                      459.72,
+                      90.71
+                    ],
+                    "right_ear_base": [
+                      718.21,
+                      141.15
+                    ]
+                  },
+                  "scores": {
+                    "left_eye": 0.7261,
+                    "right_eye": 0.7215,
+                    "nose": 0.9996,
+                    "chin": 0.9945,
+                    "left_ear_base": 0.8361,
+                    "right_ear_base": 0.9499
+                  },
+                  "iod": 148.3221,
+                  "roll_deg": 7.1017,
+                  "yaw": -0.4025,
+                  "pitch": 0.8717,
+                  "lower_yaw": -0.0866,
+                  "approx_deg": -26.707,
+                  "swapped": false,
+                  "upright_k": 0,
+                  "valid": true,
+                  "reason": "ok"
+                },
+                "quality": {
+                  "score": 0.8614,
+                  "level": "high",
+                  "passed": true,
+                  "reasons": [],
+                  "factors": {
+                    "sharpness": 0.8274,
+                    "eye_detail": 0.8025,
+                    "exposure": 0.9995,
+                    "resolution": 1.0,
+                    "confidence": 0.7506,
+                    "motion": 0.9963,
+                    "pose_fit": 0.8554,
+                    "alignment": 0.688
+                  },
+                  "metrics": {
+                    "iod_px": 148.3221,
+                    "detector_score": 0.5917,
+                    "eye_visibility": 0.7261,
+                    "nose_visibility": 0.9996,
+                    "alignment_residual": 0.1755,
+                    "brightness": 114.5702,
+                    "contrast": 161.0,
+                    "clipped": 0.0003,
+                    "laplacian": 108.0233,
+                    "blur_effect": 0.3344,
+                    "eye_laplacian": [
+                      162.22457885742188,
+                      134.7105712890625
+                    ],
+                    "warp_scale": 0.5374,
+                    "speed_iod_per_s": 0.182
+                  }
+                },
+                "aligned_sha256": "0d2f9bbd5dba2f06fb175a9bb36c0fb50e1284f32f66bfa93dc33b5f4953b783",
+                "frame_sha256": "94741ebe69026a889f83719abb486bb1a0b799a7e455f8d25d109760e10c75b8"
+              }
+            ],
+            "right": [
+              {
+                "view": "right",
+                "track_id": 1,
+                "frame_index": 148,
+                "time_s": 6.1667,
+                "score": 0.8278,
+                "level": "high",
+                "basis": "stable_view",
+                "confirmed_at_s": 6.2917,
+                "rotation_deg": 0,
+                "detection": {
+                  "box": [
+                    380.82,
+                    17.97,
+                    1034.06,
+                    698.18
+                  ],
+                  "score": 0.53,
+                  "schema": "dogface6",
+                  "keypoints": [
+                    [
+                      655.4,
+                      225.14
+                    ],
+                    [
+                      857.35,
+                      196.08
+                    ],
+                    [
+                      874.53,
+                      349.78
+                    ],
+                    [
+                      830.9,
+                      539.55
+                    ],
+                    [
+                      496.56,
+                      170.35
+                    ],
+                    [
+                      826.58,
+                      85.77
+                    ]
+                  ],
+                  "kp_scores": [
+                    0.7205,
+                    0.6184,
+                    0.9992,
+                    0.9934,
+                    0.975,
+                    0.7501
+                  ],
+                  "source": "yolo_pose+refined",
+                  "upright_k": 0,
+                  "upright_angle": 8.1887,
+                  "refined": true,
+                  "eye_contrast": [
+                    0.6581,
+                    0.4815
+                  ],
+                  "verify": {
+                    "score": 0.6002,
+                    "eyes": [
+                      0.7693,
+                      0.6965
+                    ],
+                    "mirror": 0.1102,
+                    "agreement": 0.0712
+                  }
+                },
+                "pose": {
+                  "points": {
+                    "left_eye": [
+                      655.4,
+                      225.14
+                    ],
+                    "right_eye": [
+                      857.35,
+                      196.08
+                    ],
+                    "nose": [
+                      874.53,
+                      349.78
+                    ],
+                    "chin": [
+                      830.9,
+                      539.55
+                    ],
+                    "left_ear_base": [
+                      496.56,
+                      170.35
+                    ],
+                    "right_ear_base": [
+                      826.58,
+                      85.77
+                    ]
+                  },
+                  "scores": {
+                    "left_eye": 0.7205,
+                    "right_eye": 0.6184,
+                    "nose": 0.9992,
+                    "chin": 0.9934,
+                    "left_ear_base": 0.975,
+                    "right_ear_base": 0.7501
+                  },
+                  "iod": 204.0313,
+                  "roll_deg": -8.1887,
+                  "yaw": 0.4533,
+                  "pitch": 0.7576,
+                  "lower_yaw": 0.1256,
+                  "approx_deg": 29.539,
+                  "swapped": false,
+                  "upright_k": 0,
+                  "valid": true,
+                  "reason": "ok"
+                },
+                "quality": {
+                  "score": 0.8278,
+                  "level": "high",
+                  "passed": true,
+                  "reasons": [],
+                  "factors": {
+                    "sharpness": 0.752,
+                    "eye_detail": 0.7721,
+                    "exposure": 1.0,
+                    "resolution": 1.0,
+                    "confidence": 0.6877,
+                    "motion": 0.969,
+                    "pose_fit": 0.913,
+                    "alignment": 0.6902
+                  },
+                  "metrics": {
+                    "iod_px": 204.0313,
+                    "detector_score": 0.53,
+                    "eye_visibility": 0.7205,
+                    "nose_visibility": 0.9992,
+                    "alignment_residual": 0.1743,
+                    "brightness": 81.9963,
+                    "contrast": 127.0,
+                    "clipped": 0.0,
+                    "laplacian": 83.9865,
+                    "blur_effect": 0.3584,
+                    "eye_laplacian": [
+                      147.90045166015625,
+                      74.6031265258789
+                    ],
+                    "warp_scale": 0.4077,
+                    "speed_iod_per_s": 0.5362
+                  }
+                },
+                "aligned_sha256": "642785027bf2812fd3c7e081d7fa0c330255268a627673cfbf8f38693ef64e55",
+                "frame_sha256": "a33b170bd5b237a9dbf347d1bdc8f40165d9d61b45b0819feb17ee4621c947da"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "cpu_policies": {
+      "reference": {
+        "requested": "high",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      },
+      "optimized": {
+        "requested": "high",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      }
+    },
+    "isolated_reference": true
+  },
+  "stable_full_input": [
+    {
+      "source": "data/dog_capture/user/2611101816341481.mp4",
+      "sha256": "6db00b4f53f1ac995df48bdd96a3f32879717dfa52af9d1ef793550c827ebc06",
+      "trials": [
+        {
+          "policy": "stable_fallback",
+          "frames": 1314,
+          "calls": {
+            "face": 597,
+            "body": 125,
+            "landmarks": 1178
+          },
+          "phase_calls": {
+            "face:other": 541,
+            "body:other": 125,
+            "landmarks:tracking": 1178,
+            "face:verify:diagnostic": 47,
+            "face:precise": 7,
+            "face:mirror:diagnostic": 2
+          },
+          "actual_cache_misses": {
+            "face": 597,
+            "body": 125,
+            "landmarks": 1178
+          },
+          "outcomes": {
+            "trusted:landmarks_unreliable:unstable": 41,
+            "precise:view_unconfirmed:stable": 2,
+            "trusted:eyes_not_visible:unstable": 54,
+            "precise:passed:stable": 2,
+            "precise:landmarks_unreliable:stable": 1,
+            "trusted:landmarks_unreliable:stable": 5,
+            "trusted:landmarks_unstable:unstable": 2,
+            "trusted:eyes_not_visible:stable": 2
+          },
+          "coarse": {},
+          "first_complete": null,
+          "selection": {}
+        }
+      ]
+    },
+    {
+      "source": "data/dog_capture/public/wolfhound_panting.ogv",
+      "sha256": "2a05c202899b0ade2a5943d37f07e788005531fa892d8e9f9ca862fede287893",
+      "trials": [
+        {
+          "policy": "stable_fallback",
+          "frames": 1212,
+          "calls": {
+            "face": 205,
+            "body": 1,
+            "landmarks": 1233
+          },
+          "phase_calls": {
+            "face:other": 152,
+            "body:other": 1,
+            "landmarks:tracking": 1233,
+            "face:precise": 29,
+            "face:verify": 10,
+            "face:mirror": 10,
+            "face:verify:diagnostic": 3,
+            "face:mirror:diagnostic": 1
+          },
+          "actual_cache_misses": {
+            "face": 205,
+            "body": 1,
+            "landmarks": 1233
+          },
+          "outcomes": {
+            "precise:passed:stable": 15,
+            "trusted:landmarks_unreliable:stable": 4,
+            "trusted:landmarks_unstable:stable": 6,
+            "trusted:passed:stable": 4,
+            "precise:view_unconfirmed:stable": 4,
+            "trusted:landmarks_unstable:unstable": 1,
+            "trusted:landmarks_unreliable:unstable": 2
+          },
+          "coarse": {},
+          "first_complete": null,
+          "selection": {
+            "front": [
+              {
+                "frame": 24,
+                "quality": 0.8022528906731197,
+                "clarity": 0.7016987357787863,
+                "yaw": -0.061908989155742326,
+                "sha256": "52574b77cf58f5555d1ba495f7a4db158c33065998636bdac62c3ed2892c7190"
+              }
+            ],
+            "left": [
+              {
+                "frame": 234,
+                "quality": 0.8343131065666312,
+                "clarity": 0.7727000732698216,
+                "yaw": -0.3414718282665092,
+                "sha256": "1e2806ac8a4b2393af0978dcc4cc6a1fd7f81ff7c9326c6cc3d15854705c9727"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "realtime_trials": [
+    {
+      "trial": "early_a",
+      "source": "data/dog_capture/user/2611101816341481.mp4",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1051,
+      "frames_dropped": 263,
+      "elapsed_s": 43.809852799982764,
+      "processed_fps": 23.99003723656459,
+      "model_calls": {
+        "face": 552,
+        "body": 135,
+        "landmarks": 927
+      },
+      "first_complete": null,
+      "timings_ms": {
+        "decode": {
+          "count": 1314,
+          "mean": 8.348899772528933,
+          "p50": 3.4087499952875078,
+          "p95": 28.66058995714411,
+          "p99": 37.12745707831338,
+          "max": 60.59449992608279
+        },
+        "producer_lateness": {
+          "count": 1314,
+          "mean": 0.9691450854180862,
+          "p50": 0.4218833249360898,
+          "p95": 2.8272417063472934,
+          "p99": 14.737806345644607,
+          "max": 30.75746664932577
+        },
+        "detector": {
+          "count": 468,
+          "mean": 19.702070508088568,
+          "p50": 10.272099985741079,
+          "p95": 71.12415996962224,
+          "p99": 131.83687903103407,
+          "max": 160.16840003430843
+        },
+        "body_gate": {
+          "count": 99,
+          "mean": 33.686453537695634,
+          "p50": 18.634399981237948,
+          "p95": 119.22072001034394,
+          "p99": 167.667458015494,
+          "max": 182.38989997189492
+        },
+        "refine": {
+          "count": 1049,
+          "mean": 6.691921450192369,
+          "p50": 3.9761000080034137,
+          "p95": 24.00469998829064,
+          "p99": 68.114608018659,
+          "max": 116.93259992171079
+        },
+        "tracking": {
+          "count": 1049,
+          "mean": 0.42072278272104874,
+          "p50": 0.2125999890267849,
+          "p95": 1.3450799742713542,
+          "p99": 4.123820061795411,
+          "max": 11.536399950273335
+        },
+        "analysis": {
+          "count": 1049,
+          "mean": 4.042725454642126,
+          "p50": 0.14240003656595945,
+          "p95": 18.1406800169497,
+          "p99": 54.97407598420968,
+          "max": 257.7306000748649
+        },
+        "total": {
+          "count": 1051,
+          "mean": 24.409806564739142,
+          "p50": 10.878199944272637,
+          "p95": 99.16174999671057,
+          "p99": 192.7969500538893,
+          "max": 303.48809994757175
+        },
+        "queue_wait": {
+          "count": 1051,
+          "mean": 4.164860037542688,
+          "p50": 0.30590000096708536,
+          "p95": 26.30440006032586,
+          "p99": 35.20995000144467,
+          "max": 59.09409990999848
+        },
+        "capture_to_result": {
+          "count": 1051,
+          "mean": 28.597923596150338,
+          "p50": 12.042000074870884,
+          "p95": 115.18159997649491,
+          "p99": 213.32179999444634,
+          "max": 303.85719996411353
+        },
+        "scheduled_to_result": {
+          "count": 1051,
+          "mean": 29.164098002066243,
+          "p50": 12.43970007635653,
+          "p95": 115.89920001569709,
+          "p99": 214.18460006825592,
+          "max": 303.98633341149406
+        },
+        "orientation_probe": {
+          "count": 2,
+          "mean": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 1.0
+        },
+        "head_gate": {
+          "count": 34,
+          "mean": 29.32398530366995,
+          "p50": 17.961049976292998,
+          "p95": 94.4522000616416,
+          "p99": 132.63332998263658,
+          "max": 147.40379992872477
+        },
+        "precise": {
+          "count": 23,
+          "mean": 28.32178694560476,
+          "p50": 25.986199965700507,
+          "p95": 45.92955003026872,
+          "p99": 120.66373603651311,
+          "max": 141.6080000344664
+        },
+        "shot_check": {
+          "count": 63,
+          "mean": 20.226441268321302,
+          "p50": 8.94450000487268,
+          "p95": 128.9959100657142,
+          "p99": 147.9324319679291,
+          "max": 167.3517000162974
+        },
+        "roi_detector": {
+          "count": 3,
+          "mean": 13.301099961002668,
+          "p50": 12.347299954853952,
+          "p95": 15.709069988224655,
+          "p99": 16.00789399119094,
+          "max": 16.08259999193251
+        }
+      },
+      "guidance_counts": {
+        "no_face": 266,
+        "not_dog": 160,
+        "dog_far": 99,
+        "hold_still": 97,
+        "moving_fast": 31,
+        "capture_view": 131,
+        "blurred": 209,
+        "pose_unresolved": 45,
+        "too_dark": 13
+      },
+      "selection": {},
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "cpu_policy": {
+        "requested": "high",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      },
+      "result_path": "artifacts/runs/dog_capture/low_compute_20261117/early_a/2611101816341481-realtime-1/result.json",
+      "result_sha256": "20c0f64c6e86c4f4fb663784a937e187d4053b36c4916568d98fb0038a22737a",
+      "timings_sha256": "9cab1359766bee1256d09d37be4e4da7a4b197f7cc8cd8bb68c7c970d543bec7"
+    },
+    {
+      "trial": "early_a",
+      "source": "data/dog_capture/public/wolfhound_panting.ogv",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1108,
+      "frames_dropped": 104,
+      "elapsed_s": 50.484791700029746,
+      "processed_fps": 21.947203557528933,
+      "model_calls": {
+        "face": 206,
+        "body": 2,
+        "landmarks": 1138
+      },
+      "first_complete": null,
+      "timings_ms": {
+        "decode": {
+          "count": 1212,
+          "mean": 7.4534918322410775,
+          "p50": 3.0736499466001987,
+          "p95": 27.976344985654578,
+          "p99": 38.9201189763844,
+          "max": 50.85919995326549
+        },
+        "producer_lateness": {
+          "count": 1212,
+          "mean": 0.7103986024029597,
+          "p50": 0.43469999218537225,
+          "p95": 1.6535216864825866,
+          "p99": 6.829188359746337,
+          "max": 48.563800053671
+        },
+        "detector": {
+          "count": 150,
+          "mean": 28.67696733912453,
+          "p50": 14.181050006300211,
+          "p95": 105.35356504260544,
+          "p99": 153.8108730176463,
+          "max": 166.54400003608316
+        },
+        "body_gate": {
+          "count": 2,
+          "mean": 19.843250047415495,
+          "p50": 19.843250047415495,
+          "p95": 21.021035057492554,
+          "p99": 21.125727058388293,
+          "max": 21.151900058612227
+        },
+        "refine": {
+          "count": 1108,
+          "mean": 9.287928972945512,
+          "p50": 4.862350004259497,
+          "p95": 26.63512994186017,
+          "p99": 69.70770005602397,
+          "max": 132.82749999780208
+        },
+        "tracking": {
+          "count": 1108,
+          "mean": 0.5131409754001599,
+          "p50": 0.25649997405707836,
+          "p95": 1.6194099967833553,
+          "p99": 4.355783010832983,
+          "max": 8.680499973706901
+        },
+        "analysis": {
+          "count": 1108,
+          "mean": 5.334935651689479,
+          "p50": 2.2505500237457454,
+          "p95": 20.646515022963275,
+          "p99": 48.022532915929375,
+          "max": 219.79379991535097
+        },
+        "total": {
+          "count": 1108,
+          "mean": 19.516013716393747,
+          "p50": 8.671200019307435,
+          "p95": 80.80758997821223,
+          "p99": 144.82696603401615,
+          "max": 266.0052999854088
+        },
+        "queue_wait": {
+          "count": 1108,
+          "mean": 3.4349083057596324,
+          "p50": 0.44599996181204915,
+          "p95": 24.995815020520208,
+          "p99": 35.630620977608494,
+          "max": 44.31279993150383
+        },
+        "capture_to_result": {
+          "count": 1108,
+          "mean": 22.976950453577516,
+          "p50": 9.33710002573207,
+          "p95": 99.73024997161681,
+          "p99": 152.50208795769166,
+          "max": 266.63580001331866
+        },
+        "scheduled_to_result": {
+          "count": 1108,
+          "mean": 23.64120084918456,
+          "p50": 9.703133332854774,
+          "p95": 100.66757669362269,
+          "p99": 153.0000233471719,
+          "max": 267.3483667119108
+        },
+        "precise": {
+          "count": 25,
+          "mean": 22.21507198177278,
+          "p50": 13.432999956421554,
+          "p95": 62.811459973454404,
+          "p99": 122.24128797650323,
+          "max": 139.49039997532964
+        },
+        "shot_check": {
+          "count": 12,
+          "mean": 23.548425010327872,
+          "p50": 21.26559999305755,
+          "p95": 38.59534999937749,
+          "p99": 48.288109992863625,
+          "max": 50.71129999123514
+        }
+      },
+      "guidance_counts": {
+        "dog_far": 2,
+        "capture_view": 991,
+        "hold_still": 89,
+        "pose_unresolved": 26
+      },
+      "selection": {
+        "front": [
+          {
+            "aligned": "views/front_aligned.png",
+            "frame": "views/front_frame.png",
+            "face": "views/front_face.png",
+            "view": "front",
+            "track_id": 1,
+            "frame_index": 18,
+            "time_s": 0.75,
+            "score": 0.7904,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 0.875,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                390.43,
+                44.68,
+                944.37,
+                634.12
+              ],
+              "score": 0.5983,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  570.28,
+                  225.0
+                ],
+                [
+                  761.05,
+                  241.49
+                ],
+                [
+                  640.28,
+                  361.61
+                ],
+                [
+                  645.13,
+                  518.59
+                ],
+                [
+                  497.74,
+                  170.39
+                ],
+                [
+                  851.41,
+                  188.86
+                ]
+              ],
+              "kp_scores": [
+                0.8899,
+                0.8465,
+                0.9998,
+                0.9938,
+                0.9636,
+                0.9556
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": -4.9413,
+              "refined": true,
+              "eye_contrast": [
+                0.6661,
+                0.8026
+              ],
+              "verify": {
+                "score": 0.6418,
+                "eyes": [
+                  0.9467,
+                  0.9254
+                ],
+                "mirror": 0.097,
+                "agreement": 0.0535
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  570.28,
+                  225.0
+                ],
+                "right_eye": [
+                  761.05,
+                  241.49
+                ],
+                "nose": [
+                  640.28,
+                  361.61
+                ],
+                "chin": [
+                  645.13,
+                  518.59
+                ],
+                "left_ear_base": [
+                  497.74,
+                  170.39
+                ],
+                "right_ear_base": [
+                  851.41,
+                  188.86
+                ]
+              },
+              "scores": {
+                "left_eye": 0.8899,
+                "right_eye": 0.8465,
+                "nose": 0.9998,
+                "chin": 0.9938,
+                "left_ear_base": 0.9636,
+                "right_ear_base": 0.9556
+              },
+              "iod": 191.4725,
+              "roll_deg": 4.9413,
+              "yaw": -0.0708,
+              "pitch": 0.6793,
+              "lower_yaw": 0.0205,
+              "approx_deg": -5.0559,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.7904,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.8486,
+                "eye_detail": 0.4871,
+                "exposure": 1.0,
+                "resolution": 1.0,
+                "confidence": 0.7828,
+                "motion": 0.9926,
+                "pose_fit": 0.6918,
+                "alignment": 0.8709
+              },
+              "metrics": {
+                "iod_px": 191.4725,
+                "detector_score": 0.5983,
+                "eye_visibility": 0.8465,
+                "nose_visibility": 0.9998,
+                "alignment_residual": 0.0726,
+                "brightness": 85.3206,
+                "contrast": 140.0,
+                "clipped": 0.0,
+                "laplacian": 120.1904,
+                "blur_effect": 0.3321,
+                "eye_laplacian": [
+                  276.66033935546875,
+                  66.76622772216797
+                ],
+                "warp_scale": 0.5231,
+                "speed_iod_per_s": 0.2599
+              }
+            }
+          }
+        ],
+        "left": [
+          {
+            "aligned": "views/left_aligned.png",
+            "frame": "views/left_frame.png",
+            "face": "views/left_face.png",
+            "view": "left",
+            "track_id": 1,
+            "frame_index": 88,
+            "time_s": 3.6667,
+            "score": 0.8232,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 3.6667,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                255.53,
+                -8.27,
+                1023.36,
+                804.32
+              ],
+              "score": 0.5914,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  513.99,
+                  329.89
+                ],
+                [
+                  699.89,
+                  304.98
+                ],
+                [
+                  570.42,
+                  470.62
+                ],
+                [
+                  634.03,
+                  598.76
+                ],
+                [
+                  460.43,
+                  257.28
+                ],
+                [
+                  808.15,
+                  213.56
+                ]
+              ],
+              "kp_scores": [
+                0.8264,
+                0.8125,
+                0.9994,
+                0.9871,
+                0.9106,
+                0.9636
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": 7.6329,
+              "refined": true,
+              "eye_contrast": [
+                0.4779,
+                0.8
+              ],
+              "verify": {
+                "score": 0.6021,
+                "eyes": [
+                  0.8577,
+                  0.8466
+                ],
+                "mirror": 0.1059,
+                "agreement": 0.1423
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  513.99,
+                  329.89
+                ],
+                "right_eye": [
+                  699.89,
+                  304.98
+                ],
+                "nose": [
+                  570.42,
+                  470.62
+                ],
+                "chin": [
+                  634.03,
+                  598.76
+                ],
+                "left_ear_base": [
+                  460.43,
+                  257.28
+                ],
+                "right_ear_base": [
+                  808.15,
+                  213.56
+                ]
+              },
+              "scores": {
+                "left_eye": 0.8264,
+                "right_eye": 0.8125,
+                "nose": 0.9994,
+                "chin": 0.9871,
+                "left_ear_base": 0.9106,
+                "right_ear_base": 0.9636
+              },
+              "iod": 187.5616,
+              "roll_deg": -7.6329,
+              "yaw": -0.2871,
+              "pitch": 0.7836,
+              "lower_yaw": -0.0534,
+              "approx_deg": -19.7416,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.8232,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.7506,
+                "eye_detail": 0.7924,
+                "exposure": 0.9999,
+                "resolution": 1.0,
+                "confidence": 0.7717,
+                "motion": 0.9359,
+                "pose_fit": 0.6729,
+                "alignment": 0.7515
+              },
+              "metrics": {
+                "iod_px": 187.5616,
+                "detector_score": 0.5914,
+                "eye_visibility": 0.8264,
+                "nose_visibility": 0.9994,
+                "alignment_residual": 0.1398,
+                "brightness": 90.669,
+                "contrast": 139.0,
+                "clipped": 0.0001,
+                "laplacian": 76.1882,
+                "blur_effect": 0.3452,
+                "eye_laplacian": [
+                  157.2122802734375,
+                  81.30126190185547
+                ],
+                "warp_scale": 0.4717,
+                "speed_iod_per_s": 0.7854
+              }
+            }
+          }
+        ]
+      },
+      "missing_views": [
+        "right"
+      ],
+      "cpu_policy": {
+        "requested": "high",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      },
+      "result_path": "artifacts/runs/dog_capture/low_compute_20261117/early_a/wolfhound_panting-realtime-1/result.json",
+      "result_sha256": "cbf414f70d34ff7d467b1c02410d50b4932ccb2b5958c4d76cc38a4d58812f9f",
+      "timings_sha256": "f9df11fc3c6b4c83a2ec5bd8fa7745e288ba483b241fc3751345ccf7f02b044e"
+    },
+    {
+      "trial": "stable_a",
+      "source": "data/dog_capture/user/2611101816341481.mp4",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1114,
+      "frames_dropped": 200,
+      "elapsed_s": 43.98616869992111,
+      "processed_fps": 25.326143033730464,
+      "model_calls": {
+        "face": 515,
+        "body": 123,
+        "landmarks": 974
+      },
+      "first_complete": null,
+      "timings_ms": {
+        "decode": {
+          "count": 1314,
+          "mean": 7.55401301458889,
+          "p50": 3.437899984419346,
+          "p95": 27.511225012131035,
+          "p99": 38.09336703852743,
+          "max": 57.79729993082583
+        },
+        "producer_lateness": {
+          "count": 1314,
+          "mean": 0.881863959575905,
+          "p50": 0.42869993485350477,
+          "p95": 3.0663849436679302,
+          "p99": 10.273859633520978,
+          "max": 27.91929990053177
+        },
+        "detector": {
+          "count": 481,
+          "mean": 18.7332875254078,
+          "p50": 10.846899938769639,
+          "p95": 55.1977000432089,
+          "p99": 114.19320006389168,
+          "max": 153.4118999261409
+        },
+        "body_gate": {
+          "count": 91,
+          "mean": 27.475964833194247,
+          "p50": 17.096399911679327,
+          "p95": 77.68105005379766,
+          "p99": 95.49478994449566,
+          "max": 150.48379998188466
+        },
+        "refine": {
+          "count": 1112,
+          "mean": 6.708518615877758,
+          "p50": 4.052550066262484,
+          "p95": 22.571825020713742,
+          "p99": 67.11683707078954,
+          "max": 126.67639995925128
+        },
+        "tracking": {
+          "count": 1112,
+          "mean": 0.40150314651969016,
+          "p50": 0.2204999909736216,
+          "p95": 1.1454199906438594,
+          "p99": 3.8897480221931016,
+          "max": 8.456100011244416
+        },
+        "analysis": {
+          "count": 1112,
+          "mean": 3.0848765277794543,
+          "p50": 0.27935003163293004,
+          "p95": 11.545465013477957,
+          "p99": 43.48026295076131,
+          "max": 110.65739998593926
+        },
+        "total": {
+          "count": 1114,
+          "mean": 21.712902244272403,
+          "p50": 10.704049956984818,
+          "p95": 92.90861004265021,
+          "p99": 158.01704907440552,
+          "max": 219.27440003491938
+        },
+        "queue_wait": {
+          "count": 1114,
+          "mean": 3.323077738345258,
+          "p50": 0.32220000866800547,
+          "p95": 21.431920042959963,
+          "p99": 32.75707104592581,
+          "max": 67.62900005560368
+        },
+        "capture_to_result": {
+          "count": 1114,
+          "mean": 25.05748141686561,
+          "p50": 11.601499980315566,
+          "p95": 107.76733492966724,
+          "p99": 165.18647896707967,
+          "max": 220.15309997368604
+        },
+        "scheduled_to_result": {
+          "count": 1114,
+          "mean": 25.673522546237788,
+          "p50": 12.015099998096801,
+          "p95": 109.34258664531117,
+          "p99": 166.0881565834077,
+          "max": 220.68956665849805
+        },
+        "orientation_probe": {
+          "count": 2,
+          "mean": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 1.0
+        },
+        "head_gate": {
+          "count": 32,
+          "mean": 30.05914688037592,
+          "p50": 16.450149996671826,
+          "p95": 148.62755996873602,
+          "p99": 154.73135105217807,
+          "max": 155.86530009750277
+        },
+        "shot_check": {
+          "count": 69,
+          "mean": 10.100579709219543,
+          "p50": 7.474099984392524,
+          "p95": 31.730920029804075,
+          "p99": 71.67572397273005,
+          "max": 100.72749992832541
+        },
+        "precise": {
+          "count": 1,
+          "mean": 72.67939997836947,
+          "p50": 72.67939997836947,
+          "p95": 72.67939997836947,
+          "p99": 72.67939997836947,
+          "max": 72.67939997836947
+        }
+      },
+      "guidance_counts": {
+        "no_face": 205,
+        "not_dog": 171,
+        "dog_far": 148,
+        "hold_still": 104,
+        "moving_fast": 50,
+        "capture_view": 166,
+        "blurred": 214,
+        "pose_unresolved": 56
+      },
+      "selection": {},
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "cpu_policy": {
+        "requested": "high",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      },
+      "result_path": "artifacts/runs/dog_capture/low_compute_20261117/stable_a/2611101816341481-realtime-1/result.json",
+      "result_sha256": "9ec123f5b41dbdc6d48c7e4afd0035c9a884a4a69e8d59ba11de18d4b9e19882",
+      "timings_sha256": "04ff10a99b7d4772106ae4020953b3e4814b382ca66143ed5578bb0f12e97b10"
+    },
+    {
+      "trial": "stable_a",
+      "source": "data/dog_capture/public/wolfhound_panting.ogv",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1119,
+      "frames_dropped": 93,
+      "elapsed_s": 50.48364140000194,
+      "processed_fps": 22.16559600235091,
+      "model_calls": {
+        "face": 195,
+        "body": 1,
+        "landmarks": 1137
+      },
+      "first_complete": null,
+      "timings_ms": {
+        "decode": {
+          "count": 1212,
+          "mean": 6.935951569487983,
+          "p50": 2.999700023792684,
+          "p95": 27.209880034206435,
+          "p99": 35.738333968911405,
+          "max": 51.62260006181896
+        },
+        "producer_lateness": {
+          "count": 1212,
+          "mean": 0.7202203614918344,
+          "p50": 0.43596662969136446,
+          "p95": 1.6226199979428249,
+          "p99": 8.534645665593416,
+          "max": 20.557599957101047
+        },
+        "detector": {
+          "count": 151,
+          "mean": 27.442772848846158,
+          "p50": 11.770799988880754,
+          "p95": 107.38054994726554,
+          "p99": 139.07154998742044,
+          "max": 150.65109997522086
+        },
+        "body_gate": {
+          "count": 1,
+          "mean": 14.711100026033819,
+          "p50": 14.711100026033819,
+          "p95": 14.711100026033819,
+          "p99": 14.711100026033819,
+          "max": 14.711100026033819
+        },
+        "refine": {
+          "count": 1119,
+          "mean": 8.7031025016702,
+          "p50": 4.463599994778633,
+          "p95": 24.346679996233412,
+          "p99": 68.2536039710976,
+          "max": 98.21289998944849
+        },
+        "tracking": {
+          "count": 1119,
+          "mean": 0.48792815026082265,
+          "p50": 0.22219994571059942,
+          "p95": 1.3900900725275238,
+          "p99": 5.010233984794455,
+          "max": 9.425300057046115
+        },
+        "analysis": {
+          "count": 1119,
+          "mean": 4.840912778530573,
+          "p50": 2.079099998809397,
+          "p95": 15.765699977055103,
+          "p99": 45.298215998336595,
+          "max": 213.30579998902977
+        },
+        "total": {
+          "count": 1119,
+          "mean": 18.15146899091744,
+          "p50": 7.716999971307814,
+          "p95": 75.21759006194769,
+          "p99": 146.20076802792002,
+          "max": 228.16930001135916
+        },
+        "queue_wait": {
+          "count": 1119,
+          "mean": 3.344354960048726,
+          "p50": 0.3325000870972872,
+          "p95": 25.016340019647018,
+          "p99": 35.85906798485659,
+          "max": 43.7845999840647
+        },
+        "capture_to_result": {
+          "count": 1119,
+          "mean": 21.519190798679215,
+          "p50": 8.161300094798207,
+          "p95": 96.86267008073627,
+          "p99": 159.2061340250072,
+          "max": 270.27850004378706
+        },
+        "scheduled_to_result": {
+          "count": 1119,
+          "mean": 22.183989228278183,
+          "p50": 8.567566672962101,
+          "p95": 98.0548966249152,
+          "p99": 159.99319998314616,
+          "max": 270.8389332595598
+        },
+        "precise": {
+          "count": 18,
+          "mean": 37.95101111366724,
+          "p50": 17.682500008959323,
+          "p95": 138.6208700132555,
+          "p99": 186.56753400573496,
+          "max": 198.55420000385493
+        },
+        "shot_check": {
+          "count": 10,
+          "mean": 21.046789991669357,
+          "p50": 22.386700031347573,
+          "p95": 37.69172997563145,
+          "p99": 40.114745943574235,
+          "max": 40.72049993555993
+        }
+      },
+      "guidance_counts": {
+        "dog_far": 1,
+        "hold_still": 164,
+        "capture_view": 920,
+        "pose_unresolved": 34
+      },
+      "selection": {
+        "front": [
+          {
+            "aligned": "views/front_aligned.png",
+            "frame": "views/front_frame.png",
+            "face": "views/front_face.png",
+            "view": "front",
+            "track_id": 1,
+            "frame_index": 24,
+            "time_s": 1.0,
+            "score": 0.8055,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 1.0,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                385.69,
+                39.37,
+                942.42,
+                644.56
+              ],
+              "score": 0.5921,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  571.85,
+                  215.85
+                ],
+                [
+                  748.03,
+                  224.52
+                ],
+                [
+                  643.42,
+                  364.03
+                ],
+                [
+                  652.65,
+                  532.18
+                ],
+                [
+                  492.95,
+                  151.5
+                ],
+                [
+                  827.15,
+                  159.51
+                ]
+              ],
+              "kp_scores": [
+                0.9232,
+                0.914,
+                0.9999,
+                0.9976,
+                0.9627,
+                0.9643
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": -2.8178,
+              "refined": true,
+              "eye_contrast": [
+                0.6555,
+                0.8519
+              ],
+              "verify": {
+                "score": 0.6435,
+                "eyes": [
+                  0.9521,
+                  0.9298
+                ],
+                "mirror": 0.1443,
+                "agreement": 0.1186
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  571.85,
+                  215.85
+                ],
+                "right_eye": [
+                  748.03,
+                  224.52
+                ],
+                "nose": [
+                  643.42,
+                  364.03
+                ],
+                "chin": [
+                  652.65,
+                  532.18
+                ],
+                "left_ear_base": [
+                  492.95,
+                  151.5
+                ],
+                "right_ear_base": [
+                  827.15,
+                  159.51
+                ]
+              },
+              "scores": {
+                "left_eye": 0.9232,
+                "right_eye": 0.914,
+                "nose": 0.9999,
+                "chin": 0.9976,
+                "left_ear_base": 0.9627,
+                "right_ear_base": 0.9643
+              },
+              "iod": 176.3918,
+              "roll_deg": 2.8178,
+              "yaw": -0.0509,
+              "pitch": 0.8191,
+              "lower_yaw": 0.0435,
+              "approx_deg": -3.6377,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.8055,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.8549,
+                "eye_detail": 0.5175,
+                "exposure": 1.0,
+                "resolution": 1.0,
+                "confidence": 0.7908,
+                "motion": 0.9924,
+                "pose_fit": 0.7817,
+                "alignment": 0.8016
+              },
+              "metrics": {
+                "iod_px": 176.3918,
+                "detector_score": 0.5921,
+                "eye_visibility": 0.914,
+                "nose_visibility": 0.9999,
+                "alignment_residual": 0.1116,
+                "brightness": 84.8262,
+                "contrast": 142.0,
+                "clipped": 0.0,
+                "laplacian": 124.6719,
+                "blur_effect": 0.3319,
+                "eye_laplacian": [
+                  258.921630859375,
+                  72.86723327636719
+                ],
+                "warp_scale": 0.5162,
+                "speed_iod_per_s": 0.2626
+              }
+            }
+          }
+        ],
+        "left": [
+          {
+            "aligned": "views/left_aligned.png",
+            "frame": "views/left_frame.png",
+            "face": "views/left_face.png",
+            "view": "left",
+            "track_id": 1,
+            "frame_index": 231,
+            "time_s": 9.625,
+            "score": 0.8304,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 9.625,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                294.27,
+                -33.96,
+                836.83,
+                579.5
+              ],
+              "score": 0.5691,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  480.57,
+                  126.19
+                ],
+                [
+                  625.89,
+                  150.21
+                ],
+                [
+                  494.1,
+                  269.25
+                ],
+                [
+                  511.18,
+                  396.84
+                ],
+                [
+                  446.15,
+                  56.12
+                ],
+                [
+                  719.54,
+                  95.68
+                ]
+              ],
+              "kp_scores": [
+                0.8673,
+                0.8683,
+                0.9997,
+                0.9942,
+                0.9007,
+                0.963
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": -9.3862,
+              "refined": true,
+              "eye_contrast": [
+                0.5046,
+                0.5806
+              ],
+              "verify": {
+                "score": 0.6313,
+                "eyes": [
+                  0.8913,
+                  0.8823
+                ],
+                "mirror": 0.1405,
+                "agreement": 0.1569
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  480.57,
+                  126.19
+                ],
+                "right_eye": [
+                  625.89,
+                  150.21
+                ],
+                "nose": [
+                  494.1,
+                  269.25
+                ],
+                "chin": [
+                  511.18,
+                  396.84
+                ],
+                "left_ear_base": [
+                  446.15,
+                  56.12
+                ],
+                "right_ear_base": [
+                  719.54,
+                  95.68
+                ]
+              },
+              "scores": {
+                "left_eye": 0.8673,
+                "right_eye": 0.8683,
+                "nose": 0.9997,
+                "chin": 0.9942,
+                "left_ear_base": 0.9007,
+                "right_ear_base": 0.963
+              },
+              "iod": 147.2964,
+              "roll_deg": 9.3862,
+              "yaw": -0.239,
+              "pitch": 0.9433,
+              "lower_yaw": 0.0045,
+              "approx_deg": -16.6347,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.8304,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.7835,
+                "eye_detail": 0.8314,
+                "exposure": 0.9997,
+                "resolution": 1.0,
+                "confidence": 0.758,
+                "motion": 0.9476,
+                "pose_fit": 0.5875,
+                "alignment": 0.7164
+              },
+              "metrics": {
+                "iod_px": 147.2964,
+                "detector_score": 0.5691,
+                "eye_visibility": 0.8683,
+                "nose_visibility": 0.9997,
+                "alignment_residual": 0.1595,
+                "brightness": 115.0517,
+                "contrast": 154.0,
+                "clipped": 0.0002,
+                "laplacian": 105.1783,
+                "blur_effect": 0.3658,
+                "eye_laplacian": [
+                  177.9948272705078,
+                  89.33363342285156
+                ],
+                "warp_scale": 0.5471,
+                "speed_iod_per_s": 0.7056
+              }
+            }
+          }
+        ]
+      },
+      "missing_views": [
+        "right"
+      ],
+      "cpu_policy": {
+        "requested": "high",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      },
+      "result_path": "artifacts/runs/dog_capture/low_compute_20261117/stable_a/wolfhound_panting-realtime-1/result.json",
+      "result_sha256": "2d7086c1533cf6665f6af03d12a55b19fd46158546c99b5aab5c1226a1440163",
+      "timings_sha256": "bb853acff7f2246f5279e347b04e2178e746299214181e611e34e90c2a584cfc"
+    },
+    {
+      "trial": "stable_b",
+      "source": "data/dog_capture/public/wolfhound_panting.ogv",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1168,
+      "frames_dropped": 44,
+      "elapsed_s": 50.4732419999782,
+      "processed_fps": 23.140974380058733,
+      "model_calls": {
+        "face": 259,
+        "body": 2,
+        "landmarks": 1204
+      },
+      "first_complete": null,
+      "timings_ms": {
+        "decode": {
+          "count": 1212,
+          "mean": 4.933106188455645,
+          "p50": 2.8049000538885593,
+          "p95": 17.166249977890402,
+          "p99": 33.594896990107394,
+          "max": 50.533499917946756
+        },
+        "producer_lateness": {
+          "count": 1212,
+          "mean": 0.5209812301450654,
+          "p50": 0.38433327184517196,
+          "p95": 0.9141783133002518,
+          "p99": 4.270620603735855,
+          "max": 31.985800014808774
+        },
+        "detector": {
+          "count": 151,
+          "mean": 17.331586094474456,
+          "p50": 9.935399983078241,
+          "p95": 52.39099997561425,
+          "p99": 91.22830000706017,
+          "max": 146.0136000532657
+        },
+        "body_gate": {
+          "count": 2,
+          "mean": 26.364599994849414,
+          "p50": 26.364599994849414,
+          "p95": 31.23315002885647,
+          "p99": 31.66591003187932,
+          "max": 31.774100032635033
+        },
+        "refine": {
+          "count": 1168,
+          "mean": 6.38298681727451,
+          "p50": 3.905199992004782,
+          "p95": 16.258155042305553,
+          "p99": 58.32841803901812,
+          "max": 79.34950001072139
+        },
+        "tracking": {
+          "count": 1168,
+          "mean": 0.3498332194819702,
+          "p50": 0.20604993915185332,
+          "p95": 0.8915699610952286,
+          "p99": 2.885106044122949,
+          "max": 7.206200039945543
+        },
+        "analysis": {
+          "count": 1168,
+          "mean": 4.211324485966119,
+          "p50": 1.7911499598994851,
+          "p95": 14.554239978315286,
+          "p99": 40.84298798465145,
+          "max": 242.11280001327395
+        },
+        "total": {
+          "count": 1168,
+          "mean": 13.538301113055228,
+          "p50": 7.001900055911392,
+          "p95": 45.64181506866586,
+          "p99": 106.80231500766229,
+          "max": 249.2861000355333
+        },
+        "queue_wait": {
+          "count": 1168,
+          "mean": 1.9162214037799596,
+          "p50": 0.44159998651593924,
+          "p95": 14.181785011896844,
+          "p99": 32.39163393271153,
+          "max": 42.941999970935285
+        },
+        "capture_to_result": {
+          "count": 1168,
+          "mean": 15.472073973497784,
+          "p50": 7.497699989471585,
+          "p95": 57.55366506637035,
+          "p99": 115.28671394335089,
+          "max": 249.74809994455427
+        },
+        "scheduled_to_result": {
+          "count": 1168,
+          "mean": 15.99284978725125,
+          "p50": 7.9002499696811945,
+          "p95": 59.74624331186911,
+          "p99": 116.4865766027177,
+          "max": 250.23449992295355
+        },
+        "precise": {
+          "count": 38,
+          "mean": 20.55690000385144,
+          "p50": 12.320349982474,
+          "p95": 73.42972491751419,
+          "p99": 124.11478099063976,
+          "max": 133.09050002135336
+        },
+        "shot_check": {
+          "count": 30,
+          "mean": 17.716473337107647,
+          "p50": 15.906450047623366,
+          "p95": 33.201335021294646,
+          "p99": 51.201227004639826,
+          "max": 58.220300008542836
+        }
+      },
+      "guidance_counts": {
+        "dog_far": 1,
+        "hold_still": 320,
+        "capture_view": 827,
+        "pose_unresolved": 17,
+        "blurred": 3
+      },
+      "selection": {
+        "front": [
+          {
+            "aligned": "views/front_aligned.png",
+            "frame": "views/front_frame.png",
+            "face": "views/front_face.png",
+            "view": "front",
+            "track_id": 2,
+            "frame_index": 907,
+            "time_s": 37.7917,
+            "score": 0.7842,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 37.7917,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                422.37,
+                105.26,
+                1078.43,
+                802.28
+              ],
+              "score": 0.6035,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  658.39,
+                  410.1
+                ],
+                [
+                  830.94,
+                  382.54
+                ],
+                [
+                  767.31,
+                  578.96
+                ],
+                [
+                  785.03,
+                  647.14
+                ],
+                [
+                  586.4,
+                  291.12
+                ],
+                [
+                  880.73,
+                  249.17
+                ]
+              ],
+              "kp_scores": [
+                0.8989,
+                0.8852,
+                0.9984,
+                0.9248,
+                0.9722,
+                0.9737
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": 9.0749,
+              "refined": true,
+              "eye_contrast": [
+                0.6699,
+                0.6716
+              ],
+              "verify": {
+                "score": 0.664,
+                "eyes": [
+                  0.8958,
+                  0.8642
+                ],
+                "mirror": 0.0586,
+                "agreement": 0.1376
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  658.39,
+                  410.1
+                ],
+                "right_eye": [
+                  830.94,
+                  382.54
+                ],
+                "nose": [
+                  767.31,
+                  578.96
+                ],
+                "chin": [
+                  785.03,
+                  647.14
+                ],
+                "left_ear_base": [
+                  586.4,
+                  291.12
+                ],
+                "right_ear_base": [
+                  880.73,
+                  249.17
+                ]
+              },
+              "scores": {
+                "left_eye": 0.8989,
+                "right_eye": 0.8852,
+                "nose": 0.9984,
+                "chin": 0.9248,
+                "left_ear_base": 0.9722,
+                "right_ear_base": 0.9737
+              },
+              "iod": 174.7379,
+              "roll_deg": -9.0749,
+              "yaw": -0.0351,
+              "pitch": 1.0526,
+              "lower_yaw": 0.0016,
+              "approx_deg": -2.5144,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.7842,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.7945,
+                "eye_detail": 0.6018,
+                "exposure": 0.9702,
+                "resolution": 1.0,
+                "confidence": 0.7958,
+                "motion": 0.7464,
+                "pose_fit": 0.7864,
+                "alignment": 0.7045
+              },
+              "metrics": {
+                "iod_px": 174.7379,
+                "detector_score": 0.6035,
+                "eye_visibility": 0.8852,
+                "nose_visibility": 0.9984,
+                "alignment_residual": 0.1662,
+                "brightness": 78.5079,
+                "contrast": 125.0,
+                "clipped": 0.0,
+                "laplacian": 87.5779,
+                "blur_effect": 0.3306,
+                "eye_laplacian": [
+                  146.89486694335938,
+                  92.07759094238281
+                ],
+                "warp_scale": 0.439,
+                "speed_iod_per_s": 1.7489
+              }
+            }
+          }
+        ],
+        "left": [
+          {
+            "aligned": "views/left_aligned.png",
+            "frame": "views/left_frame.png",
+            "face": "views/left_face.png",
+            "view": "left",
+            "track_id": 2,
+            "frame_index": 1015,
+            "time_s": 42.2917,
+            "score": 0.8263,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 42.2917,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                386.63,
+                31.56,
+                782.42,
+                450.69
+              ],
+              "score": 0.6093,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  477.52,
+                  160.17
+                ],
+                [
+                  612.0,
+                  181.76
+                ],
+                [
+                  487.06,
+                  280.12
+                ],
+                [
+                  508.94,
+                  368.36
+                ],
+                [
+                  462.01,
+                  96.97
+                ],
+                [
+                  711.21,
+                  130.47
+                ]
+              ],
+              "kp_scores": [
+                0.8397,
+                0.8451,
+                0.9993,
+                0.9826,
+                0.8852,
+                0.9703
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": -9.1191,
+              "refined": true,
+              "eye_contrast": [
+                0.4429,
+                0.6296
+              ],
+              "verify": {
+                "score": 0.5584,
+                "eyes": [
+                  0.8552,
+                  0.8807
+                ],
+                "mirror": 0.089,
+                "agreement": 0.0701
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  477.52,
+                  160.17
+                ],
+                "right_eye": [
+                  612.0,
+                  181.76
+                ],
+                "nose": [
+                  487.06,
+                  280.12
+                ],
+                "chin": [
+                  508.94,
+                  368.36
+                ],
+                "left_ear_base": [
+                  462.01,
+                  96.97
+                ],
+                "right_ear_base": [
+                  711.21,
+                  130.47
+                ]
+              },
+              "scores": {
+                "left_eye": 0.8397,
+                "right_eye": 0.8451,
+                "nose": 0.9993,
+                "chin": 0.9826,
+                "left_ear_base": 0.8852,
+                "right_ear_base": 0.9703
+              },
+              "iod": 136.2021,
+              "roll_deg": 9.1191,
+              "yaw": -0.2774,
+              "pitch": 0.8585,
+              "lower_yaw": -0.0285,
+              "approx_deg": -19.1217,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.8263,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.7639,
+                "eye_detail": 0.7726,
+                "exposure": 0.9995,
+                "resolution": 1.0,
+                "confidence": 0.7931,
+                "motion": 0.9873,
+                "pose_fit": 0.6473,
+                "alignment": 0.7328
+              },
+              "metrics": {
+                "iod_px": 136.2021,
+                "detector_score": 0.6093,
+                "eye_visibility": 0.8451,
+                "nose_visibility": 0.9993,
+                "alignment_residual": 0.1503,
+                "brightness": 110.9824,
+                "contrast": 157.0,
+                "clipped": 0.0003,
+                "laplacian": 94.6751,
+                "blur_effect": 0.3664,
+                "eye_laplacian": [
+                  148.09259033203125,
+                  42.55897521972656
+                ],
+                "warp_scale": 0.6203,
+                "speed_iod_per_s": 0.3405
+              }
+            }
+          }
+        ]
+      },
+      "missing_views": [
+        "right"
+      ],
+      "cpu_policy": {
+        "requested": "high",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      },
+      "result_path": "artifacts/runs/dog_capture/low_compute_20261117/stable_b/wolfhound_panting-realtime-1/result.json",
+      "result_sha256": "8579761784d4ab6e78674355b447d76865d86b26162c2e3e9d6219b3dfc8de82",
+      "timings_sha256": "e268e43b4cbd832c57c4aa34f9af35316af321878dce90a8a36a61c05f20cd55"
+    },
+    {
+      "trial": "stable_b",
+      "source": "data/dog_capture/user/2611101816341481.mp4",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1220,
+      "frames_dropped": 94,
+      "elapsed_s": 43.78830390004441,
+      "processed_fps": 27.86132120542725,
+      "model_calls": {
+        "face": 556,
+        "body": 135,
+        "landmarks": 1084
+      },
+      "first_complete": null,
+      "timings_ms": {
+        "decode": {
+          "count": 1314,
+          "mean": 5.003797719017652,
+          "p50": 2.8377000126056373,
+          "p95": 18.64046494010835,
+          "p99": 34.03116503381166,
+          "max": 60.19330001436174
+        },
+        "producer_lateness": {
+          "count": 1314,
+          "mean": 0.6336791713706539,
+          "p50": 0.38705001352212776,
+          "p95": 0.9573117065357881,
+          "p99": 7.78246337322795,
+          "max": 60.6629999820143
+        },
+        "detector": {
+          "count": 515,
+          "mean": 13.610998251547729,
+          "p50": 9.218899998813868,
+          "p95": 32.22454993519932,
+          "p99": 79.81540807755675,
+          "max": 142.89760007523
+        },
+        "body_gate": {
+          "count": 95,
+          "mean": 23.210505257654738,
+          "p50": 14.884799951687455,
+          "p95": 65.41009000502527,
+          "p99": 92.19328192994008,
+          "max": 132.61769991368055
+        },
+        "refine": {
+          "count": 1218,
+          "mean": 5.068912887670503,
+          "p50": 3.4419000148773193,
+          "p95": 13.63445497117935,
+          "p99": 41.49296006653438,
+          "max": 146.3711999822408
+        },
+        "tracking": {
+          "count": 1218,
+          "mean": 0.2994783242173456,
+          "p50": 0.19774999236688018,
+          "p95": 0.7993100152816608,
+          "p99": 2.4205840029753634,
+          "max": 5.342000047676265
+        },
+        "analysis": {
+          "count": 1218,
+          "mean": 2.100367815220768,
+          "p50": 0.10910001583397388,
+          "p95": 9.087195026222615,
+          "p99": 23.277539968257763,
+          "max": 117.80899995937943
+        },
+        "total": {
+          "count": 1220,
+          "mean": 16.00513877194436,
+          "p50": 9.548850008286536,
+          "p95": 51.34759499342179,
+          "p99": 113.23633995722044,
+          "max": 207.13230001274496
+        },
+        "queue_wait": {
+          "count": 1220,
+          "mean": 2.272164510166059,
+          "p50": 0.38270000368356705,
+          "p95": 16.75634498242287,
+          "p99": 30.367379928939005,
+          "max": 36.89079999458045
+        },
+        "capture_to_result": {
+          "count": 1220,
+          "mean": 18.294948114551694,
+          "p50": 10.129999951459467,
+          "p95": 64.85514496453105,
+          "p99": 121.56525706988755,
+          "max": 207.76910008862615
+        },
+        "scheduled_to_result": {
+          "count": 1220,
+          "mean": 18.825033629849866,
+          "p50": 10.465133384179648,
+          "p95": 65.82392336528807,
+          "p99": 121.96713871454571,
+          "max": 208.26900000683946
+        },
+        "orientation_probe": {
+          "count": 2,
+          "mean": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 1.0
+        },
+        "head_gate": {
+          "count": 39,
+          "mean": 22.5828769019781,
+          "p50": 15.623099985532463,
+          "p95": 51.50738997617738,
+          "p99": 78.7197959958575,
+          "max": 89.38859996851534
+        },
+        "shot_check": {
+          "count": 81,
+          "mean": 5.474008641343702,
+          "p50": 3.0022000428289175,
+          "p95": 17.61620002798736,
+          "p99": 23.823520005680624,
+          "max": 24.5116000296548
+        },
+        "precise": {
+          "count": 3,
+          "mean": 41.12716667198887,
+          "p50": 8.078800048679113,
+          "p95": 97.62484002858399,
+          "p99": 105.58448802679777,
+          "max": 107.57440002635121
+        },
+        "roi_detector": {
+          "count": 2,
+          "mean": 9.83789999736473,
+          "p50": 9.83789999736473,
+          "p95": 11.064059956697747,
+          "p99": 11.173051953082904,
+          "max": 11.200299952179193
+        }
+      },
+      "guidance_counts": {
+        "no_face": 210,
+        "not_dog": 222,
+        "dog_far": 184,
+        "hold_still": 130,
+        "moving_fast": 50,
+        "capture_view": 196,
+        "pose_unresolved": 33,
+        "blurred": 195
+      },
+      "selection": {},
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "cpu_policy": {
+        "requested": "high",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      },
+      "result_path": "artifacts/runs/dog_capture/low_compute_20261117/stable_b/2611101816341481-realtime-1/result.json",
+      "result_sha256": "cc7749253262d5e79ca717e1bef7933dc307d8c86e7606fc31e74660e225155a",
+      "timings_sha256": "62f4124b96ef3054286e91c8db33d302b5aa94a6fe5b9581169132776396c900"
+    },
+    {
+      "trial": "early_b",
+      "source": "data/dog_capture/public/wolfhound_panting.ogv",
+      "source_fps": 24.0,
+      "frames_read": 1212,
+      "frames_processed": 1192,
+      "frames_dropped": 20,
+      "elapsed_s": 50.517165899975225,
+      "processed_fps": 23.595939692265766,
+      "model_calls": {
+        "face": 214,
+        "body": 1,
+        "landmarks": 1214
+      },
+      "first_complete": {
+        "frame_index": 193,
+        "video_time_s": 8.041666666666666,
+        "elapsed_s": 8.058618599898182,
+        "frames_processed": 186,
+        "processing_ms": 2925.06229900755,
+        "model_calls": {
+          "face": 87,
+          "body": 1,
+          "landmarks": 187
+        },
+        "track_id": 1,
+        "selected_frames": {
+          "front": [
+            18
+          ],
+          "left": [
+            88
+          ],
+          "right": [
+            142
+          ]
+        }
+      },
+      "timings_ms": {
+        "decode": {
+          "count": 1212,
+          "mean": 3.3879553647127874,
+          "p50": 2.277050050906837,
+          "p95": 8.193275006487974,
+          "p99": 25.718576953513608,
+          "max": 42.85500000696629
+        },
+        "producer_lateness": {
+          "count": 1212,
+          "mean": 0.45514582593450437,
+          "p50": 0.3650332995075445,
+          "p95": 0.6709082595401483,
+          "p99": 1.488169961376121,
+          "max": 43.9128999132663
+        },
+        "detector": {
+          "count": 152,
+          "mean": 16.07629867871047,
+          "p50": 8.814350003376603,
+          "p95": 38.17217500181866,
+          "p99": 121.88162492122505,
+          "max": 137.49969995114952
+        },
+        "body_gate": {
+          "count": 1,
+          "mean": 17.928600078448653,
+          "p50": 17.928600078448653,
+          "p95": 17.928600078448653,
+          "p99": 17.928600078448653,
+          "max": 17.928600078448653
+        },
+        "refine": {
+          "count": 1192,
+          "mean": 5.126530033826903,
+          "p50": 3.589400032069534,
+          "p95": 12.337270058924334,
+          "p99": 25.82697101286612,
+          "max": 101.32440004963428
+        },
+        "tracking": {
+          "count": 1192,
+          "mean": 0.27784840592523824,
+          "p50": 0.18054997781291604,
+          "p95": 0.704225018853322,
+          "p99": 1.4232099789660393,
+          "max": 4.7845999943092465
+        },
+        "analysis": {
+          "count": 1192,
+          "mean": 2.920368121332964,
+          "p50": 1.67344999499619,
+          "p95": 7.481580000603573,
+          "p99": 31.07362203765655,
+          "max": 80.99030004814267
+        },
+        "total": {
+          "count": 1192,
+          "mean": 10.608970301480488,
+          "p50": 6.100400001741946,
+          "p95": 29.32151002460166,
+          "p99": 78.90328797744576,
+          "max": 168.96620008628815
+        },
+        "queue_wait": {
+          "count": 1192,
+          "mean": 1.015827602366198,
+          "p50": 0.31014997512102127,
+          "p95": 1.2162900122348226,
+          "p99": 23.66415208787642,
+          "max": 41.504799970425665
+        },
+        "capture_to_result": {
+          "count": 1192,
+          "mean": 11.639555455509717,
+          "p50": 6.42355001764372,
+          "p95": 36.48693496943453,
+          "p99": 81.85350704006824,
+          "max": 170.06190004758537
+        },
+        "scheduled_to_result": {
+          "count": 1192,
+          "mean": 12.095811108113768,
+          "p50": 6.823683293381677,
+          "p95": 36.94050830284628,
+          "p99": 85.3071519383231,
+          "max": 170.63730000518262
+        },
+        "precise": {
+          "count": 24,
+          "mean": 11.973308321709434,
+          "p50": 9.98610001988709,
+          "p95": 22.066049993736666,
+          "p99": 34.93620297987945,
+          "max": 38.6768999742344
+        },
+        "shot_check": {
+          "count": 17,
+          "mean": 19.53575881335008,
+          "p50": 16.362200025469065,
+          "p95": 35.95459999050944,
+          "p99": 42.10659997072071,
+          "max": 43.64459996577352
+        }
+      },
+      "guidance_counts": {
+        "dog_far": 2,
+        "capture_view": 69,
+        "hold_still": 106,
+        "pose_unresolved": 8,
+        "done": 1007
+      },
+      "selection": {
+        "front": [
+          {
+            "aligned": "views/front_aligned.png",
+            "frame": "views/front_frame.png",
+            "face": "views/front_face.png",
+            "view": "front",
+            "track_id": 1,
+            "frame_index": 18,
+            "time_s": 0.75,
+            "score": 0.7642,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 0.875,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                341.4,
+                16.88,
+                965.73,
+                662.31
+              ],
+              "score": 0.6043,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  570.33,
+                  223.34
+                ],
+                [
+                  754.63,
+                  249.12
+                ],
+                [
+                  631.78,
+                  363.19
+                ],
+                [
+                  627.65,
+                  528.64
+                ],
+                [
+                  497.09,
+                  152.98
+                ],
+                [
+                  843.64,
+                  192.58
+                ]
+              ],
+              "kp_scores": [
+                0.93,
+                0.915,
+                0.9999,
+                0.9969,
+                0.9701,
+                0.9686
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": -7.9621,
+              "refined": true,
+              "eye_contrast": [
+                0.6833,
+                0.8148
+              ],
+              "verify": {
+                "score": 0.6621,
+                "eyes": [
+                  0.9398,
+                  0.9159
+                ],
+                "mirror": 0.0803,
+                "agreement": 0.0877
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  570.33,
+                  223.34
+                ],
+                "right_eye": [
+                  754.63,
+                  249.12
+                ],
+                "nose": [
+                  631.78,
+                  363.19
+                ],
+                "chin": [
+                  627.65,
+                  528.64
+                ],
+                "left_ear_base": [
+                  497.09,
+                  152.98
+                ],
+                "right_ear_base": [
+                  843.64,
+                  192.58
+                ]
+              },
+              "scores": {
+                "left_eye": 0.93,
+                "right_eye": 0.915,
+                "nose": 0.9999,
+                "chin": 0.9969,
+                "left_ear_base": 0.9701,
+                "right_ear_base": 0.9686
+              },
+              "iod": 186.0958,
+              "roll_deg": 7.9621,
+              "yaw": -0.0656,
+              "pitch": 0.6985,
+              "lower_yaw": 0.0308,
+              "approx_deg": -4.6851,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.7642,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.8497,
+                "eye_detail": 0.4073,
+                "exposure": 0.9999,
+                "resolution": 1.0,
+                "confidence": 0.8032,
+                "motion": 0.9684,
+                "pose_fit": 0.6883,
+                "alignment": 0.8618
+              },
+              "metrics": {
+                "iod_px": 186.0958,
+                "detector_score": 0.6043,
+                "eye_visibility": 0.915,
+                "nose_visibility": 0.9999,
+                "alignment_residual": 0.0778,
+                "brightness": 87.1249,
+                "contrast": 140.0,
+                "clipped": 0.0001,
+                "laplacian": 121.3538,
+                "blur_effect": 0.3325,
+                "eye_laplacian": [
+                  292.3487854003906,
+                  52.30466842651367
+                ],
+                "warp_scale": 0.5317,
+                "speed_iod_per_s": 0.5415
+              }
+            }
+          }
+        ],
+        "left": [
+          {
+            "aligned": "views/left_aligned.png",
+            "frame": "views/left_frame.png",
+            "face": "views/left_face.png",
+            "view": "left",
+            "track_id": 1,
+            "frame_index": 88,
+            "time_s": 3.6667,
+            "score": 0.8171,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 3.6667,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                251.86,
+                -9.52,
+                1016.99,
+                799.27
+              ],
+              "score": 0.5811,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  512.96,
+                  326.78
+                ],
+                [
+                  697.37,
+                  300.99
+                ],
+                [
+                  573.88,
+                  468.34
+                ],
+                [
+                  634.7,
+                  593.97
+                ],
+                [
+                  454.83,
+                  251.86
+                ],
+                [
+                  798.12,
+                  206.6
+                ]
+              ],
+              "kp_scores": [
+                0.8471,
+                0.8312,
+                0.9994,
+                0.9864,
+                0.9256,
+                0.9643
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": 7.9604,
+              "refined": true,
+              "eye_contrast": [
+                0.4737,
+                0.8076
+              ],
+              "verify": {
+                "score": 0.6178,
+                "eyes": [
+                  0.8957,
+                  0.8835
+                ],
+                "mirror": 0.109,
+                "agreement": 0.1148
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  512.96,
+                  326.78
+                ],
+                "right_eye": [
+                  697.37,
+                  300.99
+                ],
+                "nose": [
+                  573.88,
+                  468.34
+                ],
+                "chin": [
+                  634.7,
+                  593.97
+                ],
+                "left_ear_base": [
+                  454.83,
+                  251.86
+                ],
+                "right_ear_base": [
+                  798.12,
+                  206.6
+                ]
+              },
+              "scores": {
+                "left_eye": 0.8471,
+                "right_eye": 0.8312,
+                "nose": 0.9994,
+                "chin": 0.9864,
+                "left_ear_base": 0.9256,
+                "right_ear_base": 0.9643
+              },
+              "iod": 186.2063,
+              "roll_deg": -7.9604,
+              "yaw": -0.2679,
+              "pitch": 0.7982,
+              "lower_yaw": -0.0488,
+              "approx_deg": -18.5137,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.8171,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.7417,
+                "eye_detail": 0.7946,
+                "exposure": 0.9999,
+                "resolution": 1.0,
+                "confidence": 0.7658,
+                "motion": 0.9282,
+                "pose_fit": 0.641,
+                "alignment": 0.7544
+              },
+              "metrics": {
+                "iod_px": 186.2063,
+                "detector_score": 0.5811,
+                "eye_visibility": 0.8471,
+                "nose_visibility": 0.9994,
+                "alignment_residual": 0.1381,
+                "brightness": 89.991,
+                "contrast": 140.0,
+                "clipped": 0.0001,
+                "laplacian": 74.475,
+                "blur_effect": 0.3489,
+                "eye_laplacian": [
+                  158.28916931152344,
+                  73.74168395996094
+                ],
+                "warp_scale": 0.4739,
+                "speed_iod_per_s": 0.8341
+              }
+            }
+          }
+        ],
+        "right": [
+          {
+            "aligned": "views/right_aligned.png",
+            "frame": "views/right_frame.png",
+            "face": "views/right_face.png",
+            "view": "right",
+            "track_id": 1,
+            "frame_index": 142,
+            "time_s": 5.9167,
+            "score": 0.869,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 6.0417,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                372.33,
+                17.59,
+                1056.11,
+                711.18
+              ],
+              "score": 0.6215,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  660.41,
+                  264.82
+                ],
+                [
+                  886.37,
+                  235.54
+                ],
+                [
+                  871.58,
+                  445.45
+                ],
+                [
+                  838.07,
+                  567.57
+                ],
+                [
+                  529.06,
+                  168.73
+                ],
+                [
+                  888.77,
+                  101.71
+                ]
+              ],
+              "kp_scores": [
+                0.8265,
+                0.72,
+                0.9989,
+                0.97,
+                0.9841,
+                0.8758
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": 7.3821,
+              "refined": true,
+              "eye_contrast": [
+                0.4913,
+                0.4478
+              ],
+              "verify": {
+                "score": 0.6945,
+                "eyes": [
+                  0.8277,
+                  0.7945
+                ],
+                "mirror": 0.1011,
+                "agreement": 0.128
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  660.41,
+                  264.82
+                ],
+                "right_eye": [
+                  886.37,
+                  235.54
+                ],
+                "nose": [
+                  871.58,
+                  445.45
+                ],
+                "chin": [
+                  838.07,
+                  567.57
+                ],
+                "left_ear_base": [
+                  529.06,
+                  168.73
+                ],
+                "right_ear_base": [
+                  888.77,
+                  101.71
+                ]
+              },
+              "scores": {
+                "left_eye": 0.8265,
+                "right_eye": 0.72,
+                "nose": 0.9989,
+                "chin": 0.97,
+                "left_ear_base": 0.9841,
+                "right_ear_base": 0.8758
+              },
+              "iod": 227.8492,
+              "roll_deg": -7.3821,
+              "yaw": 0.3022,
+              "pitch": 0.9053,
+              "lower_yaw": 0.0977,
+              "approx_deg": 20.6911,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.869,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.8226,
+                "eye_detail": 0.9403,
+                "exposure": 0.8889,
+                "resolution": 1.0,
+                "confidence": 0.8007,
+                "motion": 0.9791,
+                "pose_fit": 0.698,
+                "alignment": 0.7122
+              },
+              "metrics": {
+                "iod_px": 227.8492,
+                "detector_score": 0.6215,
+                "eye_visibility": 0.8265,
+                "nose_visibility": 0.9989,
+                "alignment_residual": 0.1619,
+                "brightness": 74.4447,
+                "contrast": 133.0,
+                "clipped": 0.0,
+                "laplacian": 113.3104,
+                "blur_effect": 0.3449,
+                "eye_laplacian": [
+                  281.7806091308594,
+                  59.94812774658203
+                ],
+                "warp_scale": 0.3563,
+                "speed_iod_per_s": 0.4386
+              }
+            }
+          }
+        ]
+      },
+      "missing_views": [],
+      "cpu_policy": {
+        "requested": "high",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      },
+      "result_path": "artifacts/runs/dog_capture/low_compute_20261117/early_b/wolfhound_panting-realtime-1/result.json",
+      "result_sha256": "6ce8b0c9c2312fbb9f3afa6d96d851229d6ab1586202ba1749c90313d08b93d7",
+      "timings_sha256": "1433b8923f9cd0b2c19b9d80b45a830640a26f7d71f67ac88a344781e1edb583"
+    },
+    {
+      "trial": "early_b",
+      "source": "data/dog_capture/user/2611101816341481.mp4",
+      "source_fps": 30.0,
+      "frames_read": 1314,
+      "frames_processed": 1240,
+      "frames_dropped": 74,
+      "elapsed_s": 43.788306599948555,
+      "processed_fps": 28.318062429969757,
+      "model_calls": {
+        "face": 610,
+        "body": 148,
+        "landmarks": 1122
+      },
+      "first_complete": null,
+      "timings_ms": {
+        "decode": {
+          "count": 1314,
+          "mean": 4.017077702313061,
+          "p50": 2.398200042080134,
+          "p95": 12.029875011648976,
+          "p99": 29.089524009032168,
+          "max": 43.855999945662916
+        },
+        "producer_lateness": {
+          "count": 1314,
+          "mean": 0.5611618982168787,
+          "p50": 0.36756658616088345,
+          "p95": 0.7860499550580424,
+          "p99": 5.731558665786887,
+          "max": 30.705399927683175
+        },
+        "detector": {
+          "count": 544,
+          "mean": 10.965018382729099,
+          "p50": 7.998000015504658,
+          "p95": 25.635635026264936,
+          "p99": 45.52466903114738,
+          "max": 120.92170002870262
+        },
+        "body_gate": {
+          "count": 102,
+          "mean": 19.66908430981943,
+          "p50": 13.913549948483706,
+          "p95": 49.98538004583678,
+          "p99": 71.16505197132933,
+          "max": 124.1011000238359
+        },
+        "refine": {
+          "count": 1238,
+          "mean": 4.781463893520855,
+          "p50": 3.2399000483565032,
+          "p95": 13.587905035819853,
+          "p99": 43.94921203260284,
+          "max": 90.93389997724444
+        },
+        "tracking": {
+          "count": 1238,
+          "mean": 0.28032277859687227,
+          "p50": 0.17570005729794502,
+          "p95": 0.7972150167915962,
+          "p99": 2.43340398417784,
+          "max": 5.342900054529309
+        },
+        "analysis": {
+          "count": 1238,
+          "mean": 2.246181422096763,
+          "p50": 0.05119998240843415,
+          "p95": 9.388954925816495,
+          "p99": 26.993619983549806,
+          "max": 189.59950003772974
+        },
+        "total": {
+          "count": 1240,
+          "mean": 14.634309758548625,
+          "p50": 8.590150042437017,
+          "p95": 41.361760051222504,
+          "p99": 110.0888070045032,
+          "max": 200.23200009018183
+        },
+        "queue_wait": {
+          "count": 1240,
+          "mean": 1.794587017878169,
+          "p50": 0.2892000484280288,
+          "p95": 12.861564947525029,
+          "p99": 28.29166101524604,
+          "max": 41.563000064343214
+        },
+        "capture_to_result": {
+          "count": 1240,
+          "mean": 16.443530242184117,
+          "p50": 9.145600022748113,
+          "p95": 53.21387500734995,
+          "p99": 117.58420103462387,
+          "max": 221.7600999865681
+        },
+        "scheduled_to_result": {
+          "count": 1240,
+          "mean": 16.912471267696233,
+          "p50": 9.458283307804294,
+          "p95": 53.80827323261816,
+          "p99": 117.96568264641397,
+          "max": 222.4365998990825
+        },
+        "orientation_probe": {
+          "count": 2,
+          "mean": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 1.0
+        },
+        "head_gate": {
+          "count": 43,
+          "mean": 19.320772091728138,
+          "p50": 13.002900057472289,
+          "p95": 45.48225994221865,
+          "p99": 64.26380195887758,
+          "max": 68.01519996952266
+        },
+        "precise": {
+          "count": 25,
+          "mean": 12.290755994617939,
+          "p50": 8.865299983881414,
+          "p95": 32.49999994877723,
+          "p99": 38.026211950927966,
+          "max": 39.17789994738996
+        },
+        "shot_check": {
+          "count": 64,
+          "mean": 8.001423433597665,
+          "p50": 4.572800011374056,
+          "p95": 14.92083994089625,
+          "p99": 77.12173899402802,
+          "max": 177.67270002514124
+        },
+        "roi_detector": {
+          "count": 2,
+          "mean": 6.616600032430142,
+          "p50": 6.616600032430142,
+          "p95": 7.232470059534535,
+          "p99": 7.287214061943814,
+          "max": 7.300900062546134
+        }
+      },
+      "guidance_counts": {
+        "no_face": 284,
+        "not_dog": 267,
+        "dog_far": 168,
+        "hold_still": 93,
+        "moving_fast": 33,
+        "capture_view": 146,
+        "pose_unresolved": 39,
+        "blurred": 210
+      },
+      "selection": {},
+      "missing_views": [
+        "front",
+        "left",
+        "right"
+      ],
+      "cpu_policy": {
+        "requested": "high",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      },
+      "result_path": "artifacts/runs/dog_capture/low_compute_20261117/early_b/2611101816341481-realtime-1/result.json",
+      "result_sha256": "937eaa2c9d110c983e635369acd693cceda4707a607f518012ffb8352255f522",
+      "timings_sha256": "00ff92bd572af4478d8b1bf79801909b7b38441c70f9271749dbf64981928239"
+    }
+  ],
+  "realtime_pooled": [
+    {
+      "policy": "early",
+      "video": "2611101816341481.mp4",
+      "trials": [
+        "early_a",
+        "early_b"
+      ],
+      "frames_read": 2628,
+      "frames_processed": 2291,
+      "frames_dropped": 337,
+      "elapsed_s": 87.59815939993132,
+      "processed_fps": 26.15351755897506,
+      "timings_ms": {
+        "detector": {
+          "count": 1012,
+          "mean": 15.005473318172015,
+          "p50": 8.993750030640513,
+          "p95": 49.20117507572283,
+          "p99": 117.79026391217482,
+          "max": 160.16840003430843
+        },
+        "body_gate": {
+          "count": 201,
+          "mean": 26.57316169071368,
+          "p50": 15.517099993303418,
+          "p95": 86.50929993018508,
+          "p99": 157.24470000714064,
+          "max": 182.38989997189492
+        },
+        "refine": {
+          "count": 2287,
+          "mean": 5.657751596602805,
+          "p50": 3.7043000338599086,
+          "p95": 18.190059938933675,
+          "p99": 59.170922015327946,
+          "max": 116.93259992171079
+        },
+        "tracking": {
+          "count": 2287,
+          "mean": 0.3447213812756047,
+          "p50": 0.19100005738437176,
+          "p95": 1.0031999554485083,
+          "p99": 3.044974072836318,
+          "max": 11.536399950273335
+        },
+        "analysis": {
+          "count": 2287,
+          "mean": 3.0702193277111425,
+          "p50": 0.0849999487400055,
+          "p95": 12.02460995409633,
+          "p99": 43.067384015302885,
+          "max": 257.7306000748649
+        },
+        "total": {
+          "count": 2291,
+          "mean": 19.11883491931084,
+          "p50": 9.495599893853068,
+          "p95": 71.0537499981001,
+          "p99": 157.94973000884042,
+          "max": 303.48809994757175
+        },
+        "queue_wait": {
+          "count": 2291,
+          "mean": 2.8819536454065013,
+          "p50": 0.29580004047602415,
+          "p95": 21.824600000400096,
+          "p99": 33.04749991511925,
+          "max": 59.09409990999848
+        },
+        "capture_to_result": {
+          "count": 2291,
+          "mean": 22.019378088111004,
+          "p50": 10.305100004188716,
+          "p95": 85.72440000716597,
+          "p99": 175.37127000978154,
+          "max": 303.85719996411353
+        },
+        "orientation_probe": {
+          "count": 4,
+          "mean": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 1.0
+        },
+        "head_gate": {
+          "count": 77,
+          "mean": 23.737775328169977,
+          "p50": 15.372800058685243,
+          "p95": 60.869679949246375,
+          "p99": 113.38696005288489,
+          "max": 147.40379992872477
+        },
+        "precise": {
+          "count": 48,
+          "mean": 19.972291658632457,
+          "p50": 13.099300034809858,
+          "p95": 41.26970490324311,
+          "p99": 96.86343603883881,
+          "max": 141.6080000344664
+        },
+        "shot_check": {
+          "count": 127,
+          "mean": 14.065802359484195,
+          "p50": 6.89959991723299,
+          "p95": 62.53322996199106,
+          "p99": 159.2081359960137,
+          "max": 177.67270002514124
+        },
+        "roi_detector": {
+          "count": 5,
+          "mean": 10.627299989573658,
+          "p50": 11.47339993622154,
+          "p95": 15.3355399845168,
+          "p99": 15.933187990449369,
+          "max": 16.08259999193251
+        }
+      }
+    },
+    {
+      "policy": "early",
+      "video": "wolfhound_panting.ogv",
+      "trials": [
+        "early_a",
+        "early_b"
+      ],
+      "frames_read": 2424,
+      "frames_processed": 2300,
+      "frames_dropped": 124,
+      "elapsed_s": 101.00195760000497,
+      "processed_fps": 22.771835859940666,
+      "timings_ms": {
+        "detector": {
+          "count": 302,
+          "mean": 22.33490894050553,
+          "p50": 11.008250003214926,
+          "p95": 91.56781492638397,
+          "p99": 145.3680589725264,
+          "max": 166.54400003608316
+        },
+        "body_gate": {
+          "count": 3,
+          "mean": 19.205033391093213,
+          "p50": 18.534600036218762,
+          "p95": 20.89017005637288,
+          "p99": 21.099554058164358,
+          "max": 21.151900058612227
+        },
+        "refine": {
+          "count": 2300,
+          "mean": 7.1312387401501285,
+          "p50": 4.128600005060434,
+          "p95": 20.24867002619429,
+          "p99": 63.17938607186049,
+          "max": 132.82749999780208
+        },
+        "tracking": {
+          "count": 2300,
+          "mean": 0.3911980437418527,
+          "p50": 0.2207000507041812,
+          "p95": 1.1125149729195976,
+          "p99": 3.3695599110796417,
+          "max": 8.680499973706901
+        },
+        "analysis": {
+          "count": 2300,
+          "mean": 4.083559783782972,
+          "p50": 1.888750062789768,
+          "p95": 13.915320014348252,
+          "p99": 39.36254305415781,
+          "max": 219.79379991535097
+        },
+        "total": {
+          "count": 2300,
+          "mean": 14.899841650925657,
+          "p50": 7.175849983468652,
+          "p95": 51.591259997803675,
+          "p99": 119.69692200771458,
+          "max": 266.0052999854088
+        },
+        "queue_wait": {
+          "count": 2300,
+          "mean": 2.1811934368705135,
+          "p50": 0.36064995219931006,
+          "p95": 18.177829973865283,
+          "p99": 33.94662502338172,
+          "max": 44.31279993150383
+        },
+        "capture_to_result": {
+          "count": 2300,
+          "mean": 17.101222263274554,
+          "p50": 7.673999993130565,
+          "p95": 68.63695500651372,
+          "p99": 130.89475400978682,
+          "max": 266.63580001331866
+        },
+        "precise": {
+          "count": 49,
+          "mean": 17.198697944190734,
+          "p50": 10.858999914489686,
+          "p95": 41.61929995752868,
+          "p99": 104.99217597767682,
+          "max": 139.49039997532964
+        },
+        "shot_check": {
+          "count": 29,
+          "mean": 21.19617241209951,
+          "p50": 18.446700065396726,
+          "p95": 39.799599978141465,
+          "p99": 48.73262398410588,
+          "max": 50.71129999123514
+        }
+      }
+    },
+    {
+      "policy": "stable",
+      "video": "2611101816341481.mp4",
+      "trials": [
+        "stable_a",
+        "stable_b"
+      ],
+      "frames_read": 2628,
+      "frames_processed": 2334,
+      "frames_dropped": 294,
+      "elapsed_s": 87.77447259996552,
+      "processed_fps": 26.590874668507173,
+      "timings_ms": {
+        "detector": {
+          "count": 996,
+          "mean": 16.084714256293406,
+          "p50": 10.044649941846728,
+          "p95": 48.84099998162128,
+          "p99": 112.58990496862678,
+          "max": 153.4118999261409
+        },
+        "body_gate": {
+          "count": 186,
+          "mean": 25.297369888698263,
+          "p50": 16.383799957111478,
+          "p95": 70.79619998694398,
+          "p99": 96.06370492838347,
+          "max": 150.48379998188466
+        },
+        "refine": {
+          "count": 2330,
+          "mean": 5.851419999158257,
+          "p50": 3.830550005659461,
+          "p95": 18.260930024553076,
+          "p99": 60.42266395757907,
+          "max": 146.3711999822408
+        },
+        "tracking": {
+          "count": 2330,
+          "mean": 0.3481699990672199,
+          "p50": 0.2062499988824129,
+          "p95": 0.9468249918427314,
+          "p99": 3.31702398019843,
+          "max": 8.456100011244416
+        },
+        "analysis": {
+          "count": 2330,
+          "mean": 2.5702277673088623,
+          "p50": 0.14964997535571456,
+          "p95": 10.225215030368416,
+          "p99": 33.6561939772219,
+          "max": 117.80899995937943
+        },
+        "total": {
+          "count": 2334,
+          "mean": 18.729409769447976,
+          "p50": 10.129550006240606,
+          "p95": 67.92609998956311,
+          "p99": 137.313767002197,
+          "max": 219.27440003491938
+        },
+        "queue_wait": {
+          "count": 2334,
+          "mean": 2.773757199194177,
+          "p50": 0.3484499757178128,
+          "p95": 19.39045000472104,
+          "p99": 32.160355023806915,
+          "max": 67.62900005560368
+        },
+        "capture_to_result": {
+          "count": 2334,
+          "mean": 21.522652527052852,
+          "p50": 10.73559996439144,
+          "p95": 84.14033505832771,
+          "p99": 155.26004000566917,
+          "max": 220.15309997368604
+        },
+        "orientation_probe": {
+          "count": 4,
+          "mean": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0,
+          "max": 1.0
+        },
+        "head_gate": {
+          "count": 71,
+          "mean": 25.952463371115147,
+          "p50": 16.341299982741475,
+          "p95": 75.35070000449196,
+          "p99": 153.30476999515668,
+          "max": 155.86530009750277
+        },
+        "shot_check": {
+          "count": 150,
+          "mean": 7.602231332566589,
+          "p50": 4.399049968924373,
+          "p95": 24.112344987224773,
+          "p99": 57.060265992768095,
+          "max": 100.72749992832541
+        },
+        "precise": {
+          "count": 4,
+          "mean": 49.01522499858402,
+          "p50": 40.379100013524294,
+          "p95": 102.34015001915394,
+          "p99": 106.52755002491175,
+          "max": 107.57440002635121
+        },
+        "roi_detector": {
+          "count": 2,
+          "mean": 9.83789999736473,
+          "p50": 9.83789999736473,
+          "p95": 11.064059956697747,
+          "p99": 11.173051953082904,
+          "max": 11.200299952179193
+        }
+      }
+    },
+    {
+      "policy": "stable",
+      "video": "wolfhound_panting.ogv",
+      "trials": [
+        "stable_a",
+        "stable_b"
+      ],
+      "frames_read": 2424,
+      "frames_processed": 2287,
+      "frames_dropped": 137,
+      "elapsed_s": 100.95688339998014,
+      "processed_fps": 22.653234955155618,
+      "timings_ms": {
+        "detector": {
+          "count": 302,
+          "mean": 22.387179471660307,
+          "p50": 11.15060003940016,
+          "p95": 78.46825995948153,
+          "p99": 135.51586502930155,
+          "max": 150.65109997522086
+        },
+        "body_gate": {
+          "count": 3,
+          "mean": 22.480100005244214,
+          "p50": 20.955099957063794,
+          "p95": 30.69220002507791,
+          "p99": 31.55772003112361,
+          "max": 31.774100032635033
+        },
+        "refine": {
+          "count": 2287,
+          "mean": 7.518189900282283,
+          "p50": 4.230599966831505,
+          "p95": 21.02519999025387,
+          "p99": 64.33357198024166,
+          "max": 98.21289998944849
+        },
+        "tracking": {
+          "count": 2287,
+          "mean": 0.41740131197936237,
+          "p50": 0.21309999283403158,
+          "p95": 1.131019950844346,
+          "p99": 4.32901400374247,
+          "max": 9.425300057046115
+        },
+        "analysis": {
+          "count": 2287,
+          "mean": 4.51937402657811,
+          "p50": 1.9388999789953232,
+          "p95": 14.969289954751716,
+          "p99": 44.2909140209667,
+          "max": 242.11280001327395
+        },
+        "total": {
+          "count": 2287,
+          "mean": 15.7954654573175,
+          "p50": 7.411500089801848,
+          "p95": 62.82322993502004,
+          "p99": 129.21792398206844,
+          "max": 249.2861000355333
+        },
+        "queue_wait": {
+          "count": 2287,
+          "mean": 2.614988981158512,
+          "p50": 0.3942999755963683,
+          "p95": 20.922939979936896,
+          "p99": 34.253347914200205,
+          "max": 43.7845999840647
+        },
+        "capture_to_result": {
+          "count": 2287,
+          "mean": 18.43085129198402,
+          "p50": 7.86600005812943,
+          "p95": 73.12207997310898,
+          "p99": 133.91540600918208,
+          "max": 270.27850004378706
+        },
+        "precise": {
+          "count": 56,
+          "mean": 26.147864289149375,
+          "p50": 14.922400005161762,
+          "p95": 113.63494995748624,
+          "p99": 162.54916501347924,
+          "max": 198.55420000385493
+        },
+        "shot_check": {
+          "count": 40,
+          "mean": 18.549052500748076,
+          "p50": 18.16214999416843,
+          "p95": 34.35179499210788,
+          "p99": 51.395377980079495,
+          "max": 58.220300008542836
+        }
+      }
+    }
+  ],
+  "cli_stable": {
+    "stats": {
+      "frames_read": 1212,
+      "frames_processed": 1197,
+      "frames_dropped": 15,
+      "elapsed_s": 50.468,
+      "processing_fps": 23.717848526895853,
+      "realtime": true,
+      "cv_threads": 1,
+      "cpu_policy": {
+        "requested": "auto",
+        "effective": "high",
+        "applied": true,
+        "platform": "win32",
+        "previous": {
+          "version": 1,
+          "control_mask": 0,
+          "state_mask": 0
+        },
+        "active": {
+          "version": 1,
+          "control_mask": 1,
+          "state_mask": 0
+        }
+      },
+      "total_ms": {
+        "p50": 5.782,
+        "p95": 27.773,
+        "max": 250.541
+      },
+      "detector_ms": {
+        "p50": 8.631,
+        "p95": 34.805,
+        "max": 133.535
+      },
+      "capture_to_result_ms": {
+        "p50": 6.131,
+        "p95": 33.867,
+        "max": 251.138
+      }
+    },
+    "selection": {
+      "track_id": 1,
+      "views": {
+        "front": [
+          {
+            "aligned": "views/front_aligned.png",
+            "frame": "views/front_frame.png",
+            "face": "views/front_face.png",
+            "view": "front",
+            "track_id": 1,
+            "frame_index": 24,
+            "time_s": 1.0,
+            "score": 0.8023,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 1.0,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                367.25,
+                28.76,
+                967.1,
+                661.26
+              ],
+              "score": 0.5916,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  579.75,
+                  214.79
+                ],
+                [
+                  752.58,
+                  228.97
+                ],
+                [
+                  643.29,
+                  362.79
+                ],
+                [
+                  644.93,
+                  529.33
+                ],
+                [
+                  499.55,
+                  151.2
+                ],
+                [
+                  832.9,
+                  174.87
+                ]
+              ],
+              "kp_scores": [
+                0.9139,
+                0.9033,
+                0.9999,
+                0.9974,
+                0.9575,
+                0.9565
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": -4.6911,
+              "refined": true,
+              "eye_contrast": [
+                0.586,
+                0.85
+              ],
+              "verify": {
+                "score": 0.6416,
+                "eyes": [
+                  0.9601,
+                  0.9421
+                ],
+                "mirror": 0.1597,
+                "agreement": 0.1327
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  579.75,
+                  214.79
+                ],
+                "right_eye": [
+                  752.58,
+                  228.97
+                ],
+                "nose": [
+                  643.29,
+                  362.79
+                ],
+                "chin": [
+                  644.93,
+                  529.33
+                ],
+                "left_ear_base": [
+                  499.55,
+                  151.2
+                ],
+                "right_ear_base": [
+                  832.9,
+                  174.87
+                ]
+              },
+              "scores": {
+                "left_eye": 0.9139,
+                "right_eye": 0.9033,
+                "nose": 0.9999,
+                "chin": 0.9974,
+                "left_ear_base": 0.9575,
+                "right_ear_base": 0.9565
+              },
+              "iod": 173.4155,
+              "roll_deg": 4.6911,
+              "yaw": -0.0619,
+              "pitch": 0.8206,
+              "lower_yaw": 0.0219,
+              "approx_deg": -4.4251,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.8023,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.8497,
+                "eye_detail": 0.5266,
+                "exposure": 0.9999,
+                "resolution": 1.0,
+                "confidence": 0.7881,
+                "motion": 0.9928,
+                "pose_fit": 0.7261,
+                "alignment": 0.7997
+              },
+              "metrics": {
+                "iod_px": 173.4155,
+                "detector_score": 0.5916,
+                "eye_visibility": 0.9033,
+                "nose_visibility": 0.9999,
+                "alignment_residual": 0.1127,
+                "brightness": 84.2822,
+                "contrast": 138.0,
+                "clipped": 0.0001,
+                "laplacian": 121.5429,
+                "blur_effect": 0.3327,
+                "eye_laplacian": [
+                  265.7164306640625,
+                  74.78395080566406
+                ],
+                "warp_scale": 0.5241,
+                "speed_iod_per_s": 0.2552
+              }
+            }
+          }
+        ],
+        "left": [
+          {
+            "aligned": "views/left_aligned.png",
+            "frame": "views/left_frame.png",
+            "face": "views/left_face.png",
+            "view": "left",
+            "track_id": 1,
+            "frame_index": 233,
+            "time_s": 9.7083,
+            "score": 0.8477,
+            "level": "high",
+            "basis": "stable_view",
+            "confirmed_at_s": 9.7083,
+            "rotation_deg": 0,
+            "detection": {
+              "box": [
+                327.83,
+                -31.03,
+                830.16,
+                565.42
+              ],
+              "score": 0.5968,
+              "schema": "dogface6",
+              "keypoints": [
+                [
+                  473.29,
+                  141.78
+                ],
+                [
+                  626.78,
+                  157.12
+                ],
+                [
+                  484.14,
+                  272.18
+                ],
+                [
+                  514.16,
+                  424.86
+                ],
+                [
+                  453.22,
+                  66.58
+                ],
+                [
+                  722.72,
+                  106.64
+                ]
+              ],
+              "kp_scores": [
+                0.709,
+                0.7088,
+                0.9996,
+                0.9953,
+                0.8242,
+                0.9389
+              ],
+              "source": "yolo_pose+refined",
+              "upright_k": 0,
+              "upright_angle": -5.7095,
+              "refined": true,
+              "eye_contrast": [
+                0.4306,
+                0.5541
+              ],
+              "verify": {
+                "score": 0.6308,
+                "eyes": [
+                  0.8255,
+                  0.8493
+                ],
+                "mirror": 0.1203,
+                "agreement": 0.1019
+              }
+            },
+            "pose": {
+              "points": {
+                "left_eye": [
+                  473.29,
+                  141.78
+                ],
+                "right_eye": [
+                  626.78,
+                  157.12
+                ],
+                "nose": [
+                  484.14,
+                  272.18
+                ],
+                "chin": [
+                  514.16,
+                  424.86
+                ],
+                "left_ear_base": [
+                  453.22,
+                  66.58
+                ],
+                "right_ear_base": [
+                  722.72,
+                  106.64
+                ]
+              },
+              "scores": {
+                "left_eye": 0.709,
+                "right_eye": 0.7088,
+                "nose": 0.9996,
+                "chin": 0.9953,
+                "left_ear_base": 0.8242,
+                "right_ear_base": 0.9389
+              },
+              "iod": 154.2465,
+              "roll_deg": 5.7095,
+              "yaw": -0.3295,
+              "pitch": 0.8342,
+              "lower_yaw": -0.0512,
+              "approx_deg": -22.3831,
+              "swapped": false,
+              "upright_k": 0,
+              "valid": true,
+              "reason": "ok"
+            },
+            "quality": {
+              "score": 0.8477,
+              "level": "high",
+              "passed": true,
+              "reasons": [],
+              "factors": {
+                "sharpness": 0.7735,
+                "eye_detail": 0.853,
+                "exposure": 0.9993,
+                "resolution": 1.0,
+                "confidence": 0.7517,
+                "motion": 0.974,
+                "pose_fit": 0.7535,
+                "alignment": 0.722
+              },
+              "metrics": {
+                "iod_px": 154.2465,
+                "detector_score": 0.5968,
+                "eye_visibility": 0.709,
+                "nose_visibility": 0.9996,
+                "alignment_residual": 0.1564,
+                "brightness": 112.2059,
+                "contrast": 151.0,
+                "clipped": 0.0004,
+                "laplacian": 101.7774,
+                "blur_effect": 0.3691,
+                "eye_laplacian": [
+                  191.72830200195312,
+                  81.27916717529297
+                ],
+                "warp_scale": 0.546,
+                "speed_iod_per_s": 0.4897
+              }
+            }
+          }
+        ]
+      },
+      "missing_views": [
+        "right"
+      ],
+      "coverage_complete": false,
+      "near_misses": {}
+    },
+    "events": [
+      {
+        "event": "view_captured",
+        "view": "front",
+        "track_id": 1,
+        "frame_index": 24,
+        "time_s": 1.0,
+        "score": 0.8022528906731197
+      },
+      {
+        "event": "view_captured",
+        "view": "left",
+        "track_id": 1,
+        "frame_index": 233,
+        "time_s": 9.708333333333332,
+        "score": 0.8477135281855507
+      }
+    ],
+    "result_sha256": "b4bbb39ec288695616d26e2603bfb2aff3954023807e2c8665af11798bb661d0",
+    "config": {
+      "detector": {
+        "kind": "auto",
+        "model": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_pose_cpu.onnx",
+        "input_size": 0,
+        "score_threshold": 0.35,
+        "nms_iou": 0.45,
+        "max_faces": 8,
+        "schema": "",
+        "roi_zoom": true,
+        "roi_min_zoom": 1.5,
+        "roi_period_s": 0.1
+      },
+      "refine": {
+        "enabled": true,
+        "landmarks": "models/pretrained/dog_capture_cpu_layout_v1/dog_face_landmarks_cpu.onnx",
+        "share": 0.35,
+        "crop_size": 0,
+        "antialias": "tracker",
+        "candidate_retry_s": 0.25,
+        "search_period_s": 0.5,
+        "confident_score": 1.0,
+        "max_search_period_s": 2.0,
+        "switch_margin": 0.05,
+        "fine_min_deg": 8.0,
+        "research_below": 0.4,
+        "carry_frames": 3,
+        "match_iou": 0.3,
+        "full_detect_period_s": 0.3,
+        "min_shot_score": 0.5,
+        "max_mirror_disagreement": 0.2,
+        "min_front_eye_conf": 0.7,
+        "max_agreement": 0.3,
+        "min_side_eye_conf": 0.5,
+        "max_side_mirror_disagreement": 0.3,
+        "max_side_agreement": 0.5,
+        "min_eye_contrast": 0.2,
+        "gate_window_s": 0.5,
+        "gate_min_frames": 8,
+        "gate_min_ratio": 0.35,
+        "gate_min_passes": 3,
+        "full_detect_min_frames": 3,
+        "search_min_frames": 6,
+        "backoff_margin": 0.1,
+        "max_backoff": 4,
+        "empty_search_period_s": 0.25,
+        "empty_search_min_frames": 2
+      },
+      "body_gate": {
+        "enabled": "auto",
+        "model": "models/pretrained/dog_capture_v1/yolox_nano.onnx",
+        "input_size": 416,
+        "score_threshold": 0.3,
+        "class_id": 16,
+        "period_s": 0.25,
+        "hold_s": 0.75,
+        "margin": 0.15,
+        "head_score_threshold": 0.5
+      },
+      "tracker": {
+        "high_score": 0.5,
+        "low_score": 0.2,
+        "new_track_score": 0.55,
+        "match_iou": 0.2,
+        "low_match_iou": 0.5,
+        "unconfirmed_match_iou": 0.3,
+        "max_lost_s": 1.0,
+        "max_tracks": 16,
+        "nominal_fps": 30.0
+      },
+      "pose": {
+        "views": [
+          {
+            "name": "front",
+            "center": 0.0,
+            "lower": -0.13,
+            "upper": 0.13,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "left",
+            "center": -0.45,
+            "lower": -0.75,
+            "upper": -0.25,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          },
+          {
+            "name": "right",
+            "center": 0.45,
+            "lower": 0.25,
+            "upper": 0.75,
+            "max_roll_deg": 30.0,
+            "shots": 0,
+            "required": true
+          }
+        ],
+        "exit_margin": 0.05,
+        "min_dwell_s": 0.12,
+        "min_dwell_obs": 3,
+        "max_gap_s": 0.3,
+        "smooth_min_cutoff": 1.5,
+        "smooth_beta": 0.5,
+        "snout_factor": 0.8,
+        "min_iod_box_ratio": 0.12,
+        "max_iod_box_ratio": 1.1,
+        "pitch_range": [
+          0.05,
+          2.2
+        ],
+        "max_abs_yaw": 1.2
+      },
+      "quality": {
+        "min_iod_px": 18.0,
+        "good_iod_px": 64.0,
+        "min_sharpness": 0.15,
+        "min_brightness": 30.0,
+        "max_brightness": 230.0,
+        "max_clipped": 0.3,
+        "min_contrast": 16.0,
+        "border_margin": 0.005,
+        "min_kp_score": 0.35,
+        "max_alignment_residual": 0.45,
+        "motion_ref_iod_per_s": 3.0,
+        "weights": {
+          "sharpness": 3.0,
+          "eye_detail": 2.0,
+          "exposure": 1.0,
+          "resolution": 1.5,
+          "confidence": 1.0,
+          "motion": 1.0,
+          "pose_fit": 0.75,
+          "alignment": 0.5
+        },
+        "high_level": 0.7,
+        "medium_level": 0.5
+      },
+      "selection": {
+        "mode": "hybrid",
+        "ranking": "quality",
+        "candidate_timing": "stable",
+        "good_enough": 0.65,
+        "improve_window_s": 2.0,
+        "top_k": 1,
+        "min_gap_s": 0.3,
+        "min_level": "medium"
+      },
+      "output": {
+        "aligned_size": 224,
+        "template": "petface_dog",
+        "face_margin": 0.2,
+        "keep_frames": true,
+        "image_format": "png"
+      },
+      "runtime": {
+        "providers": "cpu",
+        "threads": 4,
+        "cache_dir": "",
+        "timestamps": "drop",
+        "rotate": "auto",
+        "mirror": false,
+        "still_images": false,
+        "cuda_graph": false,
+        "thread_spinning": true,
+        "spin_duration_us": 1000,
+        "spin_backoff_max": 8
+      }
+    }
+  },
+  "verification": {
+    "python": {
+      "passed": 299,
+      "skipped": 2
+    },
+    "sdk": {
+      "passed": 78,
+      "skipped": 2
+    },
+    "sdk_h5_typecheck": "passed",
+    "h5_build": "passed",
+    "logs": {
+      "python_tests.txt": "d7814bf0b1f19c21ff48dd402aff4e51e2b0ff74873a506919f8d940ba6ee055",
+      "sdk_test.txt": "cccae917318def9a81c36a8825d1c956f7de729414f0ce7bbadab91ba636ed2f",
+      "sdk_typecheck.txt": "3275d8e7629facb28e08544a97d702bfda3b7ca862819ce245b14ed9c7d587d4",
+      "sdk_build.txt": "db87946290266d8a711bbba605a9f213ed662021b3c31a9edcb2068bcd77ff39"
+    }
+  },
+  "limits": [
+    "The fallback can miss sharper early frames and brief side views; the user explicitly accepted it as a fallback, not the default.",
+    "No identity-labelled ReID accuracy evaluation and no actual low-end phone benchmark.",
+    "Network-call reduction is not an FPS speedup. Different real-time dropped frames change subsequent tracking, work and selected pictures.",
+    "Near-miss verification remains because it supplies temporal evidence; not all detector calls are deferred until pose dwell."
+  ],
+  "source_sha256": {
+    "src/Pet-ReID-IMAG/dog_capture/engine/cli.py": "d020d02ec755eb2c1d5cfcfa014d2ebb9adf874c38b40a11ee702d052811bf26",
+    "src/Pet-ReID-IMAG/dog_capture/engine/config.py": "90bf24292fc59041201af144f0e64dd01a1b091277ad11375aa769c5f3cf62bf",
+    "src/Pet-ReID-IMAG/dog_capture/engine/engine.py": "fb091524d2f4134b31e8475041bb7d028a2728a4e390f3302f98675a8334aed2",
+    "src/Pet-ReID-IMAG/dog_capture/protocol/conformance/config_default.json": "094420e8a744e4b3b0416f078b9720d517cdd7864f5bc85c578a801028156144",
+    "src/Pet-ReID-IMAG/frontend/dog-capture/packages/sdk/src/config.ts": "be11558078bd0a7dc1dd1c69f2edb844aa91e8cfc1da01c4a178465712ac6aca",
+    "src/Pet-ReID-IMAG/frontend/dog-capture/packages/sdk/src/engine.ts": "5333d7567e8bb8889efec81da7ef3d5c38ac7d330651d5ca7cc5de2c7046db2c",
+    "src/Pet-ReID-IMAG/frontend/dog-capture/packages/sdk/test/conformance.test.ts": "15c3bdeed67932b237b36556ee671912f0ecd0a497eaebfc74d1eb54dca6ef03",
+    "src/Pet-ReID-IMAG/frontend/dog-capture/packages/sdk/test/engine.test.ts": "a1e3c5c9a261f52bb5ca1d99b7cb236cdde5ea9e10de163337c9621be3cc9a56",
+    "src/Pet-ReID-IMAG/tests/test_dog_capture_candidate_timing.py": "caecb6a536888b9f600499b762ef8d9891dce7fc2bb176d3253bbdfc2d04167a",
+    "src/Pet-ReID-IMAG/tools/compare_dog_capture_runtime.py": "65b430e054032ecf78b6e9d9548451e59dd627bc3507f8f2a92d5ac9514e5386"
+  },
+  "raw_artifacts": "artifacts/runs/dog_capture/low_compute_20261117",
+  "script_sha256": {
+    "package_low_compute_20261117.py": "53b6f6111d2a980b314cbe8afef33a5ef55982a2a6dd598c3451a32359227937",
+    "probe_stable_full_input.py": "bb3997b0a5c4518d9bc25d1d839ac9d4a717f638c4070f8226f93bf61e891f57",
+    "validate_low_compute_20261117.py": "5920230f6f00584d36845b1ff23f05ff5022d673e35bfbfa616afbc2570d32d6"
+  }
+}

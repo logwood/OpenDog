@@ -17,6 +17,11 @@ const close = (a: number, b: number, tol: number) => expect(Math.abs(a - b)).toB
 const config = defaultConfig();
 
 describe('configuration', () => {
+  it('makes stable-only candidate timing opt-in and rejects unknown policies', () => {
+    expect(defaultConfig().selection.candidate_timing).toBe('early');
+    expect(mergeConfig(defaultConfig(), { selection: { candidate_timing: 'stable' } }).selection.candidate_timing).toBe('stable');
+    expect(() => mergeConfig(defaultConfig(), { selection: { candidate_timing: 'automatic' } })).toThrow('selection.candidate_timing');
+  });
   it('has the reference defaults', () => {
     const ref = load('config_default.json');
     for (const section of Object.keys(ref)) {

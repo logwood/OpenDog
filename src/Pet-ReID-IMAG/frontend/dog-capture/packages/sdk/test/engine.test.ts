@@ -29,6 +29,82 @@ function evidenceEngine() {
   return { engine, internal };
 }
 
+it.each(['early', 'stable'] as const)('starts candidate checks at the selected %s timing', async (timing) => {
+  const { engine, internal } = evidenceEngine();
+  engine.config.selection.candidate_timing = timing;
+  engine.config.refine.gate_min_passes = 1;
+  internal.refiner.landmarker = {};
+  const { frame, det } = frames.sharp;
+  const track = new Track(1, det, 0, engine.tracker.kalman), context = internal.context(1);
+  const state = { raw: 'front', view: 'front', stable: false, smoothed_yaw: 0, dwell_s: 0, observations: 1, changed: true };
+  vi.spyOn(context.classifier, 'update').mockReturnValueOnce(state).mockReturnValueOnce(state)
+    .mockReturnValueOnce({ ...state, stable: true });
+  const precise = vi.spyOn(internal, 'sharpen').mockResolvedValue([null, null]);
+  const checks: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    vi.mocked(engine.assessor.assess).mockReturnValue({ report: {
+      score: .9 - .05 * i, level: 'high', passed: true, reasons: [], factors: {}, metrics: {},
+    }, aligned: {} as any });
+    internal.frameTimes.push(i / 30);
+    const before = precise.mock.calls.length;
+    await internal.analyse(frame, track, i / 30, i, 0);
+    if (precise.mock.calls.length > before) checks.push(i);
+  }
+  const expected = timing === 'early' ? 0 : 2;
+  expect(checks).toEqual([expected]);
+  expect(internal.unreliable).toHaveBeenCalledTimes(1);
+  expect(engine.bestBundle()!.best('front')!.frameIndex).toBe(expected);
+});
+
+it('still requires temporal evidence after pose dwell in the low-compute fallback', async () => {
+  const { engine, internal } = evidenceEngine();
+  engine.config.selection.candidate_timing = 'stable';
+  const { frame, det } = frames.sharp;
+  const track = new Track(1, det, 0, engine.tracker.kalman);
+  internal.frameTimes.push(0);
+  const first = (await internal.analyse(frame, track, 0, 0, 0))[0];
+  expect(first.accepted).toBe(false);
+  expect(first.quality.reasons).toContain('landmarks_unstable');
+  internal.frameTimes.push(1 / 30);
+  expect((await internal.analyse(frame, track, 1 / 30, 1, 0))[0].accepted).toBe(true);
+});
+
+it.each(['quality', 'verification'])('preserves %s rejection in the low-compute fallback', async (failure) => {
+  const { engine, internal } = evidenceEngine();
+  engine.config.selection.candidate_timing = 'stable';
+  engine.config.refine.gate_min_passes = 1;
+  if (failure === 'quality') {
+    vi.mocked(engine.assessor.assess).mockReturnValue({ report: {
+      score: .9, level: 'high', passed: false, reasons: ['too_dark'], factors: {}, metrics: {},
+    }, aligned: {} as any });
+  } else vi.mocked(internal.unreliable).mockResolvedValue('eyes_not_visible');
+  const { frame, det } = frames.sharp;
+  const track = new Track(1, det, 0, engine.tracker.kalman);
+  internal.frameTimes.push(0);
+  expect((await internal.analyse(frame, track, 0, 0, 0))[0].accepted).toBe(false);
+  expect(engine.bestBundle()?.captured() ?? []).toEqual([]);
+});
+
+it('keeps near-miss evidence before dwell in the low-compute fallback', async () => {
+  const { engine, internal } = evidenceEngine();
+  engine.config.selection.candidate_timing = 'stable';
+  internal.trackNearMisses = true;
+  const { frame, det } = frames.sharp;
+  const track = new Track(1, det, 0, engine.tracker.kalman), context = internal.context(1);
+  vi.spyOn(context.classifier, 'update').mockReturnValue({ raw: 'front', view: 'front', stable: false,
+    smoothed_yaw: 0, dwell_s: 0, observations: 1, changed: true });
+  vi.mocked(engine.assessor.assess).mockReturnValue({ report: {
+    score: .4, level: 'low', passed: true, reasons: [], factors: {}, metrics: {},
+  }, aligned: {} as any });
+  const nearMiss = vi.spyOn(internal, 'nearMiss').mockResolvedValue('pass');
+  const precise = vi.spyOn(internal, 'sharpen');
+  internal.frameTimes.push(0);
+  expect((await internal.analyse(frame, track, 0, 0, 0))[0].accepted).toBe(false);
+  expect(nearMiss).toHaveBeenCalledTimes(1);
+  expect(precise).not.toHaveBeenCalled();
+  expect(internal.unreliable).not.toHaveBeenCalled();
+});
+
 it.each(['low', 'exposure', 'verification', 'qualified'])('clarity ordering preserves %s checks', async (kind) => {
   const { engine, internal } = evidenceEngine();
   engine.config.selection.ranking = 'clarity';

@@ -1007,3 +1007,92 @@ python -m dog_capture run WOLFHOUND_VIDEO --config CURRENT_FULL_CONFIG --realtim
 研究结果把下一处结构方向限定得更具体：尚未经过大网验证的候选原图及其坐标、时间应先进入有界缓冲；“是否比已存照片更好”与“是否需要补充可信度证据”应分别决策；大模型应服务于有希望入选的原始候选和必要证据。直接把验证延迟到稳定后会丢早期好帧，普遍增加重试又会改变证据供给，二者都已有反例。通用的延迟候选缓冲和独立证据调度尚未实现，本轮没有借有限修正宣称这些依赖或延迟尖峰已全部解决。
 
 全部策略、撤回原因、固定输入对照、最终八次实时结果、CLI 结果及模型 / 视频 / 源文件哈希见 [capture_intent_benchmark.json](../assets/dog_capture/capture_intent_benchmark.json)。原始资料位于本机 `artifacts/runs/dog_capture/capture_intent_20261117/`，最终代码验收在其 `final/` 下。实时原版只加载固定 `b20efa3` engine / refiner，其余模块逐一核对 AST 相同（配置仅注释、少数换行不同），没有宣称完整包隔离。被撤回的源文件、诊断钩子和失败记录分别保留，未用于最终速度结论。
+
+## 18. 稳定姿态后验证的低算力备选（2026-11-17）
+
+按用户接受的取舍，将第 17 节的 stable-first 试验纳入可用配置。默认仍为 **early**；算力不足时，显式选择 **stable**。它以可能错过更清晰的早期帧或短暂侧脸为代价，减少候选精定位和复检，不放宽入选门槛，也不自动切换模式。
+
+### 启用
+
+在现有完整配置中设置：
+
+```yaml
+selection:
+  candidate_timing: stable
+```
+
+或使用 CLI：
+
+```bash
+python -m dog_capture run VIDEO --config CURRENT_FULL_CONFIG --candidate-timing stable --realtime --until-done --output NEW_CAPTURE_DIR
+```
+
+SDK 构造配置使用 `selection: { candidate_timing: 'stable' }`，服务会话中对应 `session.engine.selection.candidate_timing`。在创建会话时选择该策略；改回 `early` 恢复默认候选时机。该字段与 quality / clarity 排序、fast / best / hybrid 定稿方式独立。
+
+本机可直接使用 `models/pretrained/dog_capture_cpu_layout_v1/capture_low_compute.json`，它复制原完整 `capture.json`，只设置上述字段。原文件保留。单张图片采集（Python）不等待视频驻留。
+
+### 行为与完整输入成本
+
+stable 在满足原 `pose.min_dwell_s` 和 `min_dwell_obs` 后才允许候选精定位、复检和保存，稳定前不保存候选供稍后补验。跟踪、姿态估计、廉价质量评估继续运行；`near_miss` 诊断仍可在稳定前复检，因为它会提供时间证据。所有质量、眼部、镜像、定位一致性和时间稳定性检查保留，姿态稳定不代表这些检查自动通过。
+
+默认 early 与隔离加载的 `3a5bb05` 完整采集包对照 **2,526 帧**：逐帧判断、网络调用、输出与最终照片像素一致。对照只从旧配置删除其不支持但等价的默认 `candidate_timing=early`，不会默默忽略非默认值。
+
+stable 另跑全部 2,526 帧，所有 `_run` 调用均为真实前向，没有缓存命中。身体与小跟踪网调用保持不变，脸部大网如下：
+
+| 视频 | early → stable | 调用减少 |
+|---|---:|---:|
+| 用户视频 | 628 → 597 | 4.9% |
+| Wolfhound | 271 → 205 | 24.4% |
+
+先前“约 28%”以 `b20efa3` 的 286 次为基线；当前默认已是 271 次，所以本轮 Wolfhound 的减幅为 **24.4%**。这是调用预算，不是整体 FPS 提升。
+
+用户视频两模式均无合格图。Wolfhound 的选图取舍如下；默认分数由输出的四位小数质量分项重算，stable 分数来自未舍入分项：
+
+| 视角 | early → stable 所选帧 | 清晰度分 |
+|---|---|---:|
+| 正面 | 20 → 24 | 0.6992 → 0.7017 |
+| 左侧 | 278 → 234 | 0.8173 → 0.7727 |
+| 右侧 | 148 → 缺失 | 0.7600 → — |
+
+stable 在完整输入中未采齐右侧；左侧清晰度分较低，仍通过原有入选检查。这正是备选模式的适用边界，不能将省算解释为无损。
+
+### 实际实时验证
+
+同一 i9-13980HX、CPU FP32、ORT 4 线程、1000 μs spin / backoff 8、OpenCV 1 线程、HighQoS 已确认，每模型预热 15 次。按 early A → stable A → stable B → early B 串行执行，B 反转视频顺序；原 PTS、容量 1 队列，完整回放，保留全部结果。外部负载和频率未锁定。
+
+| 视频 / 轮次 | FPS | 平均 ms | P95 ms | P99 ms | 丢帧 |
+|---|---:|---:|---:|---:|---:|
+| 用户 / early_a | 23.99 | 24.41 | 99.16 | 192.80 | 263 |
+| Wolfhound / early_a | 21.95 | 19.52 | 80.81 | 144.83 | 104 |
+| 用户 / stable_a | 25.33 | 21.71 | 92.91 | 158.02 | 200 |
+| Wolfhound / stable_a | 22.17 | 18.15 | 75.22 | 146.20 | 93 |
+| Wolfhound / stable_b | 23.14 | 13.54 | 45.64 | 106.80 | 44 |
+| 用户 / stable_b | 27.86 | 16.01 | 51.35 | 113.24 | 94 |
+| Wolfhound / early_b | 23.60 | 10.61 | 29.32 | 78.90 | 20 |
+| 用户 / early_b | 28.32 | 14.63 | 41.36 | 110.09 | 74 |
+
+按两轮逐帧值拼接重算分位数：
+
+| 视频 / 模式 | FPS | 平均 ms | P95 ms | P99 ms | 最大 ms | 丢帧 |
+|---|---:|---:|---:|---:|---:|---:|
+| 用户 / early | 26.15 | 19.12 | 71.05 | 157.95 | 303.49 | 337 / 2628 |
+| Wolfhound / early | 22.77 | 14.90 | 51.59 | 119.70 | 266.01 | 124 / 2424 |
+| 用户 / stable | 26.59 | 18.73 | 67.93 | 137.31 | 219.27 | 294 / 2628 |
+| Wolfhound / stable | 22.65 | 15.80 | 62.82 | 129.22 | 249.29 | 137 / 2424 |
+
+Wolfhound 实时选图和首次完成时刻：
+
+| 轮次 | 正面 / 左侧 / 右侧帧 | 完成视频时间 / 回放墙钟 |
+|---|---|---:|
+| early_a | 18 / 88 / 缺失 | 未采齐 |
+| stable_a | 24 / 231 / 缺失 | 未采齐 |
+| stable_b | 907 / 1015 / 缺失 | 未采齐 |
+| early_b | 18 / 88 / 142 | 8.042 / 8.059 s |
+
+独立使用正式 CLI 的 `--candidate-timing stable` 入口，结果为 **50.468 秒，缺少 right**，处理 1197 / 1212 帧，丢 15 帧。该入口验收不混入上面的八轮统计。
+
+实时丢帧改变输入和递归跟踪，计时差值不是等量工作加速比。CPU 回放不含 UI、摄像头驱动、网络、ReID、模型启动与最终图片保存，也没有验证低配手机或身份比对准确率。实时 `model_calls` 为 detect 接口计数，完整输入预算为 `_run` 前向计数。
+
+回归 **Python 299 通过、2 跳过；SDK 78 通过、2 跳过**，SDK/H5 类型检查及构建通过。新增用例覆盖开关与 CLI、早期好图取舍、稳定后仍需验证、质量拒绝、诊断证据、姿态再次失稳、单张图片与双端默认配置一致性。
+
+证据见 [low_compute_benchmark.json](../assets/dog_capture/low_compute_benchmark.json)。原始日志、配置哈希、默认照片、备选照片、逐帧计时与执行脚本在本机 `artifacts/runs/dog_capture/low_compute_20261117/`。默认质量路线继续保留，这个模式供算力不足时显式采用。

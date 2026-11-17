@@ -205,6 +205,10 @@ class SelectionConfig:
     """Per-track best-shot policy, after face-capture camera modes."""
     mode: str = 'hybrid'          # best | fast | hybrid
     ranking: str = 'quality'     # quality | clarity; changes within-view ordering, not eligibility/locks
+    # early keeps verified candidates while pose dwell accumulates (default).
+    # stable is a lower-compute video fallback: start candidate checks only after
+    # dwell, accepting that an earlier, sharper frame can be missed. Gates stay unchanged.
+    candidate_timing: str = 'early'   # early | stable
     good_enough: float = 0.65     # fast/hybrid: first accepted score that triggers capture
     improve_window_s: float = 2.0  # hybrid: keep improving this long after the first capture
     top_k: int = 1                # images kept per view
@@ -340,6 +344,7 @@ class CaptureConfig:
         check(0 < q.medium_level <= q.high_level < 1, 'quality levels')
         check(s.mode in ('best', 'fast', 'hybrid'), 'selection.mode must be best/fast/hybrid')
         check(s.ranking in ('quality', 'clarity'), 'selection.ranking must be quality/clarity')
+        check(s.candidate_timing in ('early', 'stable'), 'selection.candidate_timing must be early/stable')
         check(s.top_k >= 1 and s.improve_window_s >= 0 and s.min_gap_s >= 0, 'selection limits')
         check(s.min_level in ('low', 'medium', 'high'), 'selection.min_level must be low/medium/high')
         check(64 <= o.aligned_size <= 1024 and o.image_format in ('png', 'jpg'), 'output image settings')

@@ -46,6 +46,7 @@ def _overrides(args):
     if args.mirror:
         put('runtime', 'mirror', True)
     put('selection', 'mode', args.mode)
+    put('selection', 'candidate_timing', getattr(args, 'candidate_timing', None))
     put('selection', 'top_k', args.top_k)
     if args.views:
         names = [v.strip() for v in args.views.split(',') if v.strip()]
@@ -348,6 +349,8 @@ def main(argv=None):
     run.add_argument('--spin-backoff-max', type=int, help='ORT >= 1.26: power-of-two pause backoff, e.g. 8')
     run.add_argument('--views', help='comma list of front,left,right (default all three)')
     run.add_argument('--mode', choices=['best', 'fast', 'hybrid'])
+    run.add_argument('--candidate-timing', choices=['early', 'stable'],
+                     help='stable: lower-compute fallback; defer candidate checks until pose dwell (may miss sharper early frames)')
     run.add_argument('--top-k', type=int)
     run.add_argument('--rotate', choices=['auto', '0', '90', '180', '270'])
     run.add_argument('--mirror', action='store_true', help='flip horizontally (selfie camera)')

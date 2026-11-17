@@ -223,6 +223,7 @@ pose:
 selection:
   mode: hybrid                   # fast=首张达标即锁定；best=整条轨迹最好；hybrid=达标后再优化 2 s
   ranking: quality               # quality=综合质量；clarity=合格候选按清晰度/眼部细节排序（试验选项）
+  candidate_timing: early         # early=保留驻留早期候选；stable=稳定后才检查候选，低算力备选
   good_enough: 0.65
   top_k: 1
 ```
@@ -247,6 +248,15 @@ Python 参考实现与 TS SDK 的这部分行为由 `selection.json` / `guidance
 测速工具新增 `first_complete`，分别记录采齐时刻、采齐前计算量与整段视频的波动。
 方案取舍、固定输入反例及最终验收见
 [跟踪网络文档第 17 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#17-按所需视角完成采集的成本与候选机会2026-11-17)。
+
+**低算力备选（显式启用）**：设置 `selection.candidate_timing: stable`，或在上述 `run` 命令增加
+`--candidate-timing stable`。姿态满足原 `min_dwell_s` / `min_dwell_obs` 后，才开始候选精定位、复检与选图。
+原跟踪、姿态、质量门槛、时间证据和 near-miss 诊断保留；Python 单张图片采集不等待视频驻留。
+此模式可能错过更清晰的早期帧或短暂侧脸，用作算力不足时的取舍，默认继续 `early`。
+SDK 构造配置使用 `selection: { candidate_timing: 'stable' }`；会话配置中对应 `session.engine.selection.candidate_timing`，在创建采集会话时设置。
+本机完整备选配置为 `models/pretrained/dog_capture_cpu_layout_v1/capture_low_compute.json`，其余字段沿用原配置。
+当前版本的实际调用量、选图与实时结果见
+[跟踪网络文档第 18 节](DOG_CAPTURE_LANDMARK_TRACKER_CN.md#18-稳定姿态后验证的低算力备选2026-11-17)。
 
 ```yaml
 quality:

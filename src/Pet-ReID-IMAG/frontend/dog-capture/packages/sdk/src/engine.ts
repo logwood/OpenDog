@@ -404,6 +404,8 @@ export class CaptureEngine {
     if (inBand && report.passed && !eligible && this.trackNearMisses) {
       gateStatus = await this.nearMiss(ctx, frame, det, target, state.view!, report, track.id, index, t);
     }
+    // Explicit fallback: preserve near-miss evidence, defer candidate checks until pose dwell.
+    if (this.config.selection.candidate_timing === 'stable' && !state.stable) eligible = false;
     // With a crop landmarker the per-frame keypoints are the tracker's; a shot candidate gets the
     // precise detector's (same view rule as the server's re-check), and those are judged and kept.
     let pick: Sharpened = { det, geometry, report, aligned };

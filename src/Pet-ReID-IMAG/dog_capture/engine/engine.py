@@ -537,6 +537,10 @@ class CaptureEngine:
         eligible = in_band and quality.passed and context.shots.eligible_level(quality.level)
         if in_band and quality.passed and not eligible:
             gate_status = self._near_miss(context, frame, det, target, state.view, quality, track.id, index, timestamp, still)
+        # Explicit low-compute fallback. Keep tracking/pose and near-miss evidence,
+        # but do not refine, verify or retain early shot candidates before dwell.
+        if not still and self.config.selection.candidate_timing == 'stable' and not state.stable:
+            eligible = False
         tracked = det
         landmarked = self.refiner is not None and self.refiner.landmarker is not None and not still
         candidate = eligible and context.shots.wants(state.view, context.shots.score_for(quality))
